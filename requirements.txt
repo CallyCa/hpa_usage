@@ -6,4 +6,4 @@ ghapi
 pandas
 matplotlib
 joblib
-openai
+GitPython
