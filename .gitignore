@@ -10,4 +10,8 @@ __pypackages__/
 
 .env
 
-data/.cache
+data/.cachedata/
+partial_results/
+*.env
+.env
+**/.env
