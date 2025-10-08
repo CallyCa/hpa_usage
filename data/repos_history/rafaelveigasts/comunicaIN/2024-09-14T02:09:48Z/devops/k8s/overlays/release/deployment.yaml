@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: teste_eintein-api
+data:
+  ENVIRONMENT: prod
+  NODE_ENV: production
+  PORT: '3001'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: teste_eintein-api
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 2
+  replicas: 3
+  selector:
+    matchLabels:
+      app: teste_eintein-api
+  template:
+    spec:
+      containers:
+        - name: teste_eintein-api
+          resources:
+            requests:
+              memory: 350Mi
+            limits:
+              memory: 650Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: teste_eintein-api-svc
+spec:
+  selector:
+    app: teste_eintein-api
+  ports:
+    - port: 3001
+      protocol: TCP
+      targetPort: 3001
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: teste_eintein-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: teste_eintein-api
+  minReplicas: 3
+  maxReplicas: 5

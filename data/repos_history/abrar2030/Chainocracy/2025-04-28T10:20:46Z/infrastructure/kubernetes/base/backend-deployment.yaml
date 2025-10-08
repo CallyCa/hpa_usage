@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  labels:
+    app: chainocracy-backend
+spec:
+  replicas: 1 # Base replica count, will be overridden by overlays
+  selector:
+    matchLabels:
+      app: chainocracy-backend
+  template:
+    metadata:
+      labels:
+        app: chainocracy-backend
+    spec:
+      containers:
+      - name: backend
+        image: placeholder-registry/chainocracy-backend:latest # Placeholder image
+        ports:
+        - containerPort: 3000 # Match backend_port
+        env:
+        - name: NODE_PORT
+          value: "3000"
+        - name: SERVER_PORT
+          value: "3002"
+        # Add other environment variables as needed (e.g., DB connection, secrets)
+        # Consider using Secrets and ConfigMaps for sensitive/configuration data
+        # Example using ConfigMap:
+        # envFrom:
+        # - configMapRef:
+        #     name: backend-config
+        # Example using Secret:
+        # env:
+        # - name: DATABASE_PASSWORD
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: backend-secrets
+        #       key: db_password
+        resources:
+          # Define base resource requests and limits, override in overlays
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "1024Mi"
+        livenessProbe:
+          httpGet:
+            path: /health # Assuming a /health endpoint exists
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health # Assuming a /health endpoint exists
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 5
+

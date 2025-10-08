@@ -1,0 +1,694 @@
+# Comprehensive Auto-scaling Configuration for Item Valuation System
+# Includes HPA, VPA, and Cluster Autoscaler configurations
+
+# Horizontal Pod Autoscaler for Backend API
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: inventory-system
+  labels:
+    app: backend
+    component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+  # CPU-based scaling
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  # Memory-based scaling
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # Custom metrics scaling (requests per second)
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "100"
+  # Custom metrics scaling (queue length)
+  - type: Object
+    object:
+      metric:
+        name: inventory_processing_queue_length
+      target:
+        type: Value
+        value: "50"
+      describedObject:
+        apiVersion: v1
+        kind: Service
+        name: backend-service
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 minutes
+      policies:
+      - type: Percent
+        value: 25  # Scale down max 25% of current replicas
+        periodSeconds: 60
+      - type: Pods
+        value: 2  # Scale down max 2 pods
+        periodSeconds: 60
+      selectPolicy: Min  # Use the policy that gives the smallest change
+    scaleUp:
+      stabilizationWindowSeconds: 60  # 1 minute
+      policies:
+      - type: Percent
+        value: 100  # Scale up max 100% of current replicas
+        periodSeconds: 60
+      - type: Pods
+        value: 5  # Scale up max 5 pods
+        periodSeconds: 60
+      selectPolicy: Max  # Use the policy that gives the largest change
+---
+# HPA for WebSocket Service
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: websocket-hpa
+  namespace: inventory-system
+  labels:
+    app: websocket
+    component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: websocket
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # WebSocket-specific metrics
+  - type: Pods
+    pods:
+      metric:
+        name: websocket_connections_per_pod
+      target:
+        type: AverageValue
+        averageValue: "1000"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600  # 10 minutes (longer for WebSocket)
+      policies:
+      - type: Percent
+        value: 20
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30  # Faster scale-up for connection spikes
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 30
+---
+# HPA for Frontend
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend-hpa
+  namespace: inventory-system
+  labels:
+    app: frontend
+    component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  minReplicas: 3
+  maxReplicas: 30
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Pods
+    pods:
+      metric:
+        name: nginx_active_connections
+      target:
+        type: AverageValue
+        averageValue: "500"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 30
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+---
+# Vertical Pod Autoscaler for Database
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: postgres-vpa
+  namespace: inventory-system
+  labels:
+    app: postgres
+    component: autoscaling
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: postgres
+  updatePolicy:
+    updateMode: "Auto"  # Can be "Off", "Initial", or "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: postgres
+      minAllowed:
+        cpu: 500m
+        memory: 512Mi
+      maxAllowed:
+        cpu: 4
+        memory: 16Gi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+---
+# VPA for Redis
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: redis-vpa
+  namespace: inventory-system
+  labels:
+    app: redis
+    component: autoscaling
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: redis
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: redis
+      minAllowed:
+        cpu: 100m
+        memory: 256Mi
+      maxAllowed:
+        cpu: 2
+        memory: 8Gi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+---
+# Custom Metrics API Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-metrics-config
+  namespace: inventory-system
+data:
+  config.yaml: |
+    custom_metrics:
+      http_requests_per_second:
+        query: 'rate(http_requests_total[1m])'
+        type: 'pods'
+      inventory_processing_queue_length:
+        query: 'inventory_valuation_queue_size'
+        type: 'object'
+      websocket_connections_per_pod:
+        query: 'websocket_active_connections'
+        type: 'pods'
+      nginx_active_connections:
+        query: 'nginx_active_connections'
+        type: 'pods'
+      database_connection_utilization:
+        query: 'pg_stat_database_numbackends / pg_settings_max_connections * 100'
+        type: 'object'
+---
+# ServiceMonitor for Prometheus to scrape custom metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: inventory-metrics
+  namespace: inventory-system
+  labels:
+    app: inventory-system
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+---
+# Pod Disruption Budget for Backend
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend-pdb
+  namespace: inventory-system
+spec:
+  minAvailable: 2  # Always keep at least 2 pods running
+  selector:
+    matchLabels:
+      app: backend
+---
+# PDB for WebSocket
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: websocket-pdb
+  namespace: inventory-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: websocket
+---
+# PDB for Frontend
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-pdb
+  namespace: inventory-system
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: frontend
+---
+# Cluster Autoscaler Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-autoscaler-config
+  namespace: kube-system
+data:
+  cluster-autoscaler-config.yaml: |
+    scale_down_enabled: true
+    scale_down_delay_after_add: 10m
+    scale_down_delay_after_delete: 10s
+    scale_down_delay_after_failure: 3m
+    scale_down_unneeded_time: 10m
+    scale_down_utilization_threshold: 0.5
+    skip_nodes_with_local_storage: false
+    skip_nodes_with_system_pods: true
+    max_node_provision_time: 15m
+    max_nodes_total: 100
+    cores:
+      min: 0
+      max: 1000
+    memory:
+      min: 0
+      max: 1000Gi
+---
+# Node Groups Configuration for different workload types
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nodegroup-config
+  namespace: inventory-system
+data:
+  nodegroups.yaml: |
+    nodegroups:
+      - name: "general-purpose"
+        instance_types: ["m5.large", "m5.xlarge", "m5.2xlarge"]
+        min_size: 3
+        max_size: 20
+        desired_size: 5
+        labels:
+          workload-type: "general"
+          node-lifecycle: "on-demand"
+        taints: []
+        
+      - name: "compute-optimized"  
+        instance_types: ["c5.large", "c5.xlarge", "c5.2xlarge"]
+        min_size: 0
+        max_size: 10
+        desired_size: 0
+        labels:
+          workload-type: "compute-intensive"
+          node-lifecycle: "on-demand"
+        taints:
+        - key: "workload-type"
+          value: "compute-intensive"
+          effect: "NoSchedule"
+          
+      - name: "memory-optimized"
+        instance_types: ["r5.large", "r5.xlarge", "r5.2xlarge"]
+        min_size: 0
+        max_size: 5
+        desired_size: 0
+        labels:
+          workload-type: "memory-intensive"
+          node-lifecycle: "on-demand"
+        taints:
+        - key: "workload-type"
+          value: "memory-intensive"
+          effect: "NoSchedule"
+          
+      - name: "spot-instances"
+        instance_types: ["m5.large", "c5.large", "r5.large"]
+        min_size: 0
+        max_size: 50
+        desired_size: 0
+        labels:
+          workload-type: "batch-processing"
+          node-lifecycle: "spot"
+        taints:
+        - key: "node-lifecycle"
+          value: "spot"
+          effect: "NoSchedule"
+---
+# Priority Classes for workload scheduling
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: high-priority
+value: 1000
+globalDefault: false
+description: "High priority class for critical workloads"
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: normal-priority
+value: 500
+globalDefault: true
+description: "Normal priority class for standard workloads"
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: low-priority
+value: 100
+globalDefault: false
+description: "Low priority class for batch and background workloads"
+---
+# Resource Quotas to prevent resource exhaustion
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: inventory-system-quota
+  namespace: inventory-system
+spec:
+  hard:
+    requests.cpu: "50"      # Total CPU requests
+    requests.memory: 100Gi  # Total memory requests
+    limits.cpu: "100"       # Total CPU limits
+    limits.memory: 200Gi    # Total memory limits
+    pods: "200"            # Maximum pods
+    services: "20"         # Maximum services
+    persistentvolumeclaims: "20"  # Maximum PVCs
+    secrets: "50"          # Maximum secrets
+---
+# Limit Ranges to set default resource limits
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: inventory-system-limits
+  namespace: inventory-system
+spec:
+  limits:
+  - type: Container
+    default:  # Default limits
+      cpu: "500m"
+      memory: "512Mi"
+    defaultRequest:  # Default requests
+      cpu: "100m"
+      memory: "128Mi"
+    max:  # Maximum allowed
+      cpu: "4"
+      memory: "8Gi"
+    min:  # Minimum required
+      cpu: "50m"
+      memory: "64Mi"
+  - type: Pod
+    max:
+      cpu: "8"
+      memory: "16Gi"
+  - type: PersistentVolumeClaim
+    min:
+      storage: "1Gi"
+    max:
+      storage: "1Ti"
+---
+# Advanced HPA with custom metrics and external metrics
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-advanced-hpa
+  namespace: inventory-system
+  labels:
+    app: backend
+    component: advanced-autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 3
+  maxReplicas: 100
+  metrics:
+  # Standard resource metrics
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # Custom application metrics
+  - type: Pods
+    pods:
+      metric:
+        name: inventory_items_processed_per_second
+      target:
+        type: AverageValue
+        averageValue: "10"
+  - type: Pods
+    pods:
+      metric:
+        name: active_user_sessions
+      target:
+        type: AverageValue
+        averageValue: "100"
+  # External metrics (from external systems)
+  - type: External
+    external:
+      metric:
+        name: sqs_queue_length
+        selector:
+          matchLabels:
+            queue_name: "inventory-processing"
+      target:
+        type: Value
+        value: "50"
+  - type: External
+    external:
+      metric:
+        name: cloudwatch_target_tracking
+        selector:
+          matchLabels:
+            metric_name: "ALBRequestCountPerTarget"
+      target:
+        type: AverageValue
+        averageValue: "1000"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10  # Conservative scale-down
+        periodSeconds: 60
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 30
+      - type: Pods
+        value: 5
+        periodSeconds: 30
+      selectPolicy: Max
+---
+# KEDA ScaledObject for event-driven autoscaling
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: inventory-processor-scaler
+  namespace: inventory-system
+spec:
+  scaleTargetRef:
+    name: inventory-processor
+  minReplicaCount: 1
+  maxReplicaCount: 50
+  triggers:
+  # Scale based on SQS queue length
+  - type: aws-sqs-queue
+    metadata:
+      queueURL: https://sqs.us-east-1.amazonaws.com/ACCOUNT/inventory-processing-queue
+      queueLength: "10"
+      awsRegion: "us-east-1"
+    authenticationRef:
+      name: aws-credentials
+  # Scale based on Redis queue length  
+  - type: redis
+    metadata:
+      address: redis-service.inventory-system.svc.cluster.local:6379
+      listName: processing_queue
+      listLength: "5"
+    authenticationRef:
+      name: redis-credentials
+  # Scale based on Kafka consumer lag
+  - type: kafka
+    metadata:
+      bootstrapServers: kafka.inventory-system.svc.cluster.local:9092
+      consumerGroup: inventory-processors
+      topic: inventory-events
+      lagThreshold: "100"
+---
+# TriggerAuthentication for KEDA
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: aws-credentials
+  namespace: inventory-system
+spec:
+  secretTargetRef:
+  - parameter: accessKey
+    name: aws-credentials
+    key: access-key
+  - parameter: secretKey  
+    name: aws-credentials
+    key: secret-key
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: redis-credentials
+  namespace: inventory-system
+spec:
+  secretTargetRef:
+  - parameter: password
+    name: redis-secret
+    key: password
+---
+# Predictive Scaling Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: predictive-scaling-config
+  namespace: inventory-system
+data:
+  config.yaml: |
+    predictive_scaling:
+      enabled: true
+      forecast_models:
+        - name: "daily_pattern"
+          type: "time_series"
+          window: "7d"
+          metrics:
+            - "http_requests_per_second"
+            - "active_user_sessions"
+        - name: "weekly_pattern" 
+          type: "seasonal"
+          window: "30d"
+          seasonality: "weekly"
+          metrics:
+            - "inventory_processing_volume"
+      scaling_policies:
+        - name: "proactive_scale_up"
+          trigger: "predicted_load_increase > 0.8"
+          action: "scale_up"
+          lead_time: "5m"
+          scale_factor: 1.2
+        - name: "cost_optimization"
+          trigger: "predicted_load_decrease < 0.3"
+          action: "scale_down"  
+          lead_time: "10m"
+          scale_factor: 0.8
+      constraints:
+        max_prediction_horizon: "2h"
+        confidence_threshold: 0.7
+        override_manual_scaling: false
+---
+# Chaos Engineering for Autoscaling Testing
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autoscaling-chaos-experiments
+  namespace: inventory-system
+data:
+  experiments.yaml: |
+    chaos_experiments:
+      - name: "cpu_stress_test"
+        description: "Test HPA response to CPU spikes"
+        schedule: "0 2 * * 1"  # Weekly on Monday 2 AM
+        duration: "10m"
+        actions:
+          - type: "stress_cpu"
+            target: "deployment/backend"
+            intensity: "80%"
+            
+      - name: "memory_pressure_test"
+        description: "Test HPA response to memory pressure"
+        schedule: "0 2 * * 3"  # Weekly on Wednesday 2 AM
+        duration: "15m"
+        actions:
+          - type: "stress_memory"
+            target: "deployment/backend"
+            intensity: "70%"
+            
+      - name: "traffic_spike_simulation"
+        description: "Simulate traffic spikes"
+        schedule: "0 2 * * 5"  # Weekly on Friday 2 AM
+        duration: "20m"
+        actions:
+          - type: "load_test"
+            target: "service/backend-service"
+            requests_per_second: 1000
+            duration: "20m"

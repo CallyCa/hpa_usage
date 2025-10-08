@@ -1,0 +1,118 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+    name: ${NAME}-${ENV}
+  labels:
+    name: ${NAME}
+  parameters:
+    - name: NAME
+      description: "BCDC-SMK-Template"
+      value: bcdc-smk
+    - name: ENV
+      description: "this is dev|test|prd"
+      value: dev
+
+objects:
+  apiVersion: apps.openshift.io/v1
+  kind: DeploymentConfig
+  metadata:
+    labels:
+      app: ${NAME}
+    name: ${NAME}-${ENV}
+  spec:
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      app: ${NAME}
+      deploymentconfig: ${NAME}
+    strategy:
+      activeDeadlineSeconds: 21600
+      resources: {}
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: 25%
+        maxUnavailable: 25%
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+      type: Rolling
+    template:
+      metadata:
+        annotations:
+          openshift.io/generated-by: OpenShiftNewApp
+        creationTimestamp: null
+        labels:
+          app: ${NAME}
+          deploymentconfig: ${NAME}
+      spec:
+        containers:
+          - image: docker.pkg.github.com/bcgov/bcdc-smk/bcdc-smk
+            imagePullPolicy: Always
+            name: ${NAME}
+            ports:
+              - containerPort: 8080
+                protocol: TCP
+            resources: {}
+            terminationMessagePath: /dev/termination-log
+            terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        imagePullSecrets:
+          - name: bcdc-smk-image-access-secret
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+    test: false
+    triggers:
+      - type: ConfigChange
+
+  apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      openshift.io/generated-by: OpenShiftNewApp
+    creationTimestamp: '2020-08-13T20:05:47Z'
+    labels:
+      app: bcdc-smkbcdc-smk
+    name: ${NAME}
+    namespace: dbc-kirk-tools
+    resourceVersion: '2007083936'
+    selfLink: /api/v1/namespaces/dbc-kirk-tools/services/bcdc-smkbcdc-smk
+    uid: 60bfd58a-dda0-11ea-9201-005056832285
+  spec:
+    clusterIP: 172.50.9.250
+    ports:
+      - name: 8080-tcp
+        port: 8080
+        protocol: TCP
+        targetPort: 8080
+    selector:
+      app: bcdc-smkbcdc-smk
+      deploymentconfig: bcdc-smkbcdc-smk
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+
+  apiVersion: route.openshift.io/v1
+  kind: Route
+  metadata:
+    annotations:
+      openshift.io/host.generated: 'true'
+    creationTimestamp: '2020-08-13T20:57:01Z'
+    labels:
+      app: bcdc-smkbcdc-smk
+    name: smk-bcdc-route
+    namespace: dbc-kirk-tools
+    resourceVersion: '2007193304'
+    uid: 88d06f4e-dda7-11ea-9201-005056832285
+  spec:
+    port:
+      targetPort: 8080-tcp
+    tls:
+      termination: edge
+    to:
+      kind: Service
+      name: bcdc-smkbcdc-smk
+      weight: 100
+    wildcardPolicy: None
+    

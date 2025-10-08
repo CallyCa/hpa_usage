@@ -1,0 +1,88 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: managex-school-production
+namePrefix: managex-
+nameSuffix: -production
+
+
+resources:
+  - ../../base
+
+
+patches:
+  - path: deployment/school-prod-cronjob.yaml
+    target:
+      kind: CronJob
+      name: school-cronjob
+  - patch: |-
+      - op: replace
+        path: /spec/jobTemplate/spec/template/spec/containers/0/name
+        value: managex-school-cronjob
+      - op: replace
+        path: /metadata/labels/app
+        value: school-cronjob-prod
+      - op: replace
+        path: /spec/jobTemplate/spec/template/metadata/labels/app
+        value: school-cronjob-prod
+    target:
+      kind: CronJob
+      name: school-cronjob 
+
+  - path: deployment/school-prod-deploy.yaml
+    target:
+      kind: Deployment
+      name: school
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/name
+        value: managex-school-production
+      - op: replace
+        path: /metadata/labels/app
+        value: managex-school-prod
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: managex-school-prod
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: managex-school-prod
+    target:
+      kind: Deployment 
+      name: school
+
+  - path: deployment/school-prod-ingress.yaml
+    target:
+      kind: Ingress
+      name: school-ingress
+
+  - path: deployment/school-prod-nginx-configmap.yaml
+    target:
+      kind: ConfigMap
+      name: school-nginx-config
+
+  - path: deployment/school-prod-pod-autoscaler.yaml
+    target:
+      kind: HorizontalPodAutoscaler
+      name: school-pod-autoscaler
+
+  - path: deployment/school-prod-secretprovider.yaml
+    target:
+      kind: SecretProviderClass
+      name: school-secrets
+
+  - path: deployment/school-prod-server-configmap.yaml
+    target:
+      kind: ConfigMap
+      name: school-server-config
+   
+  - path: deployment/school-prod-service.yaml
+    target:
+      kind: Service
+      name: school-service
+  - patch: |-
+      - op: replace
+        path: /spec/selector/app
+        value: managex-school-prod
+    target:
+      kind: Service
+      name: school-service

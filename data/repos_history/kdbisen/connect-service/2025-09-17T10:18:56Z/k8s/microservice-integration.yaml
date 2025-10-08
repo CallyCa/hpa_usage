@@ -1,0 +1,469 @@
+# Kubernetes Microservice Integration Configuration
+# This file contains all the necessary Kubernetes resources for integrating
+# the Connect Service as a microservice
+
+---
+# Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: connect-service
+  namespace: connect-service
+  labels:
+    app: connect-service
+    version: v2.0
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: connect-service-config
+  namespace: connect-service
+  labels:
+    app: connect-service
+data:
+  application.yml: |
+    server:
+      port: 8080
+      servlet:
+        context-path: /api
+    
+    spring:
+      application:
+        name: connect-service
+      profiles:
+        active: k8s
+      
+      # Service Discovery
+      cloud:
+        consul:
+          host: consul-server
+          port: 8500
+          discovery:
+            service-name: connect-service
+            instance-id: ${HOSTNAME}
+            tags:
+              - version=${API_VERSION:2.0}
+              - environment=${ENVIRONMENT:production}
+              - region=${REGION:us-east-1}
+      
+      # Data Source
+      data:
+        mongodb:
+          uri: ${MONGODB_URI}
+          auto-index-creation: true
+      
+      # Security
+      security:
+        oauth2:
+          client:
+            registration:
+              apigee:
+                client-id: ${APIGEE_CLIENT_ID}
+                client-secret: ${APIGEE_CLIENT_SECRET}
+                authorization-grant-type: client_credentials
+                scope: read,write
+              fenergo:
+                client-id: ${FENERGO_CLIENT_ID}
+                client-secret: ${FENERGO_CLIENT_SECRET}
+                authorization-grant-type: client_credentials
+                scope: api
+            provider:
+              apigee:
+                token-uri: ${APIGEE_TOKEN_URI}
+              fenergo:
+                token-uri: ${FENERGO_TOKEN_URI}
+      
+      # Cache
+      cache:
+        type: caffeine
+        caffeine:
+          spec: maximumSize=1000,expireAfterWrite=5m
+    
+    # Management endpoints
+    management:
+      endpoints:
+        web:
+          exposure:
+            include: health,info,metrics,prometheus,loggers
+      endpoint:
+        health:
+          show-details: always
+          probes:
+            enabled: true
+      health:
+        readiness-state:
+          enabled: true
+        liveness-state:
+          enabled: true
+      metrics:
+        export:
+          prometheus:
+            enabled: true
+        tags:
+          application: ${spring.application.name}
+          version: ${API_VERSION:2.0}
+          environment: ${ENVIRONMENT:production}
+    
+    # Logging
+    logging:
+      level:
+        com.adyanta.connect: INFO
+        org.springframework.integration: INFO
+        org.springframework.security: WARN
+      pattern:
+        console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{traceId},%X{spanId}] %logger{36} - %msg%n"
+        file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{traceId},%X{spanId}] %logger{36} - %msg%n"
+      file:
+        name: /app/logs/connect-service.log
+    
+    # External APIs
+    external:
+      apis:
+        xml-to-json:
+          base-url: ${XML_TO_JSON_API_URL}
+          timeout: 30000
+          retry-attempts: 3
+        fenergo:
+          base-url: ${FENERGO_API_URL}
+          timeout: 60000
+          retry-attempts: 3
+    
+    # Processing Configuration
+    processing:
+      async:
+        core-pool-size: 10
+        max-pool-size: 50
+        queue-capacity: 1000
+      retry:
+        max-attempts: 3
+        backoff-delay: 1000
+        max-delay: 10000
+    
+    # API Versioning
+    api:
+      versioning:
+        current-version: "2.0"
+        default-version: "1.0"
+        supported-versions: ["1.0", "2.0"]
+        deprecated-versions: []
+    
+    # Resilience4j
+    resilience4j:
+      circuitbreaker:
+        instances:
+          connect-service:
+            registerHealthIndicator: true
+            slidingWindowSize: 10
+            minimumNumberOfCalls: 5
+            permittedNumberOfCallsInHalfOpenState: 3
+            automaticTransitionFromOpenToHalfOpenEnabled: true
+            waitDurationInOpenState: 5s
+            failureRateThreshold: 50
+      retry:
+        instances:
+          connect-service:
+            maxAttempts: 3
+            waitDuration: 1s
+            exponentialBackoffMultiplier: 2
+      timelimiter:
+        instances:
+          connect-service:
+            timeoutDuration: 2s
+            cancelRunningFuture: true
+
+---
+# Secret for sensitive configuration
+apiVersion: v1
+kind: Secret
+metadata:
+  name: connect-service-secrets
+  namespace: connect-service
+  labels:
+    app: connect-service
+type: Opaque
+data:
+  # Base64 encoded values - replace with actual values
+  mongodb-uri: bW9uZ29kYjovL21vbmdvZGI6MjcwMTcvY29ubmVjdC1zZXJ2aWNl
+  apigee-client-id: YWJjZGVmZ2hpams=
+  apigee-client-secret: MTIzNDU2Nzg5MA==
+  fenergo-client-id: ZmVuZXJnb19jbGllbnRfaWQ=
+  fenergo-client-secret: ZmVuZXJnb19zZWNyZXQ=
+  apigee-token-uri: aHR0cHM6Ly9hcGkuYXBpZ2VlLmNvbS9vYXV0aC90b2tlbg==
+  fenergo-token-uri: aHR0cHM6Ly9hcGkuZmVuZXJnby5jb20vb2F1dGgvdG9rZW4=
+
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: connect-service
+  namespace: connect-service
+  labels:
+    app: connect-service
+    version: v2.0
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: connect-service
+  template:
+    metadata:
+      labels:
+        app: connect-service
+        version: v2.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: connect-service
+      containers:
+      - name: connect-service
+        image: connect-service:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: management
+          containerPort: 8081
+          protocol: TCP
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "k8s"
+        - name: API_VERSION
+          value: "2.0"
+        - name: ENVIRONMENT
+          value: "production"
+        - name: REGION
+          value: "us-east-1"
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: connect-service-secrets
+              key: mongodb-uri
+        - name: APIGEE_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: connect-service-secrets
+              key: apigee-client-id
+        - name: APIGEE_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: connect-service-secrets
+              key: apigee-client-secret
+        - name: FENERGO_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: connect-service-secrets
+              key: fenergo-client-id
+        - name: FENERGO_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: connect-service-secrets
+              key: fenergo-client-secret
+        - name: APIGEE_TOKEN_URI
+          valueFrom:
+            secretKeyRef:
+              name: connect-service-secrets
+              key: apigee-token-uri
+        - name: FENERGO_TOKEN_URI
+          valueFrom:
+            secretKeyRef:
+              name: connect-service-secrets
+              key: fenergo-token-uri
+        - name: XML_TO_JSON_API_URL
+          value: "http://xml-to-json-service:8080/api"
+        - name: FENERGO_API_URL
+          value: "http://fenergo-service:8080/api"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+        - name: logs-volume
+          mountPath: /app/logs
+      volumes:
+      - name: config-volume
+        configMap:
+          name: connect-service-config
+      - name: logs-volume
+        emptyDir: {}
+      restartPolicy: Always
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: connect-service
+  namespace: connect-service
+  labels:
+    app: connect-service
+    version: v2.0
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+spec:
+  selector:
+    app: connect-service
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: management
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+  type: ClusterIP
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: connect-service-hpa
+  namespace: connect-service
+  labels:
+    app: connect-service
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: connect-service
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+
+---
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: connect-service-pdb
+  namespace: connect-service
+  labels:
+    app: connect-service
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: connect-service
+
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: connect-service-netpol
+  namespace: connect-service
+  labels:
+    app: connect-service
+spec:
+  podSelector:
+    matchLabels:
+      app: connect-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - namespaceSelector:
+        matchLabels:
+          name: api-gateway
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8081
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: mongodb
+    ports:
+    - protocol: TCP
+      port: 27017
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: consul
+    ports:
+    - protocol: TCP
+      port: 8500
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+---
+# ServiceMonitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: connect-service-monitor
+  namespace: connect-service
+  labels:
+    app: connect-service
+spec:
+  selector:
+    matchLabels:
+      app: connect-service
+  endpoints:
+  - port: management
+    path: /actuator/prometheus
+    interval: 30s
+    scrapeTimeout: 10s

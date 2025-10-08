@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: runner-ms-deployment
+  namespace: codecapable
+  labels:
+    app: runner-ms
+    version: "1.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: runner-ms
+  template:
+    metadata:
+      labels:
+        app: runner-ms
+        version: "1.0"
+    spec:
+      containers:
+      - name: runner-ms-container
+        image: kkatsarski/runner-ms
+        imagePullPolicy: Always
+        env:
+          - name: NODE_ENV
+            value: production
+          - name: PORT
+            value: "3002"
+          - name: RABBITMQ_HOST
+            value: rabbitmq-service
+          - name: USE_JUDGE
+            value: "true"
+          - name: RABBITMQ_PORT
+            value: "5672"
+          - name: JWT_PUBLIC_KEY
+            valueFrom:
+              secretKeyRef:
+                name: cc-secrets
+                key: JWT_PUBLIC_KEY
+          - name: JUDGE_KEY
+            valueFrom:
+              secretKeyRef:
+                name: cc-secrets
+                key: JUDGE_KEY
+        ports:
+        - containerPort: 3002
+        resources:
+          limits:
+            cpu: 300m
+            memory: 521Mi
+          requests:
+            cpu: 150m
+            memory: 256Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: runner-ms
+  name: runner-ms-service
+  namespace: codecapable
+spec:
+  ports:
+    - name: http
+      port: 3002
+      targetPort: 3002
+  selector:
+    app: runner-ms
+
+---
+
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: runner-ms-autoscaler
+  namespace: codecapable
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: runner-ms-deployment
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+          
+          

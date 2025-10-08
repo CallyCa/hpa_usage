@@ -1,0 +1,329 @@
+# ConfigMap for API URLs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-urls
+data:
+  VITE_AUTH_API_URL: "http://139.59.193.232:8000"
+  VITE_PAYMENT_API_URL: "http://146.190.4.175:8001"
+  VITE_DOWNLOAD_API_URL: "http://146.190.201.180:8002"
+---
+# auth-service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: auth
+    spec:
+      containers:
+        - name: auth-service
+          image: ishrakadit07/auth_service
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MONGODB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-atlas-secret
+                  key: mongo-user
+            - name: MONGODB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-atlas-secret
+                  key: mongo-password
+            - name: MONGODB_CLUSTER_NAME
+              value: "cluster-for-ishrak"
+            - name: MONGODB_APP_NAME
+              value: "cluster-for-ishrak"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+# auth-service Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+spec:
+  selector:
+    app: auth
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: LoadBalancer
+---
+# payment-service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: payment
+    spec:
+      containers:
+        - name: payment-service
+          image: ishrakadit07/payment_service
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8001
+          env:
+            - name: AUTH_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: api-urls
+                  key: VITE_AUTH_API_URL
+            - name: MONGODB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-atlas-secret
+                  key: mongo-user
+            - name: MONGODB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-atlas-secret
+                  key: mongo-password
+            - name: MONGODB_CLUSTER_NAME
+              value: "cluster-for-ishrak"
+            - name: MONGODB_APP_NAME
+              value: "cluster-for-ishrak"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+# payment-service Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+spec:
+  selector:
+    app: payment
+  ports:
+    - protocol: TCP
+      port: 8001
+      targetPort: 8001
+  type: LoadBalancer
+---
+# download-service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: download-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: download
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: download
+    spec:
+      containers:
+        - name: download-service
+          image: ishrakadit07/download_service
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8002
+          env:
+            - name: AUTH_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: api-urls
+                  key: VITE_AUTH_API_URL
+            - name: MONGODB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-atlas-secret
+                  key: mongo-user
+            - name: MONGODB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-atlas-secret
+                  key: mongo-password
+            - name: MONGODB_CLUSTER_NAME
+              value: "cluster-for-ishrak"
+            - name: MONGODB_APP_NAME
+              value: "cluster-for-ishrak"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+# download-service Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: download-service
+spec:
+  selector:
+    app: download
+  ports:
+    - protocol: TCP
+      port: 8002
+      targetPort: 8002
+  type: LoadBalancer
+---
+# client Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: client
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: client
+    spec:
+      containers:
+        - name: client
+          image: ishrakadit07/project_web
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5173
+          env:
+            - name: VITE_AUTH_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: api-urls
+                  key: VITE_AUTH_API_URL
+            - name: VITE_PAYMENT_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: api-urls
+                  key: VITE_PAYMENT_API_URL
+            - name: VITE_DOWNLOAD_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: api-urls
+                  key: VITE_DOWNLOAD_API_URL
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+# client Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: client-service
+spec:
+  type: NodePort
+  ports:
+    - port: 5173
+      targetPort: 5173
+      protocol: TCP
+      nodePort: 30001
+  selector:
+    app: client
+--- 
+# Horizontal Pod Autoscaler for auth-service
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: auth-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: auth-deploy
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+---
+# Horizontal Pod Autoscaler for payment-service
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment-deploy
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+---
+# Horizontal Pod Autoscaler for download-service
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: download-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: download-deploy
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+---
+# Horizontal Pod Autoscaler for client
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: client-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: client-deploy
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80

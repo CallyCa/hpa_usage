@@ -1,0 +1,19 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: dev
+spec:
+  scaleTargetRef: # назвачается таргер рабочей нагрузки, который будет горизонтально увеличивать (просто добавлять поды из деплоя)
+    apiVersion: apps/v1 # api из деплоя
+    kind: Deployment # опять же kind, а работаем с деплоем
+    name: wordpress-deploy # должно совпадать с именем деплоя wp
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource # выбирается метрика по ресурсам
+    resource:
+      name: cpu   # будем смотреть по загрузке процессора
+      target:
+        type: Utilization
+        averageUtilization: 50 # когда процессор работает на 50% от своих ресурсов будет 

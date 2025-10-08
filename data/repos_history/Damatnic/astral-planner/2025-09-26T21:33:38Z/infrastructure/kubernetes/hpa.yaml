@@ -1,0 +1,314 @@
+# Quantum's Horizontal Pod Autoscaler - Intelligent Auto-Scaling
+# Advanced scaling with custom metrics and predictive scaling capabilities
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: astral-planner-hpa
+  namespace: astral-planner-production
+  labels:
+    app.kubernetes.io/name: astral-planner
+    app.kubernetes.io/instance: production
+    app.kubernetes.io/component: autoscaler
+    app.kubernetes.io/part-of: astral-planner
+    app.kubernetes.io/managed-by: quantum-devops
+  annotations:
+    quantum.io/scaling-policy: "aggressive"
+    quantum.io/predictive-scaling: "enabled"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: astral-planner-app
+  minReplicas: 5
+  maxReplicas: 100
+  
+  # Scaling Behavior Configuration
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      - type: Pods
+        value: 5
+        periodSeconds: 30
+      selectPolicy: Max
+  
+  # Multi-Metric Scaling Strategy
+  metrics:
+  # CPU Utilization
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  
+  # Memory Utilization
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  
+  # Custom Metrics - Requests per Second
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: astral-planner
+      target:
+        type: AverageValue
+        averageValue: "1000"
+  
+  # Custom Metrics - Response Time
+  - type: Pods
+    pods:
+      metric:
+        name: http_request_duration_p95
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: astral-planner
+      target:
+        type: AverageValue
+        averageValue: "200m"
+  
+  # Custom Metrics - Active Connections
+  - type: Pods
+    pods:
+      metric:
+        name: active_connections
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: astral-planner
+      target:
+        type: AverageValue
+        averageValue: "500"
+  
+  # Queue Depth Scaling
+  - type: External
+    external:
+      metric:
+        name: redis_queue_depth
+        selector:
+          matchLabels:
+            queue: "background-jobs"
+      target:
+        type: AverageValue
+        averageValue: "50"
+---
+# Staging HPA with Conservative Scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: astral-planner-hpa
+  namespace: astral-planner-staging
+  labels:
+    app.kubernetes.io/name: astral-planner
+    app.kubernetes.io/instance: staging
+    app.kubernetes.io/component: autoscaler
+    app.kubernetes.io/part-of: astral-planner
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: astral-planner-app
+  minReplicas: 2
+  maxReplicas: 10
+  
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+  
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "500"
+---
+# Vertical Pod Autoscaler for Resource Optimization
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: astral-planner-vpa
+  namespace: astral-planner-production
+  labels:
+    app.kubernetes.io/name: astral-planner
+    app.kubernetes.io/instance: production
+    app.kubernetes.io/component: vpa
+    app.kubernetes.io/part-of: astral-planner
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: astral-planner-app
+  updatePolicy:
+    updateMode: "Auto"
+    minReplicas: 5
+  resourcePolicy:
+    containerPolicies:
+    - containerName: app
+      minAllowed:
+        cpu: 250m
+        memory: 512Mi
+      maxAllowed:
+        cpu: 2000m
+        memory: 4Gi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+    - containerName: nginx
+      minAllowed:
+        cpu: 50m
+        memory: 64Mi
+      maxAllowed:
+        cpu: 500m
+        memory: 256Mi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+---
+# Pod Disruption Budget for High Availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: astral-planner-pdb
+  namespace: astral-planner-production
+  labels:
+    app.kubernetes.io/name: astral-planner
+    app.kubernetes.io/instance: production
+    app.kubernetes.io/component: pdb
+    app.kubernetes.io/part-of: astral-planner
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: astral-planner
+      app.kubernetes.io/instance: production
+      app.kubernetes.io/component: application
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: astral-planner-pdb
+  namespace: astral-planner-staging
+  labels:
+    app.kubernetes.io/name: astral-planner
+    app.kubernetes.io/instance: staging
+    app.kubernetes.io/component: pdb
+    app.kubernetes.io/part-of: astral-planner
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: astral-planner
+      app.kubernetes.io/instance: staging
+      app.kubernetes.io/component: application
+---
+# KEDA ScaledObject for Event-Driven Autoscaling
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: astral-planner-keda
+  namespace: astral-planner-production
+  labels:
+    app.kubernetes.io/name: astral-planner
+    app.kubernetes.io/component: keda-scaler
+    app.kubernetes.io/part-of: astral-planner
+spec:
+  scaleTargetRef:
+    name: astral-planner-app
+  pollingInterval: 30
+  cooldownPeriod: 300
+  idleReplicaCount: 5
+  minReplicaCount: 5
+  maxReplicaCount: 100
+  
+  triggers:
+  # Redis Queue Length Trigger
+  - type: redis
+    metadata:
+      address: redis://redis:6379
+      listName: background_jobs
+      listLength: "10"
+      enableTLS: "false"
+  
+  # Prometheus Metrics Trigger
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus:9090
+      metricName: http_requests_per_second_rate
+      threshold: "1000"
+      query: rate(http_requests_total[1m])
+  
+  # CPU and Memory combined trigger
+  - type: cpu
+    metricType: Utilization
+    metadata:
+      value: "70"
+  
+  # External Database Connection Pool
+  - type: external-push
+    metadata:
+      scalerAddress: database-metrics-scaler:8080
+  
+  advanced:
+    restoreToOriginalReplicaCount: true
+    horizontalPodAutoscalerConfig:
+      name: astral-planner-hpa
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+          - type: Percent
+            value: 25
+            periodSeconds: 60
+        scaleUp:
+          stabilizationWindowSeconds: 60
+          policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 30

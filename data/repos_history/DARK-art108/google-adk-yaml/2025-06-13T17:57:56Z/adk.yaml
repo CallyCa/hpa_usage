@@ -1,0 +1,273 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: adk-agent-sa
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adk-config
+data:
+  ADK_LOG_LEVEL: "info"
+  ADK_SERVER_PORT: "8080"
+  ADK_METRICS_PORT: "9090"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: adk-secrets
+type: Opaque
+data:
+  api-key: R09PR0xFX0FQSV9LRVk=  # base64 encoded
+  db-password: cGFzc3dvcmQxMjM=   # base64 encoded
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: adk-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: adk-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adk-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adk-agent
+  template:
+    metadata:
+      labels:
+        app: adk-agent
+    spec:
+      serviceAccountName: adk-agent-sa
+      containers:
+      - name: adk-agent
+        imagePullPolicy: Always
+        image: $GOOGLE_CLOUD_LOCATION-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/adk-repo/adk-agent:latest
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+            ephemeral-storage: "128Mi"
+          requests:
+            memory: "128Mi"
+            cpu: "500m"
+            ephemeral-storage: "128Mi"
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 9090
+          name: metrics
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        env:
+          - name: PORT
+            valueFrom:
+              configMapKeyRef:
+                name: adk-config
+                key: ADK_SERVER_PORT
+          - name: GOOGLE_CLOUD_PROJECT
+            value: GOOGLE_CLOUD_PROJECT
+          - name: GOOGLE_CLOUD_LOCATION
+            value: GOOGLE_CLOUD_LOCATION
+          - name: GOOGLE_GENAI_USE_VERTEXAI
+            value: GOOGLE_GENAI_USE_VERTEXAI
+          - name: GOOGLE_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: adk-secrets
+                key: api-key
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: adk-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adk-redis-cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-cache
+  template:
+    metadata:
+      labels:
+        app: redis-cache
+    spec:
+      containers:
+      - name: redis
+        image: redis:latest
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: adk-db
+spec:
+  serviceName: adk-db
+  replicas: 3
+  selector:
+    matchLabels:
+      app: adk-db
+  template:
+    metadata:
+      labels:
+        app: adk-db
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:latest
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: adk-secrets
+              key: db-password
+        ports:
+        - containerPort: 5432
+          name: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adk-agent
+spec:       
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 8080
+      name: http
+    - port: 9090
+      targetPort: 9090
+      name: metrics
+  selector:
+    app: adk-agent
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cache
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: redis-cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adk-db
+spec:
+  clusterIP: None
+  ports:
+  - port: 5432
+    targetPort: 5432
+  selector:
+    app: adk-db
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: adk-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: adk-agent
+            port:
+              number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: adk-agent-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: adk-agent
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: adk-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: adk-agent
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: redis-cache
+    ports:
+    - protocol: TCP
+      port: 6379
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: adk-db
+    ports:
+    - protocol: TCP
+      port: 5432
+

@@ -1,0 +1,73 @@
+# Contains a deployment, a service and a hpa for the announcement service
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pn-deployment-client
+  labels:
+    owner: pn
+    app: watchwise
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pn-watchwise-client
+  template:
+    metadata:
+      labels:
+        app: pn-watchwise-client
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: kubernetes-watchwise-client
+          image: papnorbert25/watchwise-client:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3800
+              protocol: TCP
+          env:
+            - name: REACT_APP_SERVER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: REACT_APP_SERVER_URL
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pn-service-client
+  labels:
+    owner: pn
+spec:
+  ports:
+    - name: http
+      port: 3800
+      targetPort: 3800
+      protocol: TCP
+  selector:
+    app: pn-watchwise-client
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: deployment-autoscaler-client
+  labels:
+    owner: pn
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pn-deployment-client
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60

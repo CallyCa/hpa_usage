@@ -1,0 +1,65 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: production
+  labels:
+    app: api-gateway
+    component: gateway
+    part-of: task-management
+  annotations:
+    kubernetes.io/description: "HPA for API Gateway service"
+    kubernetes.io/last-applied-configuration: "auto-generated"
+    monitoring.kubernetes.io/alert-threshold: "critical"
+    scaling.kubernetes.io/behavior: "conservative"
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+
+  # Minimum replicas for high availability
+  minReplicas: 2
+  # Maximum replicas based on load testing and resource limits
+  maxReplicas: 10
+
+  # Scaling metrics based on CPU and memory utilization
+  metrics:
+    # CPU-based scaling
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+    # Memory-based scaling
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+  # Advanced scaling behavior configuration
+  behavior:
+    # Scale up configuration
+    scaleUp:
+      # Stabilization window to prevent thrashing
+      stabilizationWindowSeconds: 60
+      # Conservative scaling policies
+      policies:
+      - type: Pods
+        value: 2        # Add up to 2 pods at a time
+        periodSeconds: 60
+
+    # Scale down configuration
+    scaleDown:
+      # Longer stabilization window for scale down
+      stabilizationWindowSeconds: 300
+      # Gradual scale down policies
+      policies:
+      - type: Pods
+        value: 1        # Remove 1 pod at a time
+        periodSeconds: 60

@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: object-recognition-service
+spec:
+  selector:
+    matchLabels:
+      run: object-recognition-service
+  template:
+    metadata:
+      labels:
+        run: object-recognition-service
+    spec:
+      containers:
+      - name: object-recognition-service
+        image: github.com/coffeemakingtoaster/water-bottler/object-recognition-service:{{ .Values.globalImageTag }}
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: object-recognition-service-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: object-recognition-service
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Object
+    object:
+      metric: 
+        name: rabbitmq_queue_messages_ready
+      describedObject:
+        apiVersion: v1
+        kind: Service
+        # point to rabbitmq service
+        name: dev-cluster
+      target:
+        type: Value
+        # For every one message in the queue one instance of the object recognition service is started
+        # This value is super low for testing purposes
+        value: 1

@@ -1,0 +1,27 @@
+replicaCount: 1
+
+image:
+  repository: apache/airflow
+  tag: "2.9.1"
+  pullPolicy: IfNotPresent
+
+web:
+  port: 8080
+
+scheduler:
+  replicas: 1
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 10Gi
+
+config:
+  AIRFLOW__CORE__FERNET_KEY: "your_fernet_key"  
+  AIRFLOW__CORE__EXECUTOR: "CeleryExecutor"
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:airflow@postgres:5432/airflow"
+  AIRFLOW__CELERY__RESULT_BACKEND: "redis://redis:6379/0"
+
+secrets:
+  database_connection: "postgresql+psycopg2://airflow:airflow@postgres:5432/airflow"
+  celery_backend: "redis://redis:6379/0"

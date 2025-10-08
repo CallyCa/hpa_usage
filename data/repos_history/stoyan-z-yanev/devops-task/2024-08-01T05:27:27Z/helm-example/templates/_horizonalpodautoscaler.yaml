@@ -1,0 +1,23 @@
+{{- define "common.internal.horizontalpodautoscaler" -}}
+  {{- if .Values.horizontalPodAutoscaler.enabled -}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+{{ include "common.metadata" . }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "common.name" . }}
+  minReplicas: {{ .Values.horizontalPodAutoscaler.minReplicas }}
+  maxReplicas: {{ .Values.horizontalPodAutoscaler.maxReplicas }}
+  metrics:
+  {{ range .Values.horizontalPodAutoscaler.resources }}
+  - type: Resource
+    resource:
+      name: {{ .name }}
+      target:
+        type: Utilization
+        averageUtilization: {{ .targetUtilizationPercentage }}
+  {{- end }}
+  {{- end -}}
+{{- end -}}

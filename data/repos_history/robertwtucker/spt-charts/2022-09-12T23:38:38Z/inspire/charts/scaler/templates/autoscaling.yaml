@@ -1,0 +1,44 @@
+{{- if .Values.global.scaler.enabled | and .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "inspire.applicationName" . }}-scaler
+spec:
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  metrics:
+{{- if empty .Values.autoscaling.targetCPUUtilizationPercentage | not }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- with .Values.autoscaling.metrics }}
+{{ tpl (toYaml . | indent 4) $ }}
+{{- end }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "inspire.applicationName" . }}-scaler
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 20
+        periodSeconds: 60
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 20
+        periodSeconds: {{ .Values.shutdownTimeout | add 30 }}
+      - type: Pods
+        value: 1
+        periodSeconds: {{ .Values.shutdownTimeout | add 30 }}
+{{- end }}

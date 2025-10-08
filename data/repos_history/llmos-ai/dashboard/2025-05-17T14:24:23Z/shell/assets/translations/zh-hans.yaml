@@ -1,0 +1,208 @@
+##############################
+# Special stuff
+##############################
+generic:
+  add: 添加
+  all: 全部
+  and: ' 和 '
+  back: 返回
+  cancel: 取消
+  confirm: 确认
+  clear: 清除
+  clearAll: 清除全部
+  close: 关闭
+  comingSoon: 即将上线
+  comma: '，'
+  copy: 复制
+  create: 创建
+  created: 创建时间
+  customize: 自定义
+  dashboard: 仪表板
+  default: 默认
+  disabled: 禁用
+  done: 完成
+  enabled: 启用
+  here: 此处
+  id: ID
+  ignored: 忽略
+  invalidCron: 无效的 cron 调度
+  imagePullPolicy:
+    always: 总是
+    ifNotPresent: 如果不存在
+    never: 从不
+  labels: 标签
+  labelsAndAnnotations: 标签 & 注释
+  podSecurityAdmission: Pod 安全准入
+  links: 链接
+  loading: 正在加载&hellip;
+  members: 成员
+  na: N/A
+  name: 名称
+  never: 从不
+  none: 无
+  notFound: 未找到
+  next: 下一步
+  number: '{prefix}{value, number}{suffix}'
+  notification:
+    title:
+      succeed: 成功
+      info: 信息
+      warning: 警告
+      error: 错误
+  ok: OK
+  overview: 概述
+  plusMore: '+ {n} 更多'
+  parameters: 参数
+  readFromFile: 从文件读取
+  readFromFolder: 从文件夹读取
+  reload: 重新加载
+  register: 注册
+  reset: 重置
+  remove: 移除
+  addCatalog: 添加应用商店
+  resource: |-
+    {count, plural,
+    one  {资源}
+    other {资源}
+    }
+  resourceCount: |-
+    {count, plural,
+    one  {1 资源}
+    other {# 资源}
+    }
+  save: 保存
+  showAdvanced: 展开高级选项
+  hideAdvanced: 隐藏高级选项
+  techPreview: 技术预览
+  type: 类型
+  unknown: 未知
+  upload: 上传
+  provisioning: '—'
+  previous: 上一步
+  key: 键
+  value: 值
+  yes: 是
+  no: 否
+  units:
+    time:
+      5s: 5秒
+      10s: 10秒
+      30s: 30秒
+      1m: 1分钟
+      5m: 5分钟
+      15m: 15分钟
+      30m: 30分钟
+      1h: 1小时
+      2h: 2小时
+      6h: 6小时
+      1d: 1天
+      7d: 7天
+      30d: 30天
+  completed: 已完成
+  enable: 启用
+  disable: 禁用
+  experimental: 实验功能
+
+  deprecated: 已弃用
+  placeholder: '例如：{text}'
+  moreInfo: 更多信息
+  selectors:
+    label: 选择器
+    matchingResources:
+      matchesSome: |-
+        {matched, plural,
+          =0 {匹配 {total, number} 个中的 0 个}
+          =1 {匹配 {total, number} 个中的 1 个："{sample}"}
+          other {匹配 {total, number} 中的 {matched, number} 个，包括 "{sample}"}
+        }
+  volume:
+    title: 卷
+    volume: 卷
+    addVolume: 添加卷
+    storageClass: 存储类
+  tabs:
+    basic: 基本信息
+    advanced: 高级选项
+    addons: 附加配置
+
+locale:
+  en-us: English
+  zh-hans: 简体中文
+  none: (None)
+
+nav:
+  backToRancher: Cluster Manager
+  clusterTools: 集群工具
+  kubeconfig:
+    download: 下载 KubeConfig
+    copy: 将 KubeConfig 复制到剪切板
+    options: KubeConfig 选项
+  import: 导入 YAML
+  home: 首页
+  shell: Kubectl Shell
+  shellShortcut: Kubectl Shell {key}
+  support: |-
+    {hasSupport, select,
+      true {支持}
+      other {获取支持}
+    }
+  restoreSnapshot: 还原快照
+  rotateEncryptionKeys: 轮换加密密钥
+  saveAsRKETemplate: 保存为 RKE 模板
+  takeSnapshot: 拍摄快照
+  group:
+    cluster: 集群
+    inUse: 更多资源
+    Policy: 策略
+    rbac: RBAC
+    serviceDiscovery: 服务发现
+    starred: 已收藏
+    storage: 存储
+    workload: 工作负载
+    monitoring: 监控
+    advanced: 高级选项
+    RKE1Configuration: RKE1 配置
+    admission: 管理
+    apps: 应用
+    clusterProvisioning: 集群配置
+    core: 核心
+    legacy: 旧版
+    API: API
+    Coordination: 协调
+    Discovery: 发现
+    Fleet: Fleet
+    K3s: K3s
+    Networking: 网络
+    Rancher: Rancher
+    RBAC: RBAC
+    Scheduling: 调度
+    Storage: 存储
+    gpuManagement: GPU 管理
+    llmosStorage: 存储
+    ceph: Ceph 管理
+    registry: 模型管理
+    playground: 试验场
+  ns:
+    all: 所有命名空间
+    clusterLevel: 集群资源
+    namespace: '{name}'
+    namespaced: 命名空间资源
+    orphan: 不在项目内
+    project: '项目名称: {name}'
+    system: 系统命名空间
+    user: 用户命名空间
+  apps: 应用
+  categories:
+    explore: 浏览集群
+    multiCluster: 全局应用
+    legacy: 旧版应用
+    configuration: 配置
+    hci: OB
+
+apps:
+  manage:
+    label: 应用管理
+  data:
+    label: 应用数据
+  knowledge:
+    label: 知识库

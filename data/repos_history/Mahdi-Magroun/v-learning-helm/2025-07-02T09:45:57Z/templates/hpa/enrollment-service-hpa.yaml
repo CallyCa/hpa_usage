@@ -1,0 +1,44 @@
+{{- if and .Values.hpa.enabled .Values.enrollmentService.enabled .Values.hpa.enrollmentService.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: enrollment-service-hpa
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: enrollment-service
+    component: hpa
+    {{- include "v-learning.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: enrollment-service
+  minReplicas: {{ .Values.hpa.enrollmentService.minReplicas | default .Values.hpa.default.minReplicas }}
+  maxReplicas: {{ .Values.hpa.enrollmentService.maxReplicas | default .Values.hpa.default.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.enrollmentService.targetCPUUtilizationPercentage | default .Values.hpa.default.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.enrollmentService.targetMemoryUtilizationPercentage | default .Values.hpa.default.targetMemoryUtilizationPercentage }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.hpa.enrollmentService.scaleDown.stabilizationWindowSeconds | default .Values.hpa.default.scaleDown.stabilizationWindowSeconds }}
+      policies:
+      - type: Percent
+        value: {{ .Values.hpa.enrollmentService.scaleDown.percentValue | default .Values.hpa.default.scaleDown.percentValue }}
+        periodSeconds: {{ .Values.hpa.enrollmentService.scaleDown.periodSeconds | default .Values.hpa.default.scaleDown.periodSeconds }}
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.hpa.enrollmentService.scaleUp.stabilizationWindowSeconds | default .Values.hpa.default.scaleUp.stabilizationWindowSeconds }}
+      policies:
+      - type: Percent
+        value: {{ .Values.hpa.enrollmentService.scaleUp.percentValue | default .Values.hpa.default.scaleUp.percentValue }}
+        periodSeconds: {{ .Values.hpa.enrollmentService.scaleUp.periodSeconds | default .Values.hpa.default.scaleUp.periodSeconds }}
+{{- end }}

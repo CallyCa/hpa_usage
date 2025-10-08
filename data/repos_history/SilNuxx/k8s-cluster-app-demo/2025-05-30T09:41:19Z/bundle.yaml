@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-app-demo
+  labels:
+    app: k8s-app-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-app-demo
+  template:
+    metadata:
+      labels:
+        app: k8s-app-demo
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2025"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: k8s-app-demo
+        image: silnux/k8s-app-demo:v0
+        ports:
+        - name: main
+          containerPort: 2025
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 500m
+            memory: 200Mi
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: k8s-app-demo
+  labels:
+    team: frontend
+spec:
+  selector:
+    matchLabels:
+      app: k8s-app-demo
+  podMetricsEndpoints:
+  - port: main
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: prometheus
+spec:
+  serviceAccountName: prometheus
+  podMonitorSelector:
+    matchLabels:
+      team: frontend

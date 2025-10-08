@@ -1,0 +1,109 @@
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: nomediretorio
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: projeto-base
+spec:
+  replicas: __minreplicas__
+  selector:
+    matchLabels:
+      app: projeto-base
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  minReadySeconds: 5 
+  template:
+    metadata:
+      labels:
+        app: projeto-base
+    spec:
+      nodeSelector:
+        "kubernetes.io/os": linux
+      containers:
+      - name: projeto-base
+        image: nomehost/nomediretorio/projeto-base:__VERSION__
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: __requestscpu__
+            memory: __requestsmemory__
+          limits:
+            cpu: __limitscpu__
+            memory: __limitsmemory__
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 120
+        volumeMounts:
+          - name: projeto-base-mount
+            mountPath: /app/appsettings.json
+            readOnly: true
+            subPath: appsettings.json
+      volumes:
+        - name: projeto-base-mount
+          configMap:
+            name: projeto-base
+      imagePullSecrets:
+        - name: prdacrconectcar-registry
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  namespace: nomediretorio
+  name: projeto-base-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: projeto-base
+  minReplicas: __minreplicas__
+  maxReplicas: __maxreplicas__
+  targetCPUUtilizationPercentage: __utilizationpercentage__  
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: projeto-base
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+  selector:
+    app: projeto-base
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: projeto-base-ingress
+  namespace: nomediretorio
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx-ingress
+  tls:
+  - hosts:
+    - __AKSAPPNAME__
+    secretName: wildcard-conectcar-com
+  rules:
+  - host: __AKSAPPNAME__
+    http:
+      paths:
+      - path: /(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: projeto-base
+            port:
+              number: 80

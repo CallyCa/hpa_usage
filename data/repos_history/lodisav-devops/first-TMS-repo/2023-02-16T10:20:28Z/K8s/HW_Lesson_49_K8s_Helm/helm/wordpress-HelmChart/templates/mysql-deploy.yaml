@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-db-one
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  ports:
+    - port: {{ .Values.database.port }}
+  selector:
+    app: {{ .Release.Name }}
+    tier: {{ .Values.database.image }}
+  clusterIP: {{ .Values.databaseService.clusterIP }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-db-one
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+      tier: {{ .Values.database.image }}
+  strategy:
+    type: {{ .Values.databaseDeployment.strategyType }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+        tier: {{ .Values.database.image }}
+    spec:
+      containers:
+      - image: {{ .Values.database.image }}:{{ .Values.database.version }}
+        name: {{ .Values.database.image }}
+        args:
+        - "--ignore-db-dir=lost+found"
+        env:
+        - name: {{ .Values.databaseDeployment.specEnvName }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.secret.name }}
+              key: {{ .Values.databaseDeployment.specEnvSecretKeyRefKey }}
+        resources:
+          requests:
+            cpu: {{ .Values.databaseDeployment.specResourcesCpu }}
+            memory: {{ .Values.databaseDeployment.specResourcesMemory }}
+          limits:
+            cpu: {{ .Values.databaseDeployment.specResourcesCpu }}
+            memory: {{ .Values.databaseDeployment.specResourcesMemory }}
+        ports:
+        - containerPort: {{ .Values.database.port }}
+          name: {{ .Values.database.image }}
+        volumeMounts:
+        - name: {{ .Values.databaseDeployment.specVolumeName }}
+          mountPath: {{ .Values.databaseDeployment.specVolumeMountPath }}
+      volumes:
+      - name: {{ .Values.databaseDeployment.specVolumeName }}
+        persistentVolumeClaim:
+          claimName: {{ .Values.databaseDeployment.specPersistentVolumeClaimName }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-db-autoscaling
+  namespace: {{ .Values.namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}-db-one
+  minReplicas: {{ .Values.databaseHpa.specMinReplicas }}
+  maxReplicas: {{ .Values.databaseHpa.specMaxReplicas }}
+  metrics:
+  - type: {{ .Values.databaseHpa.specMetricsType }}
+    resource:
+      name: {{ .Values.databaseHpa.specMetricsResourceCpuName }}
+      target:
+        type: {{ .Values.databaseHpa.specMetricsResourceTargetType }}
+        averageUtilization: {{ .Values.databaseHpa.specMetricsResourceTargetCpuAverageUtilization }}
+  - type: {{ .Values.databaseHpa.specMetricsType }}
+    resource:
+      name: {{ .Values.databaseHpa.specMetricsResourceMemoryName }}
+      target:
+        type: {{ .Values.databaseHpa.specMetricsResourceTargetType }}
+        averageUtilization: {{ .Values.databaseHpa.specMetricsResourceTargetMemoryAverageUtilization }}

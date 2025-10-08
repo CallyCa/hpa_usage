@@ -1,0 +1,19 @@
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-autosacling
+spec:
+  minReplicas: 3
+  maxReplicas: 5
+  scaleTargetRef:
+    kind: Deployment
+    name: hello-world-deploy
+  metrics:
+    - type: Recource
+      resource:
+        name: cpu
+        targetAverageUtilization: 70 # среднее занято
+    - type: Recource
+      resource:
+        name: memory
+        targetAverageUtilization: 80 # или на памяти

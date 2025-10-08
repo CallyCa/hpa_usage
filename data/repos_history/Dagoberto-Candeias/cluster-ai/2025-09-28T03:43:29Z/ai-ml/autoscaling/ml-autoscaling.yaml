@@ -1,0 +1,313 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cluster-ai-tensorflow-serving-hpa
+  namespace: cluster-ai
+  labels:
+    app.kubernetes.io/name: tensorflow-serving-hpa
+    app.kubernetes.io/component: ml-serving
+    app.kubernetes.io/part-of: cluster-ai
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cluster-ai-tensorflow-serving
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: ml_inference_latency
+      target:
+        type: AverageValue
+        averageValue: 500m  # 500ms target latency
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cluster-ai-torchserve-hpa
+  namespace: cluster-ai
+  labels:
+    app.kubernetes.io/name: torchserve-hpa
+    app.kubernetes.io/component: ml-serving
+    app.kubernetes.io/part-of: cluster-ai
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cluster-ai-torchserve
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: ml_inference_requests_total
+      target:
+        type: AverageValue
+        averageValue: 100  # 100 requests per pod per minute
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cluster-ai-inference-gateway-hpa
+  namespace: cluster-ai
+  labels:
+    app.kubernetes.io/name: inference-gateway-hpa
+    app.kubernetes.io/component: ml-serving
+    app.kubernetes.io/part-of: cluster-ai
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cluster-ai-inference-gateway
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_total
+      target:
+        type: AverageValue
+        averageValue: 1000  # 1000 requests per pod per minute
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 30
+      - type: Pods
+        value: 3
+        periodSeconds: 30
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-ai-ml-autoscaling-config
+  namespace: cluster-ai
+  labels:
+    app.kubernetes.io/name: ml-autoscaling
+    app.kubernetes.io/component: ml-serving
+    app.kubernetes.io/part-of: cluster-ai
+data:
+  custom-metrics-adapter.py: |
+    #!/usr/bin/env python3
+    """
+    Custom metrics adapter for ML-specific autoscaling
+    This provides custom metrics like ml_inference_latency and ml_inference_requests_total
+    """
+    from prometheus_client import start_http_server, Gauge, Counter
+    import time
+    import requests
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    # Custom metrics
+    ml_inference_latency = Gauge('ml_inference_latency', 'ML inference latency in milliseconds', ['model'])
+    ml_inference_requests_total = Counter('ml_inference_requests_total', 'Total ML inference requests', ['model'])
+
+    class MLAutoscalingMetrics:
+        def __init__(self):
+            self.tf_serving_url = "http://cluster-ai-tensorflow-serving:8501"
+            self.torchserve_url = "http://cluster-ai-torchserve:8080"
+
+        def collect_tensorflow_metrics(self):
+            """Collect metrics from TensorFlow Serving"""
+            try:
+                # Get model status
+                response = requests.get(f"{self.tf_serving_url}/v1/models/cluster_ai_model")
+                if response.status_code == 200:
+                    # Simulate latency measurement (in real implementation, use actual metrics)
+                    latency = 150  # milliseconds
+                    ml_inference_latency.labels(model='tensorflow').set(latency)
+                    ml_inference_requests_total.labels(model='tensorflow').inc(10)  # 10 requests per minute
+
+            except Exception as e:
+                logger.error(f"Error collecting TensorFlow metrics: {e}")
+
+        def collect_torchserve_metrics(self):
+            """Collect metrics from TorchServe"""
+            try:
+                # Get metrics from TorchServe
+                response = requests.get(f"{self.torchserve_url}/metrics")
+                if response.status_code == 200:
+                    # Parse metrics (simplified)
+                    latency = 120  # milliseconds
+                    ml_inference_latency.labels(model='torchserve').set(latency)
+                    ml_inference_requests_total.labels(model='torchserve').inc(15)  # 15 requests per minute
+
+            except Exception as e:
+                logger.error(f"Error collecting TorchServe metrics: {e}")
+
+        def run(self):
+            """Main metrics collection loop"""
+            start_http_server(8000)
+            logger.info("ML Autoscaling metrics server started on port 8000")
+
+            while True:
+                self.collect_tensorflow_metrics()
+                self.collect_torchserve_metrics()
+                time.sleep(60)  # Collect metrics every minute
+
+    if __name__ == '__main__':
+        metrics_collector = MLAutoscalingMetrics()
+        metrics_collector.run()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-ai-ml-autoscaling-metrics
+  namespace: cluster-ai
+  labels:
+    app.kubernetes.io/name: ml-autoscaling-metrics
+    app.kubernetes.io/component: ml-serving
+    app.kubernetes.io/part-of: cluster-ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ml-autoscaling-metrics
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ml-autoscaling-metrics
+        app.kubernetes.io/component: ml-serving
+    spec:
+      containers:
+      - name: metrics-adapter
+        image: python:3.11-slim
+        ports:
+        - containerPort: 8000
+          name: metrics
+        command:
+        - python
+        - /app/custom-metrics-adapter.py
+        volumeMounts:
+        - name: metrics-script
+          mountPath: /app
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+      volumes:
+      - name: metrics-script
+        configMap:
+          name: cluster-ai-ml-autoscaling-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cluster-ai-ml-autoscaling-metrics
+  namespace: cluster-ai
+  labels:
+    app.kubernetes.io/name: ml-autoscaling-metrics
+    app.kubernetes.io/component: ml-serving
+    app.kubernetes.io/part-of: cluster-ai
+spec:
+  ports:
+  - name: metrics
+    port: 8000
+    targetPort: 8000
+  selector:
+    app.kubernetes.io/name: ml-autoscaling-metrics
+  type: ClusterIP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cluster-ai-ml-autoscaling-metrics
+  namespace: cluster-ai
+  labels:
+    app.kubernetes.io/name: ml-autoscaling-metrics
+    app.kubernetes.io/component: ml-serving
+    app.kubernetes.io/part-of: cluster-ai
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ml-autoscaling-metrics
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics

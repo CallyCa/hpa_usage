@@ -1,0 +1,166 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sg-swj-ui
+  namespace: api-swj
+  labels:
+    app.kubernetes.io/name: sg-swj-ui
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0     #更新时候最大无效pod数量
+      maxSurge: 1           #更新时候每次最多增加pod数量
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sg-swj-ui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sg-swj-ui
+    spec:
+      volumes:
+      - name: config-volume
+        secret:
+          secretName: sg-app-bucket-secret
+          items:
+          - key: config_json
+            path: sa_credentials.json
+      containers:
+        - name: gcs-k8s-nginx
+          resources:          ##CPU内存限制
+            limits:
+              cpu: 500m
+            requests:
+              cpu: 250m
+          image: gcr.io/rd-test-64435/sg_nginx:v22.2.24.1
+          imagePullPolicy: Always
+          volumeMounts:
+          - name: config-volume
+            mountPath: /etc/gcp
+            readOnly: true
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /etc/gcp/sa_credentials.json
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+          lifecycle:
+            postStart:
+              exec:
+                command: ["sh", "-c", "gcsfuse -o allow_other --implicit-dirs sg-app-swj /etc/nginx/conf.d & ln -s /etc/nginx/conf.d/ui /usr/share/nginx/ui"]
+            preStop:
+              exec:
+                command: ["sh", "-c", "fusermount -u /etc/nginx/conf.d"]
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: sg-swj-svc
+  namespace: api-swj
+  labels:
+    app.kubernetes.io/name: sg-swj-ui
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: sg-swj-ui
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-sg-swj
+  namespace: api-swj
+spec:
+  maxReplicas: 10
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sg-swj-ui
+  targetCPUUtilizationPercentage: 95
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sg-swj-app-tls
+  namespace: api-swj
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUdkekNDQkYrZ0F3SUJBZ0lSQU9rL3RDZFBxSEgzYlBaTm82ZFZQMEV3RFFZSktvWklodmNOQVFFTUJRQXcKU3pFTE1Ba0dBMVVFQmhNQ1FWUXhFREFPQmdOVkJBb1RCMXBsY205VFUwd3hLakFvQmdOVkJBTVRJVnBsY205VApVMHdnVWxOQklFUnZiV0ZwYmlCVFpXTjFjbVVnVTJsMFpTQkRRVEFlRncweU1qQXpNREl3TURBd01EQmFGdzB5Ck1qQTFNekV5TXpVNU5UbGFNQjh4SFRBYkJnTlZCQU1URkhOM2FpMWhjSEF1WjNSMFpYTjBNVE11WTI5dE1JSUIKSWpBTkJna3Foa2lHOXcwQkFRRUZBQU9DQVE4QU1JSUJDZ0tDQVFFQWd5ZDQxelRLZ2piZWhPSDViVTdRTytjRwowWS9BUmh3MUpVSFA3eW83dTdIS1F0bnU1SVhSdzJMcE15TWo1bjdTZmRRMkk3dmxERS93K0s3TjBub0oxcVQ0CmE2Y252RFVTQlhNcjdYelN1UDZWNlRBdkM2S0wxMHROaWpveFA0N3ZVMmxnTEZiYmlud3dKK0hSTVVKYXhPdHQKaU5jSkNPVytKZG9GNC9tdzN4bVNWVVg2aWhlUUo3Wk93c3k3WFhpUjBvVmN6UWUyK2JCREtGcWRad0xZMEZkLwpVaXBFc25rcnhYSE5VdE5VOEtxdkdxSHl5bTlJemkxNUt1STZiTXYrdTY2akdPdzBkbUNldUFoWm54V0d5T2h6Ck9BdWJlWDdKSVdrWExicVVlUjBRazh0N1lpYXNYOFo4RFFsQjlSUWx6dEV2VzR4UkJRV3dJMTRHOE5QNkZRSUQKQVFBQm80SUNnRENDQW53d0h3WURWUjBqQkJnd0ZvQVV5Tmw0YUtMWkdXalZQWExlWHdvKzNMV0docVl3SFFZRApWUjBPQkJZRUZHbU1UUzBIa0ExdjZJREdRem1WYjZ5aWRSN1pNQTRHQTFVZER3RUIvd1FFQXdJRm9EQU1CZ05WCkhSTUJBZjhFQWpBQU1CMEdBMVVkSlFRV01CUUdDQ3NHQVFVRkJ3TUJCZ2dyQmdFRkJRY0RBakJKQmdOVkhTQUUKUWpCQU1EUUdDeXNHQVFRQnNqRUJBZ0pPTUNVd0l3WUlLd1lCQlFVSEFnRVdGMmgwZEhCek9pOHZjMlZqZEdsbgpieTVqYjIwdlExQlRNQWdHQm1lQkRBRUNBVENCaUFZSUt3WUJCUVVIQVFFRWZEQjZNRXNHQ0NzR0FRVUZCekFDCmhqOW9kSFJ3T2k4dmVtVnliM056YkM1amNuUXVjMlZqZEdsbmJ5NWpiMjB2V21WeWIxTlRURkpUUVVSdmJXRnAKYmxObFkzVnlaVk5wZEdWRFFTNWpjblF3S3dZSUt3WUJCUVVITUFHR0gyaDBkSEE2THk5NlpYSnZjM05zTG05agpjM0F1YzJWamRHbG5ieTVqYjIwd2dnRUVCZ29yQmdFRUFkWjVBZ1FDQklIMUJJSHlBUEFBZGdCR3BWWHJkZnFSCklEQzFvb2xwOVBOOUVTeEJkTDc5U2JpRnEvTDhjUDV0UndBQUFYOUl5dWlYQUFBRUF3QkhNRVVDSUV4Q2JmS3cKQjdESHprR0dVQm9vRkZiRzFsMFNzeUJ0WERWVUd1dG1BcEZEQWlFQWxhaGdNTHQ1WVpWT0Izb2dWcWpNSjZadgpIWERHc2FQQ2VCZXNjb1M0ZE1RQWRnQkJ5TXF4M3lKR1NoREdvVG9KUW9kZVRqR0xHd1ByNjB2SGFQQ1FZcFlHCjlnQUFBWDlJeXVpZ0FBQUVBd0JITUVVQ0lFNGV4VTB1Q01VelRvdkVoRDJvWGt0ZTFKWDFaS243NUYweEhrS2cKWGxPREFpRUF2ZXhVWkVsdTFaaHlOQk5HRmt5MTk5RzQwRXJXbVd6UWx4WDhraENuV0prd0h3WURWUjBSQkJndwpGb0lVYzNkcUxXRndjQzVuZEhSbGMzUXhNeTVqYjIwd0RRWUpLb1pJaHZjTkFRRU1CUUFEZ2dJQkFDK2dkSEtUCnFmblN2a3hjOHNHU0l5eDNUZTF3UGF2NU5iU1Jsbk5kc20yWUQrN2xmRVVjMkRoZ3VaZGNBUC93aXduNWoySVoKMDdJUDUyYi9PSVpNYlNTeWVJZXE0WnM5eHRPaTFKa2ZrR2pCSldyRThxVWl4U1VKVHFaN3hRWUtLZlFXOERZYQpWMkRYc0JXOXdCRFV0YytOTFhOczdCY3lYZVUveXpRTzlnQXdjemtEODVPUzR5UFZNVjBzQlZpR3VjZjV6bkJDCksvZVNHTUlwV3JaRWs1VG5UcFdhZjVoY1BGNUlWSFlwNVd1V0VtS2JlSlNrVlN0aWUreklVcTUzV3BDb3Vrc2UKZ1EyNVlXQi93YTFlWmpLblJ1RmxydVJPdmpyZEhGSEQrcTVmWHpzV2dLU1VSQkhIT1JubG5HVDlHTlhnK28yUApaSVo2WG81WExJVC9ib1IzcG93T0N2OWtyZkVTS3h1SVhJZldqK2ZZZWpMREhUT3AxNDk0bnYvOUZWTjdFejc0ClRJaVF3dU9SQ1JhVFdVbXlyNUhpUVZlY0NDSExBVm9CWVNCZmdYSThzYXJXU1U4NVNnUHQwV05GWFFLU0Q5cXoKMy85RXR2c3BiVVoxT2xGdVN5ZUdJTU83L3R2bDBlbHJTcmtTWjRUNkg5UTNVTkdNZXVLSGZZWGt3NDdjMDArQgpmTTFjaUZneWlVSkJnNm5EUGRHQ1R6M1dkaFQ5SUFIbk5wLzY4cHphK2N2eTkzZmRHZERBU3FNclNGOXFNcVlNCnZlRyt2THFKdmNnL3k0cXFBR1BaSjZiaDhsL1ZHamZhMlFDVy9aNFd1MGR1YSswL01XMUhFTmdvVUV3YVBON0cKS1pSUXhCUGJFOEgwc1Y4ZVkzZ2dFMjU2NElOcHdUd2FiUXdKCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+  tls.key: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb2dJQkFBS0NBUUVBZ3lkNDF6VEtnamJlaE9INWJVN1FPK2NHMFkvQVJodzFKVUhQN3lvN3U3SEtRdG51CjVJWFJ3MkxwTXlNajVuN1NmZFEySTd2bERFL3crSzdOMG5vSjFxVDRhNmNudkRVU0JYTXI3WHpTdVA2VjZUQXYKQzZLTDEwdE5pam94UDQ3dlUybGdMRmJiaW53d0orSFJNVUpheE90dGlOY0pDT1crSmRvRjQvbXczeG1TVlVYNgppaGVRSjdaT3dzeTdYWGlSMG9WY3pRZTIrYkJES0ZxZFp3TFkwRmQvVWlwRXNua3J4WEhOVXROVThLcXZHcUh5CnltOUl6aTE1S3VJNmJNdit1NjZqR093MGRtQ2V1QWhabnhXR3lPaHpPQXViZVg3SklXa1hMYnFVZVIwUWs4dDcKWWlhc1g4WjhEUWxCOVJRbHp0RXZXNHhSQlFXd0kxNEc4TlA2RlFJREFRQUJBb0lCQUR6eC9LOVVjcjRyclI5bQp1cmRXcG1FUHJCVjVqVW1IRmhNb0QrMzlYQ0NPTDRUOUxJdTR1NDdseWFQZnNuRUxnZGpDNGgyYzFJVHlLUElHCm1OSXpyNXEwc2xPa0swekVCSW5QeVJ2a295OGY3cDJickdEbHVjSGoxalpqY0RzdXVudXlQZVNjd0F3TVJYeGkKN1FqTTRzMGE4WjFpLzJuSkNLRWlQUmFCRXZXNGk3a2RxbTZwNXFOc01wK2pIa3RWMC90VVp6clI2azlPekY1cApGWllVOFVpMCtkLytHakoyRjY3c3RBUEw5VXk4UHFKakR4eTdmMVlNK2lnYy9lMSs5bDczN0piZ2REYzhMMFJWCndQWjc3cXZsTHNMWXpuRGROSE40S2xUQ1J1bmhQbEU3enVBUGkwVGM1Z3o4VzJVdDN3Y1N6MjcxeGdnZGgvU3gKWGNhRUJNRUNnWUVBd2hxSEh4bzFsSStidFRhdEdGNExmQytvNUpBSGJFekRQWTlZdk5GOS9UcUxDcWxZc1pMZgprcXJLUG41Tm84N2Fqcndiem9RbWVoVmw3QXQ3aG9zcWtwS3dsa0R1cWJWWDVuWkd2a3ArQzVuTEZEUVhDMEZWCkNaNlB0d0VTQkYxOVptamNjMWJLelcrblBLVEVCWnd5RUxNTTRrV08rUUltSHJsYTdqbkJLRGtDZ1lFQXJQb2YKMmMyeE4ySlpIOGNXRm9MSGRNQUc5MkVGS0dLU3BGaHo4c2dyZU84UnlOU0gyZmNxQTVXVkZ4YlVkd0dmRXRqTgpUK2R4QVVldVVIakQ4V2o2ZW1KRTZ1QlNERWMxamNTWTdWSmRiNFNPUnRLSDdidGFHeGs2dks4M21xNTE0bmZJCkN2elVYcXlKRXJSYjluSWYzWjdBbVNFdEtwR1VUSXllRFJDemlMMENnWUFNQ2hzeGVhMnpIa2s1TDBBRFQrb0UKZE94VDZQOGMzNUlJb25pTmxhenI1Ukswd1paSHhXVnFzbjlDNnhDanhYUFhBS0gwNkV0K3JROGFXZ2Y2YTIxagpsQWV4K2lzVGliVC9EWDBMMXBFRTVUQXNlNkttUnhJZ081Nk1hbHVVdTd2SWUxNlpKTndGYkJTQ2RYSFhLejRMCnZSOWlkWkFOcisxdllHM2NjdWFoT1FLQmdGT3VlYVFyejFVRTNpcnliR3dkZnBLcnAzTWIyNXZxL0JoSHRtZzQKa0Zka0NNMklpK1JWbjF5Mmk3YnMwNEp6SlZxL3lhdWpRdGNrcjE2ODNjWTNUQjNTMXBadVNTTXBlKzRHc3hqMApwTUVqZHBVcW1wblc3a04zMUNPZC9KOTNVUTVyZGpwaWovYnhMeXIrV0JNRXFRZlZHa1c2ZUJoRTcyS05FSlV2CmhEdGRBb0dBRmxaNG95dEM1UmJQZHFkSlQwci9SemUxTG9zOU5YVG8rSVh2OXN1OWMwK0YyZXVBb1J4a3A2WjkKTHNoQWRPWHgxbTRSR2J0ZWdWVENPNmo5UGVza3lmaTZwYjF2Y2wvRUVRdWQ1STN1eXZ5d05mRnROeVk5dk5odwpmS2RLYndTOURRVmFHWVEyeVAxRWVPQjU3amVOc0ttczdlV2xyc210aXgyMFdxSEo5dUU9Ci0tLS0tRU5EIFJTQSBQUklWQVRFIEtFWS0tLS0t
+type: kubernetes.io/tls
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sg-swj-ingress
+  namespace: api-swj
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  tls:
+  - hosts:
+    - swj-app.gttest13.com
+    secretName: sg-swj-app-tls
+  rules:
+  - host: swj.gttest13.com
+    http:
+      paths:
+      - path: /user/([a-z]{2}-[a-z]{2}/|swagger/?)
+        pathType: Prefix
+        backend:
+          service:
+            name: user-svc
+            port:
+              number: 10001
+      - path: /message/([a-z]{2}-[a-z]{2}/|swagger/?)
+        pathType: Prefix
+        backend:
+          service:
+            name: msg-svc
+            port:
+              number: 10001
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: sg-swj-svc
+            port:
+              number: 8080
+  - host: swj-app.gttest13.com
+    http:
+      paths:
+      - path: /user/([a-z]{2}-[a-z]{2}/|swagger/?)
+        pathType: Prefix
+        backend:
+          service:
+            name: user-svc
+            port:
+              number: 10001
+      - path: /message/([a-z]{2}-[a-z]{2}/|swagger/?)
+        pathType: Prefix
+        backend:
+          service:
+            name: msg-svc
+            port:
+              number: 10001
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: sg-swj-svc
+            port:
+              number: 8080

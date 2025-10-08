@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+  namespace: movieguru
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      serviceAccountName: movieguru-sa
+      initContainers:
+      - name: download-sql
+        image: google/cloud-sdk:alpine
+        command:
+          - "sh"
+          - "-c"
+          - "gsutil cp gs://fb-webapp-{{ .Values.projectID}}/sql/init.sql /docker-entrypoint-initdb.d/init.sql"
+        volumeMounts:
+          - mountPath: /docker-entrypoint-initdb.d
+            name: sql-volume
+      containers:
+        - name: db
+          image: pgvector/pgvector:pg17
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_PASSWORD
+              value: "main"
+          volumeMounts:
+            - mountPath: /docker-entrypoint-initdb.d/
+              name: sql-volume
+      volumes:
+        - name: sql-volume
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: movieguru
+spec:
+  selector:
+    app: db
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adminer
+  namespace: movieguru
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adminer
+  template:
+    metadata:
+      labels:
+        app: adminer
+    spec:
+      containers:
+        - name: adminer
+          image: adminer
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adminer
+  namespace: movieguru
+
+spec:
+  selector:
+    app: adminer
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+
+

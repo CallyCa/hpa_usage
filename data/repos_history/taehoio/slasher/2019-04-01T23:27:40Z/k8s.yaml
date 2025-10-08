@@ -1,0 +1,125 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: slasher
+  labels:
+    app: slasher
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  replicas: 2
+  selector:
+    matchLabels:
+      app: slasher
+  template:
+    metadata:
+      labels:
+        app: slasher
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - slasher
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: slasher
+          image: us.gcr.io/taeho-io-220708/slasher:${CIRCLE_SHA1}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+            - containerPort: 81
+            - containerPort: 82
+          readinessProbe:
+            exec:
+              command: ["/bin/grpc_health_probe", "-addr=:80", "&&", "/bin/grpc_health_probe", "-addr=:81"]
+            initialDelaySeconds: 3
+          livenessProbe:
+            exec:
+              command: ["/bin/grpc_health_probe", "-addr=:80", "&&", "/bin/grpc_health_probe", "-addr=:81"]
+            initialDelaySeconds: 5
+
+---
+
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: slasher-hpa
+  labels:
+    app: slasher
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: slasher
+    apiVersion: apps/v1beta1
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: slasher
+  labels:
+    app: slasher
+spec:
+  ports:
+    - port: 80
+      name: grpc
+    - port: 81
+      name: grpc-jwt
+    - port: 82
+      name: http
+  selector:
+    app: slasher
+
+---
+
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: slasher-route-public-grpc-no-auth
+spec:
+  hosts:
+    - api.taeho.io
+  gateways:
+    - public-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /slasher.Slasher/Slash
+      route:
+        - destination:
+            host: slasher
+            port:
+              number: 80
+
+---
+
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: slasher-route-public-http-no-auth
+spec:
+  hosts:
+    - api.taeho.io
+  gateways:
+    - public-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /slasher/slash
+      route:
+        - destination:
+            host: slasher
+            port:
+              number: 82

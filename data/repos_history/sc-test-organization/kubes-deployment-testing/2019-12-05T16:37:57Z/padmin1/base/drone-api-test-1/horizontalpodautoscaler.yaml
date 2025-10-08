@@ -1,0 +1,14 @@
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  creationTimestamp: null
+  name: drone-api-test-1
+spec:
+  maxReplicas: 0
+  scaleTargetRef:
+    kind: ""
+    name: ""
+status:
+  currentReplicas: 0
+  desiredReplicas: 0

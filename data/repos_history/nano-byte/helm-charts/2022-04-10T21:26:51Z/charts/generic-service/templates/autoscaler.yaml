@@ -1,0 +1,27 @@
+{{- if and .Values.autoscaling.enabled (ne .Values.rollout.controller "DaemonSet") }}
+
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "generic-service.fullname" . }}
+  labels: {{ include "generic-service.default-labels" . | nindent 4 }}
+
+spec:
+  scaleTargetRef:
+    {{- if eq .Values.rollout.controller "ArgoRollout" }}
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    {{- else }}
+    apiVersion: apps/v1
+    kind: {{ .Values.rollout.controller }}
+    {{- end }}
+    name: {{ include "generic-service.fullname" . }}
+  minReplicas: {{ .Values.replicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: {{ .Values.autoscaling.targetCpu }}  # % of {{ required "Must specify resources.requests.cpu when using autoscaling" .Values.resources.requests.cpu }}
+
+{{- end }}

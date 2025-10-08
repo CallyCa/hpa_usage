@@ -1,0 +1,23 @@
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  creationTimestamp: null
+  labels:
+    app: sso-account
+    env: prod
+    maestro: "true"
+    maestroversion: v2
+    team: sso
+  name: sso-account
+spec:
+  maxReplicas: 20
+  minReplicas: 5
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sso-account
+  targetCPUUtilizationPercentage: 50
+status:
+  currentReplicas: 0
+  desiredReplicas: 0

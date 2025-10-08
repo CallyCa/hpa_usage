@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: replit-clone
+  labels:
+    app: replit-clone
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: replit-clone
+  template:
+    metadata:
+      labels:
+        app: replit-clone
+    spec:
+      containers:
+      - name: replit-clone
+        image: replit-clone:latest
+        ports:
+        - containerPort: 3000
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-secret
+              key: uri
+        - name: REDIS_URI
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: uri
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: replit-clone-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: replit-clone
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: replit-clone-service
+spec:
+  selector:
+    app: replit-clone
+  ports:
+  - port: 80
+    targetPort: 3000
+  type: LoadBalancer 

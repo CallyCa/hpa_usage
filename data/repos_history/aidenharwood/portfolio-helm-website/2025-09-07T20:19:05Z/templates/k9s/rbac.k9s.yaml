@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k9s-sa-clusterrole
+rules:
+  - apiGroups: [""]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k9s-sa-clusterrolebinding
+subjects:
+  - kind: ServiceAccount
+    name: k9s-sa
+    namespace: k9s
+roleRef:
+  kind: ClusterRole
+  name: k9s-sa-clusterrole
+  apiGroup: rbac.authorization.k8s.io

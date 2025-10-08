@@ -1,0 +1,214 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gdpr-privacy
+  namespace: eios-services
+  labels:
+    app: gdpr-privacy
+    phase: "2"
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gdpr-privacy
+  template:
+    metadata:
+      labels:
+        app: gdpr-privacy
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: eios-service-account
+      containers:
+      - name: gdpr-privacy
+        image: your-registry.com/gdpr-privacy:v1.0.0
+        ports:
+        - containerPort: 8097
+          name: http
+        - containerPort: 9090
+          name: metrics
+        env:
+        - name: PORT
+          value: "8097"
+        - name: GIN_MODE
+          value: "release"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: postgres-gdpr-secret
+              key: database-url
+        - name: REDIS_URL
+          value: "redis-service:6379"
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gdpr-encryption-secret
+              key: encryption-key
+        - name: DATA_DELETION_WORKERS
+          value: "5"
+        - name: CONSENT_EXPIRY_DAYS
+          value: "365"
+        - name: DATA_RETENTION_DAYS
+          value: "2555"  # 7 years
+        - name: ANONYMIZATION_ENABLED
+          value: "true"
+        - name: AUDIT_LOG_ENABLED
+          value: "true"
+        - name: CONSENT_WITHDRAWAL_GRACE_HOURS
+          value: "24"
+        - name: DATA_PORTABILITY_FORMAT
+          value: "json"
+        - name: BREACH_NOTIFICATION_HOURS
+          value: "72"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8097
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8097
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: gdpr-policies
+          mountPath: /etc/gdpr-policies
+          readOnly: true
+        - name: secure-temp
+          mountPath: /tmp/secure
+      volumes:
+      - name: gdpr-policies
+        configMap:
+          name: gdpr-policies
+      - name: secure-temp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gdpr-privacy
+  namespace: eios-services
+  labels:
+    app: gdpr-privacy
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8097
+    targetPort: 8097
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  selector:
+    app: gdpr-privacy
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gdpr-policies
+  namespace: eios-services
+data:
+  data-categories.yaml: |
+    categories:
+      personal_identifiers:
+        - email
+        - phone_number
+        - national_id
+        - passport_number
+      financial_data:
+        - bank_account
+        - credit_card
+        - payment_history
+        - income_data
+      biometric_data:
+        - fingerprint
+        - facial_recognition
+        - voice_print
+      location_data:
+        - gps_coordinates
+        - ip_address
+        - device_location
+      behavioral_data:
+        - browsing_history
+        - purchase_behavior
+        - app_usage
+    retention_policies:
+      default: 2555  # 7 years in days
+      marketing: 1095  # 3 years
+      financial: 2555  # 7 years
+      biometric: 365  # 1 year
+    anonymization_rules:
+      email: "hash_with_salt"
+      phone: "mask_middle_digits"
+      ip_address: "subnet_generalization"
+      location: "geographic_generalization"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gdpr-data-cleanup
+  namespace: eios-services
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: data-cleanup
+            image: your-registry.com/gdpr-privacy:v1.0.0
+            command:
+            - /app/gdpr-privacy
+            - cleanup
+            - --expired-data
+            - --anonymize
+            env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-gdpr-secret
+                  key: database-url
+          restartPolicy: OnFailure
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gdpr-privacy-hpa
+  namespace: eios-services
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gdpr-privacy
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

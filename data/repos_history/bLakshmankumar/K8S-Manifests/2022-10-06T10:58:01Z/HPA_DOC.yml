@@ -1,0 +1,250 @@
+How two container can communicate in the same pod.
+container to container communication would happens through IP:portnumber with in a pod bcs both are having the same n/w space.
+_____________________________
+
+Deployment strategies 
+--------------------------
+We have different types of Deployment strategies.
+----------------------------------------------------------
+Recreate -:
+--------------
+ >  When we use this strategy when we do rolling update and rollback the present pods would be delete and new pods will be created and in this strategy we get some down time bcs the pods delete in previous deployment and recreate on new deployment.
+ > All existing Pods are killed before new ones are created.
+ 
+Rolling_Updates-:
+---------------------
+ > The Deployment updates Pods in a rolling update fashion when .spec.strategy.type==RollingUpdate. You can specify maxUnavailable and maxSurge to control the rolling update process.
+
+Optionals -:
+-------------
+Max Unavailable -:
+--------------------
+ > maxUnavailable is an optional field that specifies the maximum number of Pods that can be unavailable during the update process. 
+ > The value can be an absolute number (for example, 5) or a percentage of desired Pods (for example, 10%). The absolute number is calculated from percentage by rounding down.
+
+Max Surge -:
+---------------- 
+ > maxSurge is an optional field that specifies the maximum number of Pods that can be created over the desired number of Pods.
+ > The value can be an absolute number (for example, 5) or a percentage of desired Pods (for example, 10%). 
+ > The value cannot be 0 if MaxUnavailable is 0. The absolute number is calculated from the percentage by rounding up. 
+
+Min Ready Seconds -:
+----------------------------
+ > minReadySeconds is an optional field that specifies the minimum number of seconds for which a newly created Pod should be ready without any of its containers crashing, for it to be considered available. 
+ > This defaults to 0 (the Pod will be considered available as soon as it is ready).
+ 
+ Progress Deadline Seconds -:
+ --------------------------------------
+ >  progressDeadlineSeconds is an optional field that specifies the number of seconds you want to wait for your Deployment to progress before the system reports back that the Deployment has failed progressing 
+ > - surfaced as a condition with type: Progressing, status: "False". and reason: ProgressDeadlineExceeded in the status of the resource.
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rollingupdatedeployment
+  labels:
+    app: nginx
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  minReadySeconds: 30
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+HPA --> Horizantal Pod Autoscaler.
+---------------------------------------------
+
+ > Which will scale up/down num of pod replicas od Deployment, ReplicaSet, Replication Controller dynamically based on the observed
+Mterics(CPU Utilization or Memory Utilization)
+ 
+ > HPa is requires a Metric server for gets the metric/resources information
+ 
+ > HPA will interact with Metric Server to identify CPU/Memory Utilization of POD.
+ 
+ > For Gathering the Metric info of a Node/pod we need to deploy one application called metric server.
+ 
+ > Metric server is an application that Running as a pod and collects metrics from objects such as pods, nodes according to the state of CPU, Ram and Keeps them in time.
+ 
+ > This Metric Server we can deploy by using some manifest File.
+
+ > In hat manifest file we are using ClusterRole,ServiceAccount,ClusterRoleBinding(We are binding ClusterRole with ServiceAccount)
+ 
+ > Metric server needs permisions for talk with API server and other k8s objects to get the pod information and Node information.for that it's needs an authorization.
+ 
+ > For that we are giving permisions to the k8s resources to the pod are the applications with the help of that service account and Role.
+ 
+ > Service account like as an user and Role like as a Permissions For k8s resources.
+ 
+ > This ClusterRole,ServiceAccount,ClusterRoleBinding -> these all we calling as RBAC(Role Based Access Control)
+ 
+Simply -:
+-----------
+> Metric Server should have a permisions. with that permisions to get pods information & Node information.
+
+> How we give permisions to that metric server application Deployment/Pod/Container ?  By using ServiceAccount and Role.
+
+> So Our metric server get access to get the Node information and pod information.
+
+> Command For Check the k8s Metrics  -: kubectl top pods or nodes
+
+> The Sample Metric Servers manifest are available under -> https://github.com/bLakshmankumar/Metrics_Server_For_RBAC
+
+> While creating a HPA we need to mention what is the target CPU Utilization or Memory Utilization.
+
+> Based on the Target resource Utilization it'll scaleup and scale downor 
+
+> For HPA we using the HorizontalPodAutoscaler object as a kind in the yamlfile. and under we need to mention how many 
+   minReplicas and How many maxReplicas. and what is the targetAverageUtilization under metric resources.
+
+> We have so many Deployments or ReplicaSets so this HPA is which one. where are we mention that ?
+
+> Under Spec: ScaleTargetRef: here we going to mention name of the deployment/replicaset & etc.
+
+----------------------------------------------------------------------------------------------------------
+Demo for HPA -:
+-------------------
+ > I Create a sample deployment without HPA so It don't mention Autoscaler for scale up and scaledown the application.
+ -----
+ ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hpadeployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hpapod
+  template:
+    metadata:
+      labels:
+        app: hpapod
+    spec:
+      containers:
+        - name: hpapod
+          image: docker.io/datawire/quote:0.4.1
+          ports:
+            - name: hpapodcontainer
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 50Mi
+            limits:
+              cpu: 200m
+              memory: 100Mi
+-------------------------------------------------------------------------------------------
+ > Now create the HPA and Attech to the Deployment which we required.
+------------------------------------------------------------------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hpapod
+spec:
+  ports:
+    - name: hpapodsvc
+      port: 80
+      targetPort: 8080
+  selector:
+    app: hpapod
+  type: NodePort
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpapod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hpadeployment
+  minReplicas: 1
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+.......................................................................................................................
+> in above Deployment file we mention resources detailes under the container information. let's see what it means
+
+  > what is requests under resources.
+  
+  > we can define a resources for our Pod Containers. for the above container we defiene 2 things.
+      1) requests        and              2) limits
+     
+     > 1) requests -: Request it's a min guarenty resources which we are going to get. means we are reserving min some cpu and memory.
+     > suppose our cluster none of the servers this much of CPU and memory then the pod will not sheduled. 
+     > if we don't have this min resources are available it'll not shedule the pods.
+     
+     > 2) limits -: How much max cpu and memory it(the pod )can utilize. so based on our application type we can define min & max limits.
+     
+     >  Note : Limits should Greater than Request Resources
+     
+    Note : I just create a deployment  with a max and min resources so my pods will create and works with in that limits.
+    if load reaches the max limit our application will gets a performance issues. so overcome these performance issues we requires a HPA.
+    > Then we add a Assign a HPA for Our Deployment. 
+    > This HPA is responsible for Scaleup and scale out the pods based on our resource.
+    > It's not responsible for scale up and scale down the nodes or cluster. it's only responsible for pods itself.
+    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Commands i used for this deployments
+------------------------------------
+
+kubectl get all -o wide
+
+kubectl apply -f yaml (without HPA)
+
+kubectl get deployment 
+
+kubectl get deployment -o wide
+
+kubectl get rs
+
+kubectl get pods 
+
+kubectl get pods -o wide
+
+kubectl apply -f serviceyamlfilename (here im creating service type with NodePort)
+
+kubectl get svc 
+
+Copy the publicip of my minikube:nodeport (you wanna know your minikube ip execute this command (minikube ip)
+
+kubectl top pods/nodes (it's used for getting info about metric resources of pods & nodes) 
+
+watch kubectl get pods/nodes (for continues observation use this command)
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Now i'm attach my HPA with my Deployment
+----------------------------------------
+
+kubectl apply -f Deploymentfile name
+
+kubectl get hpa (now we can see the min and max pods and replica information.
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
+    

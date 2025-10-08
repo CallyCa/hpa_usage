@@ -1,0 +1,23 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: timeserver-autoscaler
+spec:
+  minReplicas: 1
+  maxReplicas: 6
+  metrics:
+    - type: External 
+      external: 
+        metric:
+          name: loadbalancing.googleapis.com|https|request_count
+          selector:
+            matchLabels:
+              resource.labels.forwarding_rule_name: "k8s2-fr-21mgs2fl"
+        target:
+          type: AverageValue
+      :      averageValue: 5
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: timeserver
+

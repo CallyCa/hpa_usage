@@ -1,0 +1,17 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  annotations: {}
+  name: coffee-cart-v1-0-0
+  labels:
+    app: coffee-cart-v1-0-0
+    applicationId: app_6c1ef079-5388-4669-b6f1-93362f29ea22
+    version: v1.0.0
+    organizationId: org_5bdc6e05-06b5-4d67-91b9-f020de5fdd93
+    projectId: project_a76ac38c-01c7-409e-b6f4-432611deb5fb
+    environmentId: env_17f5305d-6f79-43bf-9ab5-e29d700d8210
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: coffee-cart-v1-0-0

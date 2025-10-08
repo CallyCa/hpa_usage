@@ -1,0 +1,19 @@
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: epi-bf-hpa
+  namespace: epi
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    apiVersion: apps/v1
+    name: epi-bf
+  minReplicas: MIN_REPLICAS
+  maxReplicas: MAX_REPLICAS
+  metrics:
+  - type: Resource
+    resource:
+      name: SCALABLE_RESOURCE
+      target:
+        type: Utilization
+        averageUtilization: UTILIZATION

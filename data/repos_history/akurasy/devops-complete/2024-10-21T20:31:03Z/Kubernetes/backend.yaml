@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: 166937434313.dkr.ecr.us-east-1.amazonaws.com/backend
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DOMAIN
+              value: "http://app.myakuracy.click"
+            - name: ENVIRONMENT
+              value: "local"
+            - name: PROJECT_NAME
+              value: "Full Stack FastAPI Project"
+            - name: STACK_NAME
+              value: "full-stack-fastapi-project"
+            - name: BACKEND_CORS_ORIGINS
+              value: "http://myakuracy.click,http://localhost:5173,http://aa7b65c0910c1416d8253afec5453881-1818623458.us-east-1.elb.amazonaws.com:5173"
+            - name: SECRET_KEY
+              value: "changethis123"
+            - name: FIRST_SUPERUSER
+              value: "devops@hng.tech"
+            - name: FIRST_SUPERUSER_PASSWORD
+              value: "devops#HNG11"
+            - name: USERS_OPEN_REGISTRATION
+              value: "True"
+            - name: SMTP_HOST
+              value: ""
+            - name: SMTP_USER
+              value: ""
+            - name: SMTP_PASSWORD
+              value: ""
+            - name: EMAILS_FROM_EMAIL
+              value: "info@example.com"
+            - name: SMTP_TLS
+              value: "True"
+            - name: SMTP_SSL
+              value: "False"
+            - name: SMTP_PORT
+              value: "587"
+            - name: POSTGRES_SERVER
+              value: "postgres"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: "app"
+            - name: POSTGRES_USER
+              value: "app"
+            - name: POSTGRES_PASSWORD
+              value: "changethis123"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "1.0Gi"
+            limits:
+              cpu: "500m"
+              memory: "2Gi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: app
+spec:
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: server-hpa
+  namespace: app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 1
+  maxReplicas: 2
+  targetCPUUtilizationPercentage: 80

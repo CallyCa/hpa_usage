@@ -1,0 +1,406 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: saas-idp-config
+  namespace: saas-idp-production
+data:
+  NODE_ENV: "production"
+  NEXT_TELEMETRY_DISABLED: "1"
+  NEXTAUTH_URL: "https://your-domain.com"
+  DATABASE_URL: "postgresql://idp_user:password123@postgres-primary:5432/saas_idp"
+  REDIS_URL: "redis://redis-master:6379"
+  USE_MOCK_CLOUD_DATA: "false"
+  USE_MOCK_METRICS: "false" 
+  USE_MOCK_NOTIFICATIONS: "false"
+  ENABLE_ML_PREDICTIONS: "true"
+  LOG_LEVEL: "info"
+  METRICS_PORT: "9090"
+  HEALTH_CHECK_PORT: "3001"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: saas-idp-secrets
+  namespace: saas-idp-production
+type: Opaque
+data:
+  # Base64 encoded secrets - replace with actual values
+  NEXTAUTH_SECRET: bmV4dGF1dGhfc2VjcmV0XzEyMw==
+  JWT_SECRET: and0X3NlY3JldF8xMjM=
+  ENCRYPTION_KEY: ZW5jcnlwdGlvbl9rZXlfMTIzNDU2Nzg=
+  GITHUB_CLIENT_ID: Z2l0aHViX2NsaWVudF9pZA==
+  GITHUB_CLIENT_SECRET: Z2l0aHViX2NsaWVudF9zZWNyZXQ=
+  SLACK_BOT_TOKEN: c2xhY2tfYm90X3Rva2Vu
+  AWS_ACCESS_KEY_ID: YXdzX2FjY2Vzc19rZXk=
+  AWS_SECRET_ACCESS_KEY: YXdzX3NlY3JldF9rZXk=
+  SMTP_PASSWORD: c210cF9wYXNzd29yZA==
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saas-idp-app
+  namespace: saas-idp-production
+  labels:
+    app: saas-idp-app
+    version: v1.0.0
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: saas-idp-app
+  template:
+    metadata:
+      labels:
+        app: saas-idp-app
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: saas-idp-app
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+      - name: app
+        image: saas-idp-app:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        - containerPort: 9090
+          name: metrics
+          protocol: TCP
+        - containerPort: 3001
+          name: health
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: saas-idp-config
+              key: NODE_ENV
+        - name: NEXT_TELEMETRY_DISABLED
+          valueFrom:
+            configMapKeyRef:
+              name: saas-idp-config
+              key: NEXT_TELEMETRY_DISABLED
+        - name: NEXTAUTH_URL
+          valueFrom:
+            configMapKeyRef:
+              name: saas-idp-config
+              key: NEXTAUTH_URL
+        - name: DATABASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: saas-idp-config
+              key: DATABASE_URL
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: saas-idp-config
+              key: REDIS_URL
+        - name: NEXTAUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: saas-idp-secrets
+              key: NEXTAUTH_SECRET
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: saas-idp-secrets
+              key: JWT_SECRET
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: saas-idp-secrets
+              key: ENCRYPTION_KEY
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/ready
+            port: 3000
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 30
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: temp-storage
+          mountPath: /tmp
+        - name: app-logs
+          mountPath: /app/logs
+        - name: uploads
+          mountPath: /app/uploads
+      - name: websocket-server
+        image: saas-idp-websocket:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4403
+          name: websocket
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: saas-idp-config
+              key: REDIS_URL
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          tcpSocket:
+            port: 4403
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 4403
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: temp-storage
+        emptyDir: {}
+      - name: app-logs
+        persistentVolumeClaim:
+          claimName: app-logs-pvc
+      - name: uploads
+        persistentVolumeClaim:
+          claimName: uploads-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-logs-pvc
+  namespace: saas-idp-production
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: efs-sc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uploads-pvc
+  namespace: saas-idp-production
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: efs-sc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: saas-idp-app
+  namespace: saas-idp-production
+  labels:
+    app: saas-idp-app
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+spec:
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  selector:
+    app: saas-idp-app
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: saas-idp-websocket
+  namespace: saas-idp-production
+  labels:
+    app: saas-idp-app
+spec:
+  ports:
+  - port: 4403
+    targetPort: 4403
+    protocol: TCP
+    name: websocket
+  selector:
+    app: saas-idp-app
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: saas-idp-app-hpa
+  namespace: saas-idp-production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: saas-idp-app
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "1k"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: saas-idp-app-pdb
+  namespace: saas-idp-production
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: saas-idp-app
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: saas-idp-ingress
+  namespace: saas-idp-production
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
+    nginx.ingress.kubernetes.io/proxy-buffers-number: "8"
+    nginx.ingress.kubernetes.io/client-max-body-size: "100m"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-burst: "200"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options DENY always;
+      add_header X-Content-Type-Options nosniff always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' wss:; frame-ancestors 'none';" always;
+spec:
+  tls:
+  - hosts:
+    - your-domain.com
+    - www.your-domain.com
+    secretName: saas-idp-tls
+  rules:
+  - host: your-domain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: saas-idp-app
+            port:
+              number: 80
+  - host: www.your-domain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: saas-idp-app
+            port:
+              number: 80

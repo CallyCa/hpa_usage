@@ -1,0 +1,119 @@
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: frontend
+  namespace: default
+  labels:
+    run: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      run: frontend
+  template:
+    metadata:
+      labels:
+        run: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: gcr.io/colibriapp/front-image:latest
+          ports:
+            - containerPort: 80
+              protocol: TCP
+
+---
+
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: backend-user
+  namespace: default
+  labels:
+    run: backend-user
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      run: backend-user
+  template:
+    metadata:
+      labels:
+        run: backend-user
+    spec:
+      containers:
+        - name: backend-user
+          image: gcr.io/colibriapp/api-users-image:latest
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+
+---
+
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: backend-posts
+  namespace: default
+  labels:
+    run: backend-posts
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      run: backend-posts
+  template:
+    metadata:
+      labels:
+        run: backend-posts
+    spec:
+      containers:
+        - name: backend-posts
+          image: gcr.io/colibriapp/api-posts-image:latest
+          ports:
+            - containerPort: 8001
+              protocol: TCP
+
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "dbs"
+  namespace: "default"
+  labels:
+    app: "dbs"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: "dbs"
+  template:
+    metadata:
+      labels:
+        app: "dbs"
+    spec:
+      containers:
+      - name: "dbs-image"
+        image: "gcr.io/colibriapp/dbs-image:latest"
+      - name: "nginx"
+        image: "nginx:latest"
+---
+apiVersion: "autoscaling/v2beta1"
+kind: "HorizontalPodAutoscaler"
+metadata:
+  name: "dbs-hpa"
+  namespace: "default"
+  labels:
+    app: "dbs"
+spec:
+  scaleTargetRef:
+    kind: "Deployment"
+    name: "dbs"
+    apiVersion: "apps/v1"
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: "Resource"
+    resource:
+      name: "cpu"
+      targetAverageUtilization: 80

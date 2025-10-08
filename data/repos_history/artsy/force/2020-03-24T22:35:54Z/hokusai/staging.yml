@@ -1,0 +1,164 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: force-web
+spec:
+  strategy:
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: force
+        layer: application
+        component: web
+      name: force-web
+      namespace: default
+    spec:
+      containers:
+        - name: force-web
+          env:
+            - name: PORT
+              value: "5000"
+            - name: DD_TRACE_AGENT_HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: KEEPALIVE_TIMEOUT_SECONDS
+              value: "95"
+            - name: HEADERS_TIMEOUT_SECONDS
+              value: "105"
+          envFrom:
+            - configMapRef:
+                name: force-environment
+          image: 585031190124.dkr.ecr.us-east-1.amazonaws.com/force:staging
+          imagePullPolicy: Always
+          ports:
+            - name: force-http
+              containerPort: 5000
+          readinessProbe:
+            httpGet:
+              port: force-http
+              path: /system/up
+              httpHeaders:
+                - name: X-FORWARDED-PROTO
+                  value: https
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 700m
+              memory: 1Gi
+            limits:
+              memory: 1.5Gi
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 10"]
+        - name: force-nginx
+          image: artsy/docker-nginx:latest
+          ports:
+            - name: nginx-http
+              containerPort: 8080
+            - name: nginx-https
+              containerPort: 443
+          readinessProbe:
+            tcpSocket:
+              port: nginx-http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5 && /usr/sbin/nginx -s quit"]
+          env:
+            - name: "NGINX_DEFAULT_CONF"
+              valueFrom:
+                configMapKeyRef:
+                  name: nginx-config
+                  key: force
+      dnsPolicy: ClusterFirst
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: tier
+                    operator: In
+                    values:
+                      - foreground
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: force-web
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: extensions/v1beta1
+    kind: Deployment
+    name: force-web
+  minReplicas: 2
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: force
+    layer: application
+    component: web
+  name: force-web
+  namespace: default
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:iam::585031190124:server-certificate/2018-01-17_artsy-net-wildcard"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-connection-draining-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-access-log-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-access-log-emit-interval: "60"
+    service.beta.kubernetes.io/aws-load-balancer-access-log-s3-bucket-name: "artsy-elb-logs"
+    service.beta.kubernetes.io/aws-load-balancer-access-log-s3-bucket-prefix: "staging-force"
+    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "90"
+spec:
+  ports:
+    - port: 80
+      protocol: TCP
+      name: http
+      targetPort: nginx-http
+    - port: 443
+      protocol: TCP
+      name: https
+      targetPort: nginx-http
+  selector:
+    app: force
+    layer: application
+    component: web
+  sessionAffinity: None
+  type: LoadBalancer
+  loadBalancerSourceRanges:
+    - 173.245.48.0/20
+    - 103.21.244.0/22
+    - 103.22.200.0/22
+    - 103.31.4.0/22
+    - 141.101.64.0/18
+    - 108.162.192.0/18
+    - 190.93.240.0/20
+    - 188.114.96.0/20
+    - 197.234.240.0/22
+    - 198.41.128.0/17
+    - 162.158.0.0/15
+    - 104.16.0.0/12
+    - 172.64.0.0/13
+    - 131.0.72.0/22

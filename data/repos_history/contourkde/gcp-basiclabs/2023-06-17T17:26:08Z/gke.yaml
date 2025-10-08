@@ -1,0 +1,30 @@
+#deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gcp-devops-gke
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gcp-gke-app
+  template:
+    metadata:
+      labels:
+        app: gcp-gke-app
+    spec:
+      containers:
+      - name: gcp-devops-gke
+        image: us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-image
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MESSAGE
+          value: "Hello World"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"

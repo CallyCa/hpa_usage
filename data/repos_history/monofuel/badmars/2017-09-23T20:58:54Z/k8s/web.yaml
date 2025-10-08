@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: Service
+metadata:
+ labels:
+   name: web
+ name: web
+spec:
+ type: NodePort
+ selector:
+  name: web
+ ports:
+   - name: web
+     port: 3002
+     targetPort: 3002
+ selector:
+   name: web
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-deployment
+spec:
+  maxReplicas: 10
+  minReplicas: 1
+  scaleTargetRef:
+    kind: Deployment
+    name: web-deployment
+  targetCPUUtilizationPercentage: 80
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: web-deployment
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: web
+    spec:
+      containers:
+      - image: localhost:5000/badmars_node:v$VERSION
+        name: web
+        command: ["sh"]
+        args: ["-c", "cd bin/server/nodejs && node web.js"]
+        resources:
+          requests:
+            cpu: 10m
+            memory: 150Mi
+        livenessProbe:
+          httpGet:
+            path: /_health
+            port: 3002
+          initialDelaySeconds: 30
+          periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /_health
+            port: 3002
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        ports:
+        - name: web
+          containerPort: 3002
+        env:
+        - name: NODE_ENV
+          value: "prod"
+        - name: BADMARS_DB
+          value: "rethinkdb"
+        - name: MAP_HOST
+          value: "chunk"
+        - name: AI_HOST
+          value: "ai"
+        - name: TRACKING_SERVER
+          value: "http://andrelytics.mono"

@@ -1,0 +1,23 @@
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: { { include "example-service.fullname" . } }
+  namespace: { { .Values.namespace } }
+  labels:
+    app.kubernetes.io/name: { { include "example-service.name" . } }
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: { { include "example-service.fullname" . } }
+  minReplicas: { { .Values.autoscaling.minReplicas } }
+  maxReplicas: { { .Values.autoscaling.maxReplicas } }
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: { { .Values.autoscaling.cpu } }
+    - type: Resource
+      resource:
+        name: memory
+        targetAverageUtilization: { { .Values.autoscaling.memory } }

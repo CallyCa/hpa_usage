@@ -1,0 +1,12 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: citibike
+  namespace: prod
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: citibike
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 80

@@ -1,0 +1,455 @@
+# ==================================================================
+# QUANTUM ATLAS INFRASTRUCTURE - 99.99% UPTIME DEPLOYMENT
+# Ultra-high availability with bulletproof security and scaling
+# ==================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: astral-turf
+  labels:
+    name: astral-turf
+    tier: production
+    app.kubernetes.io/name: astral-turf
+    app.kubernetes.io/version: "8.0.0"
+    atlas.deployment.type: "quantum"
+    atlas.security.level: "banking-grade"
+    atlas.availability.target: "99.99"
+    atlas.deployment: "true"
+    atlas.environment: "production"
+---
+# Atlas Blue-Green Deployment Configuration
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: astral-turf-blue-green
+  namespace: argocd
+  labels:
+    atlas.deployment.strategy: blue-green
+    atlas.application: astral-turf
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/astral-turf
+    targetRevision: HEAD
+    path: k8s/overlays/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: astral-turf
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+---
+# Atlas Application Deployment (Blue)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: astral-turf-blue
+  namespace: astral-turf
+  labels:
+    app: astral-turf
+    version: blue
+    atlas.deployment.slot: blue
+    atlas.deployment.strategy: blue-green
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: astral-turf
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: astral-turf
+        version: blue
+        atlas.deployment.slot: blue
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+        atlas.deployment.timestamp: "${ATLAS_DEPLOYMENT_TIMESTAMP}"
+    spec:
+      serviceAccountName: astral-turf-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+      - name: astral-turf
+        image: astral-turf:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        - name: ATLAS_DEPLOYMENT_SLOT
+          value: "blue"
+        - name: ATLAS_DEPLOYMENT_ID
+          value: "${ATLAS_DEPLOYMENT_ID}"
+        envFrom:
+        - secretRef:
+            name: astral-turf-secrets
+        - configMapRef:
+            name: astral-turf-config
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - NET_BIND_SERVICE
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: app-temp
+          mountPath: /app/temp
+        - name: app-logs
+          mountPath: /app/logs
+        - name: app-cache
+          mountPath: /app/cache
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 100Mi
+      - name: app-temp
+        emptyDir:
+          sizeLimit: 50Mi
+      - name: app-logs
+        emptyDir:
+          sizeLimit: 100Mi
+      - name: app-cache
+        emptyDir:
+          sizeLimit: 50Mi
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - key: "atlas.deployment"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - astral-turf
+              topologyKey: kubernetes.io/hostname
+---
+# Atlas Application Deployment (Green)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: astral-turf-green
+  namespace: astral-turf
+  labels:
+    app: astral-turf
+    version: green
+    atlas.deployment.slot: green
+    atlas.deployment.strategy: blue-green
+spec:
+  replicas: 0  # Initially scaled to 0
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: astral-turf
+      version: green
+  template:
+    metadata:
+      labels:
+        app: astral-turf
+        version: green
+        atlas.deployment.slot: green
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+        atlas.deployment.timestamp: "${ATLAS_DEPLOYMENT_TIMESTAMP}"
+    spec:
+      serviceAccountName: astral-turf-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+      - name: astral-turf
+        image: astral-turf:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        - name: ATLAS_DEPLOYMENT_SLOT
+          value: "green"
+        - name: ATLAS_DEPLOYMENT_ID
+          value: "${ATLAS_DEPLOYMENT_ID}"
+        envFrom:
+        - secretRef:
+            name: astral-turf-secrets
+        - configMapRef:
+            name: astral-turf-config
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - NET_BIND_SERVICE
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: app-temp
+          mountPath: /app/temp
+        - name: app-logs
+          mountPath: /app/logs
+        - name: app-cache
+          mountPath: /app/cache
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 100Mi
+      - name: app-temp
+        emptyDir:
+          sizeLimit: 50Mi
+      - name: app-logs
+        emptyDir:
+          sizeLimit: 100Mi
+      - name: app-cache
+        emptyDir:
+          sizeLimit: 50Mi
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - key: "atlas.deployment"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - astral-turf
+              topologyKey: kubernetes.io/hostname
+---
+# Atlas Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: astral-turf-hpa
+  namespace: astral-turf
+  labels:
+    atlas.autoscaling: "true"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: astral-turf-blue  # Will be switched by Atlas during deployment
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "1k"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 30
+      - type: Pods
+        value: 5
+        periodSeconds: 30
+---
+# Atlas Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: astral-turf-sa
+  namespace: astral-turf
+  labels:
+    atlas.security: "enabled"
+automountServiceAccountToken: false
+---
+# Atlas Service (Blue-Green Traffic Management)
+apiVersion: v1
+kind: Service
+metadata:
+  name: astral-turf-service
+  namespace: astral-turf
+  labels:
+    app: astral-turf
+    atlas.service.type: blue-green
+  annotations:
+    atlas.traffic.split: "blue:100,green:0"  # Controlled by Atlas
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: astral-turf
+    version: blue  # Controlled by Atlas during deployments
+---
+# Atlas ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: astral-turf-config
+  namespace: astral-turf
+  labels:
+    atlas.config: "true"
+data:
+  # Application configuration
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  METRICS_ENABLED: "true"
+  HEALTH_CHECK_ENABLED: "true"
+  
+  # Atlas deployment configuration
+  ATLAS_DEPLOYMENT_STRATEGY: "blue-green"
+  ATLAS_HEALTH_CHECK_PATH: "/health"
+  ATLAS_READINESS_CHECK_PATH: "/ready"
+  ATLAS_METRICS_PATH: "/metrics"
+  
+  # Performance tuning
+  NODE_OPTIONS: "--max-old-space-size=768 --enable-source-maps"
+  
+  # Security configuration
+  SECURITY_HEADERS_ENABLED: "true"
+  CSP_ENABLED: "true"
+  RATE_LIMITING_ENABLED: "true"
+  AUDIT_LOGGING_ENABLED: "true"

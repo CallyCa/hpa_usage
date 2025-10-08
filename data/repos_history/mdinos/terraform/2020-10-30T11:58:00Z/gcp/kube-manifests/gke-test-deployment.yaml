@@ -1,0 +1,29 @@
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "gke-test-deployment"
+  namespace: "default"
+  labels:
+    app: "gke-test"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: "gke-test"
+  template:
+    metadata:
+      labels:
+        app: "gke-test"
+    spec:
+      containers:
+      - name: "gke-test"
+        image: "gcr.io/gke-test-project-293913/gke-test:latest"
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80

@@ -1,0 +1,232 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backup-service
+  namespace: eios-services
+  labels:
+    app: backup-service
+    phase: "3"
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backup-service
+  template:
+    metadata:
+      labels:
+        app: backup-service
+        version: v1
+    spec:
+      serviceAccountName: eios-service-account
+      containers:
+      - name: backup-service
+        image: your-registry.com/backup-service:v1.0.0
+        ports:
+        - containerPort: 8104
+          name: http
+        - containerPort: 9090
+          name: metrics
+        env:
+        - name: PORT
+          value: "8104"
+        - name: GIN_MODE
+          value: "release"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: postgres-backup-secret
+              key: database-url
+        - name: REDIS_URL
+          value: "redis-service:6379"
+        - name: DEFAULT_RETENTION_DAYS
+          value: "30"
+        - name: MAX_CONCURRENT_BACKUPS
+          value: "5"
+        - name: BACKUP_COMPRESSION_ENABLED
+          value: "true"
+        - name: BACKUP_ENCRYPTION_ENABLED
+          value: "true"
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: backup-encryption-secret
+              key: encryption-key
+        - name: ENABLE_AUTO_BACKUP
+          value: "true"
+        - name: AUTO_BACKUP_SCHEDULE
+          value: "0 2 * * *"  # Daily at 2 AM
+        - name: ENABLE_INCREMENTAL
+          value: "true"
+        - name: ENABLE_DEDUPLICATION
+          value: "true"
+        - name: S3_BUCKET
+          value: "eios-backups"
+        - name: S3_REGION
+          value: "us-east-1"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-backup-credentials
+              key: access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-backup-credentials
+              key: secret-access-key
+        - name: ENABLE_DISASTER_RECOVERY
+          value: "true"
+        - name: DR_REGION
+          value: "us-west-2"
+        - name: ENABLE_POINT_IN_TIME_RECOVERY
+          value: "true"
+        - name: PITR_RETENTION_HOURS
+          value: "168"  # 7 days
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8104
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8104
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: backup-temp
+          mountPath: /tmp/backups
+        - name: backup-policies
+          mountPath: /etc/backup-policies
+          readOnly: true
+      volumes:
+      - name: backup-temp
+        emptyDir:
+          sizeLimit: 50Gi
+      - name: backup-policies
+        configMap:
+          name: backup-policies
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backup-service
+  namespace: eios-services
+  labels:
+    app: backup-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8104
+    targetPort: 8104
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  selector:
+    app: backup-service
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-policies
+  namespace: eios-services
+data:
+  default-policies.yaml: |
+    policies:
+      - name: daily-full
+        type: full
+        schedule: "0 2 * * *"
+        retention_days: 30
+        compression: true
+        encryption: true
+      - name: hourly-incremental
+        type: incremental
+        schedule: "0 * * * *"
+        retention_days: 7
+        compression: true
+        encryption: true
+      - name: weekly-full
+        type: full
+        schedule: "0 3 * * 0"
+        retention_days: 90
+        compression: true
+        encryption: true
+    storage_providers:
+      - name: primary-s3
+        type: s3
+        region: us-east-1
+        bucket: eios-backups
+        storage_class: STANDARD_IA
+      - name: dr-s3
+        type: s3
+        region: us-west-2
+        bucket: eios-backups-dr
+        storage_class: GLACIER
+      - name: gcs-archive
+        type: gcs
+        bucket: eios-archive
+        location: us-central1
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backup-service-hpa
+  namespace: eios-services
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backup-service
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-cleanup
+  namespace: eios-services
+spec:
+  schedule: "0 4 * * *"  # Daily at 4 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: backup-cleanup
+            image: your-registry.com/backup-service:v1.0.0
+            command:
+            - /app/backup-service
+            - cleanup
+            - --expired
+            - --verify-integrity
+            env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-backup-secret
+                  key: database-url
+          restartPolicy: OnFailure

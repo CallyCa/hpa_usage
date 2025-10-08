@@ -1,0 +1,33 @@
+{{- if $.Values.prometheus.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "prometheus.fullname" . }}-hpa
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "prometheus.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "prometheus.fullname" . }}-deployment
+  minReplicas: {{ $.Values.prometheus.autoscaling.minReplicas }}
+  maxReplicas: {{ $.Values.prometheus.autoscaling.maxReplicas }}
+  metrics:
+    {{- if $.Values.prometheus.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $.Values.prometheus.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if $.Values.prometheus.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $.Values.prometheus.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

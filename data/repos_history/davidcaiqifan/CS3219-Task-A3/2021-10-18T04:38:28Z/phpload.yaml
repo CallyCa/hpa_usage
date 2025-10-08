@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taska3-phpload
+spec:
+  selector:
+    matchLabels:
+      run: taska3-phpload
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        run: taska3-phpload
+    spec:
+      containers:
+      - name: taska3-phpload
+        image: taska3-phpload
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: 500m
+          requests:
+            cpu: 200m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: taska3-phpload
+  labels:
+    run: taska3-phpload
+spec:
+  ports:
+  - port: 80
+  selector:
+    run: taska3-phpload
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: taska3-phpload
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: taska3-phpload
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hpa-ingress
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/affinity-mode: "balanced"
+    nginx.ingress.kubernetes.io/session-cookie-name: "route"
+    nginx.ingress.kubernetes.io/session-cookie-expires: "172800"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "172800"
+
+spec:
+  defaultBackend:
+      service:
+        name: taska3-phpload
+        port:
+          number: 80
+  rules:
+  - host : kubernetes.docker.internal
+  - http:
+      paths:
+      - path: /test
+        pathType: Prefix
+        backend:
+          service:
+            name: taska3-phpload
+            port:
+              number: 80
+      - path: /rp
+        pathType: Prefix
+        backend:
+          service:
+            name: taska3-phpload
+            port:
+              number: 80
+

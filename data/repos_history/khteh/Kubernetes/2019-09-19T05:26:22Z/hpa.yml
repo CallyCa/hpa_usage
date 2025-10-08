@@ -1,0 +1,69 @@
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: restapi-hpa
+  namespace: default
+spec:
+  minReplicas: 2
+  maxReplicas: 5
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: restapi
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target: 
+        type: Utilization
+        averageUtilization: 75
+  - type: Object
+    object: 
+      metric: 
+        name: requests-per-second
+      describedObject:
+#        apiVersion: networking.k8s.io/v1beta1
+        apiVersion: extensions/v1beta1
+        kind: Ingress 
+        name: ingress
+      target: 
+        type: Value
+        value: 10k
+#  - type: Resource
+#    resource:
+#      name: memory
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: kibana-hpa
+  namespace: default 
+spec:
+  minReplicas: 2
+  maxReplicas: 5
+  scaleTargetRef:
+    apiVersion: apps/v1 
+    kind: StatefulSet
+    name: kibana
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target: 
+        type: Utilization
+        averageUtilization: 75
+  - type: Object
+    object: 
+      metric: 
+        name: requests-per-second
+      describedObject:
+#        apiVersion: networking.k8s.io/v1beta1
+        apiVersion: extensions/v1beta1
+        kind: Ingress 
+        name: ingress
+      target: 
+        type: Value
+        value: 10k
+#  - type: Resource
+#    resource:
+#      name: memory

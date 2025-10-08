@@ -1,0 +1,350 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+spec:
+  selector:
+    app: redis-zadanie
+  ports:
+    - port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-zadanie
+spec:
+  serviceName: redis-zadanie-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-zadanie
+  template:
+    metadata:
+      labels:
+        app: redis-zadanie
+    spec:
+      containers:
+      - name: redis-zadanie
+        image: redis:latest
+        ports:
+        - containerPort: 6379
+        args: ["--save", "1", "1"]
+        startupProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          periodSeconds: 5
+          timeoutSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        hostPath:
+          path: /redis
+          type: DirectoryOrCreate
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zadanie-11-backend-a
+  labels:
+    app: zadanie-11-backend-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zadanie-11-backend-a
+  template:
+    metadata:
+      labels:
+        app: zadanie-11-backend-a
+    spec:
+      containers:
+      - name: zadanie-11-backend-a
+        image: zadanie-11-backend:latest
+        ports:
+        - containerPort: 8000
+        imagePullPolicy: Never
+        resources:
+          requests:
+            cpu: "100m"
+          limits:
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        volumeMounts:
+        - name: models-volume
+          mountPath: /models
+      volumes:
+      - name: models-volume
+        hostPath:
+          path: /models/job_1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zadanie-11-backend-b
+  labels:
+    app: zadanie-11-backend-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zadanie-11-backend-b
+  template:
+    metadata:
+      labels:
+        app: zadanie-11-backend-b
+    spec:
+      containers:
+      - name: zadanie-11-backend-b
+        image: zadanie-11-backend:latest
+        ports:
+        - containerPort: 8000
+        imagePullPolicy: Never
+        resources:
+          requests:
+            cpu: "100m"
+          limits:
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        volumeMounts:
+        - name: models-volume
+          mountPath: /models
+      volumes:
+      - name: models-volume
+        hostPath:
+          path: /models/job_2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zadanie-11-backend-a
+spec:
+  selector:
+    app: zadanie-11-backend-a
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zadanie-11-backend-b
+spec:
+  selector:
+    app: zadanie-11-backend-b
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zadanie-11-backend-a-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zadanie-11-backend-a
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zadanie-11-backend-b-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zadanie-11-backend-b
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: zadanie-11-backend
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istio-system/sages-gateway
+  http:
+  - match:
+    - uri:
+        prefix: "/a/sages/"
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: zadanie-11-backend-a
+        port:
+          number: 8000
+      headers:
+        response:
+          set:
+            x-version: "a"
+  - match:
+    - uri:
+        prefix: "/b/sages/"
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: zadanie-11-backend-b
+        port:
+          number: 8000
+      headers:
+        response:
+          set:
+            x-version: "b"
+  - match:
+    - uri:
+        prefix: "/sages/"
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: zadanie-11-backend-a
+        port:
+          number: 8000
+      weight: 50
+      headers:
+        response:
+          set:
+            x-version: "b-test"
+    - destination:
+        host: zadanie-11-backend-b
+        port:
+          number: 8000
+      weight: 50
+      headers:
+        response:
+          set:
+            x-version: "a-test"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: zadanie-11-backend-internal
+spec:
+  hosts:
+  - api.internal.sages
+  gateways:
+  - mesh
+  http:
+  - match:
+    - uri:
+        prefix: "/a/"
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: zadanie-11-backend-a.default.svc.cluster.local
+        port:
+          number: 8000
+      headers:
+        response:
+          set:
+            x-version: "a"
+  - match:
+    - uri:
+        prefix: "/b/"
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: zadanie-11-backend-b.default.svc.cluster.local
+        port:
+          number: 8000
+      headers:
+        response:
+          set:
+            x-version: "b"
+  - match:
+    - uri:
+        prefix: "/"
+    route:
+    - destination:
+        host: zadanie-11-backend-a.default.svc.cluster.local
+        port:
+          number: 8000
+      weight: 50
+      headers:
+        response:
+          set:
+            x-version: "a"
+    - destination:
+        host: zadanie-11-backend-b.default.svc.cluster.local
+        port:
+          number: 8000
+      weight: 50
+      headers:
+        response:
+          set:
+            x-version: "b"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: ServiceEntry
+metadata:
+  name: api-internal-sages
+spec:
+  hosts:
+  - api.internal.sages
+  location: MESH_EXTERNAL
+  ports:
+  - number: 80
+    name: http
+    protocol: HTTP
+  resolution: DNS

@@ -1,0 +1,633 @@
+# Flagger Canary Deployment Configuration
+# Enterprise-grade progressive delivery for 99.99% uptime SLA
+
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: saas-idp-production-canary
+  namespace: saas-idp-production
+  annotations:
+    flagger.app/description: "Progressive delivery for Enterprise SaaS IDP Platform"
+    flagger.app/sla-target: "99.99%"
+spec:
+  # Target deployment for canary analysis
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: saas-idp
+  
+  # Horizontal Pod Autoscaler reference
+  autoscalerRef:
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    name: saas-idp
+  
+  # Service configuration
+  service:
+    # Service port
+    port: 80
+    targetPort: 3000
+    # Gateway and virtual service configuration for Istio
+    gateways:
+      - saas-idp-gateway
+    hosts:
+      - app.saas-idp.company.com
+    # Traffic policy
+    trafficPolicy:
+      tls:
+        mode: ISTIO_MUTUAL
+    # Request routing based on headers (A/B testing)
+    match:
+      - headers:
+          canary:
+            exact: "true"
+    # Request mirroring to canary for shadow testing
+    mirror:
+      host: saas-idp-canary
+      weight: 100
+  
+  # Canary analysis configuration
+  analysis:
+    # Analysis interval
+    interval: 1m
+    # Maximum traffic percentage routed to canary
+    maxWeight: 50
+    # Number of successful analysis iterations before promotion
+    threshold: 5
+    # Traffic increment step
+    stepWeight: 10
+    # Promotion criteria thresholds
+    thresholds:
+      # Success rate must be above 99.5%
+      - name: success-rate
+        min: 99.5
+        interval: 1m
+      # Request duration P99 must be below 500ms
+      - name: latency-p99
+        max: 500
+        interval: 1m
+      # Request duration P95 must be below 200ms
+      - name: latency-p95
+        max: 200
+        interval: 1m
+    
+    # Prometheus metrics for canary analysis
+    metrics:
+      # HTTP request success rate
+      - name: request-success-rate
+        thresholdRange:
+          min: 99.5
+        interval: 1m
+        query: |
+          sum(
+            rate(
+              istio_requests_total{
+                reporter="destination",
+                destination_service_name="saas-idp",
+                destination_service_namespace="saas-idp-production",
+                response_code!~"5.*"
+              }[1m]
+            )
+          ) 
+          / 
+          sum(
+            rate(
+              istio_requests_total{
+                reporter="destination",
+                destination_service_name="saas-idp",
+                destination_service_namespace="saas-idp-production"
+              }[1m]
+            )
+          ) * 100
+      
+      # HTTP request duration P99
+      - name: request-duration-p99
+        thresholdRange:
+          max: 500
+        interval: 1m
+        query: |
+          histogram_quantile(0.99,
+            sum(
+              rate(
+                istio_request_duration_milliseconds_bucket{
+                  reporter="destination",
+                  destination_service_name="saas-idp",
+                  destination_service_namespace="saas-idp-production"
+                }[1m]
+              )
+            ) by (le)
+          )
+      
+      # HTTP request duration P95
+      - name: request-duration-p95
+        thresholdRange:
+          max: 200
+        interval: 1m
+        query: |
+          histogram_quantile(0.95,
+            sum(
+              rate(
+                istio_request_duration_milliseconds_bucket{
+                  reporter="destination",
+                  destination_service_name="saas-idp",
+                  destination_service_namespace="saas-idp-production"
+                }[1m]
+              )
+            ) by (le)
+          )
+    
+    # Webhook notifications for analysis events
+    webhooks:
+      - name: acceptance-test
+        type: pre-rollout
+        url: http://acceptance-test-runner.saas-idp-production.svc.cluster.local:8080/
+        timeout: 30s
+        metadata:
+          type: bash
+          cmd: "curl -X POST http://saas-idp-canary/health && curl -X POST http://saas-idp-canary/api/health"
+      
+      - name: load-test
+        type: rollout
+        url: http://load-test-runner.saas-idp-production.svc.cluster.local:8080/
+        timeout: 5m
+        metadata:
+          type: bash
+          cmd: "k6 run --vus 100 --duration 2m /scripts/load-test-canary.js"
+      
+      - name: integration-test
+        type: rollout
+        url: http://integration-test-runner.saas-idp-production.svc.cluster.local:8080/
+        timeout: 10m
+        metadata:
+          type: bash
+          cmd: "npm run test:integration:canary"
+      
+      - name: slack-notification
+        type: event
+        url: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+        metadata:
+          environment: "production"
+          cluster: "production-cluster"
+
+---
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: saas-idp-staging-canary
+  namespace: saas-idp-staging
+  annotations:
+    flagger.app/description: "Staging environment canary for testing progressive delivery"
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: saas-idp
+  
+  autoscalerRef:
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    name: saas-idp
+  
+  service:
+    port: 80
+    targetPort: 3000
+    gateways:
+      - saas-idp-staging-gateway
+    hosts:
+      - staging.saas-idp.company.com
+  
+  # More aggressive canary analysis for staging
+  analysis:
+    interval: 30s
+    maxWeight: 100  # Allow full traffic to canary in staging
+    threshold: 3
+    stepWeight: 20
+    thresholds:
+      - name: success-rate
+        min: 99.0  # Slightly lower threshold for staging
+        interval: 30s
+      - name: latency-p99
+        max: 1000  # Higher latency tolerance in staging
+        interval: 30s
+    
+    metrics:
+      - name: request-success-rate
+        thresholdRange:
+          min: 99.0
+        interval: 30s
+        query: |
+          sum(
+            rate(
+              istio_requests_total{
+                reporter="destination",
+                destination_service_name="saas-idp",
+                destination_service_namespace="saas-idp-staging",
+                response_code!~"5.*"
+              }[30s]
+            )
+          ) 
+          / 
+          sum(
+            rate(
+              istio_requests_total{
+                reporter="destination",
+                destination_service_name="saas-idp",
+                destination_service_namespace="saas-idp-staging"
+              }[30s]
+            )
+          ) * 100
+    
+    webhooks:
+      - name: staging-test
+        type: pre-rollout
+        url: http://test-runner.saas-idp-staging.svc.cluster.local:8080/
+        timeout: 15s
+        metadata:
+          type: bash
+          cmd: "curl -f http://saas-idp-canary/health"
+
+---
+# Blue-Green Deployment using Argo Rollouts
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: saas-idp-bluegreen
+  namespace: saas-idp-production
+  annotations:
+    rollout.argoproj.io/description: "Blue-Green deployment for Enterprise SaaS IDP"
+spec:
+  replicas: 6
+  strategy:
+    blueGreen:
+      # Active service (production traffic)
+      activeService: saas-idp-active
+      # Preview service (blue-green testing)
+      previewService: saas-idp-preview
+      # Auto promotion after successful tests
+      autoPromotionEnabled: false
+      # Scale down delay after promotion
+      scaleDownDelaySeconds: 60
+      # Pre-promotion analysis
+      prePromotionAnalysis:
+        templates:
+        - templateName: success-rate-analysis
+        args:
+        - name: service-name
+          value: saas-idp-preview
+      # Post-promotion analysis
+      postPromotionAnalysis:
+        templates:
+        - templateName: success-rate-analysis
+        args:
+        - name: service-name
+          value: saas-idp-active
+      # Preview replica count
+      previewReplicaCount: 3
+      # Promotion gate (manual approval required)
+      prePromotionGate:
+        fields:
+        - key: reason
+          operator: In
+          values:
+          - "Validated by QA team"
+          - "Performance tests passed"
+          - "Security scan completed"
+  selector:
+    matchLabels:
+      app: saas-idp
+  template:
+    metadata:
+      labels:
+        app: saas-idp
+    spec:
+      containers:
+      - name: saas-idp
+        image: registry.company.com/saas-idp:latest
+        ports:
+        - containerPort: 3000
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+---
+# Analysis Template for Blue-Green Success Rate
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate-analysis
+  namespace: saas-idp-production
+spec:
+  args:
+  - name: service-name
+    value: saas-idp
+  metrics:
+  - name: success-rate
+    interval: 1m
+    successCondition: result[0] >= 0.995
+    failureLimit: 3
+    provider:
+      prometheus:
+        address: http://prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          sum(
+            rate(
+              istio_requests_total{
+                reporter="destination",
+                destination_service_name="{{args.service-name}}",
+                destination_service_namespace="saas-idp-production",
+                response_code!~"5.*"
+              }[1m]
+            )
+          ) 
+          / 
+          sum(
+            rate(
+              istio_requests_total{
+                reporter="destination",
+                destination_service_name="{{args.service-name}}",
+                destination_service_namespace="saas-idp-production"
+              }[1m]
+            )
+          )
+  - name: avg-response-time
+    interval: 1m
+    successCondition: result[0] <= 200
+    failureLimit: 3
+    provider:
+      prometheus:
+        address: http://prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          sum(
+            rate(
+              istio_request_duration_milliseconds_sum{
+                reporter="destination",
+                destination_service_name="{{args.service-name}}",
+                destination_service_namespace="saas-idp-production"
+              }[1m]
+            )
+          ) 
+          / 
+          sum(
+            rate(
+              istio_request_duration_milliseconds_count{
+                reporter="destination",
+                destination_service_name="{{args.service-name}}",
+                destination_service_namespace="saas-idp-production"
+              }[1m]
+            )
+          )
+
+---
+# Automated Rollback Configuration
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: saas-idp-automated-rollback
+  namespace: saas-idp-production
+  annotations:
+    rollout.argoproj.io/description: "Automated rollback on failure detection"
+spec:
+  replicas: 6
+  strategy:
+    canary:
+      maxSurge: "25%"
+      maxUnavailable: 1
+      steps:
+      - setWeight: 10
+      - pause: {}
+      - setWeight: 20
+      - pause: {duration: 30s}
+      - setWeight: 40
+      - pause: {duration: 30s}
+      - setWeight: 60
+      - pause: {duration: 30s}
+      - setWeight: 80
+      - pause: {duration: 30s}
+      analysis:
+        templates:
+        - templateName: comprehensive-analysis
+        startingStep: 2
+        args:
+        - name: service-name
+          value: saas-idp
+      # Automatic rollback on analysis failure
+      abortScaleDownDelaySeconds: 30
+      dynamicStableScale: true
+  selector:
+    matchLabels:
+      app: saas-idp
+  template:
+    metadata:
+      labels:
+        app: saas-idp
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: saas-idp
+        image: registry.company.com/saas-idp:latest
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: ROLLBACK_ENABLED
+          value: "true"
+        - name: HEALTH_CHECK_INTERVAL
+          value: "10s"
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        # Circuit breaker for automatic rollback
+        startupProbe:
+          httpGet:
+            path: /startup
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 10
+          successThreshold: 1
+
+---
+# Comprehensive Analysis Template with Automatic Rollback Triggers
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: comprehensive-analysis
+  namespace: saas-idp-production
+spec:
+  args:
+  - name: service-name
+    value: saas-idp
+  metrics:
+  # Success rate metric
+  - name: success-rate
+    interval: 30s
+    count: 10
+    successCondition: result[0] >= 0.995
+    failureLimit: 2
+    inconclusiveLimit: 3
+    provider:
+      prometheus:
+        address: http://prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          sum(rate(istio_requests_total{reporter="destination",destination_service_name="{{args.service-name}}",response_code!~"5.*"}[1m])) / 
+          sum(rate(istio_requests_total{reporter="destination",destination_service_name="{{args.service-name}}"}[1m]))
+
+  # Error rate metric (should be < 0.5%)
+  - name: error-rate
+    interval: 30s
+    count: 10
+    successCondition: result[0] <= 0.005
+    failureLimit: 2
+    provider:
+      prometheus:
+        address: http://prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          sum(rate(istio_requests_total{reporter="destination",destination_service_name="{{args.service-name}}",response_code=~"5.*"}[1m])) / 
+          sum(rate(istio_requests_total{reporter="destination",destination_service_name="{{args.service-name}}"}[1m]))
+
+  # Response time P95
+  - name: response-time-p95
+    interval: 30s
+    count: 10
+    successCondition: result[0] <= 200
+    failureLimit: 3
+    provider:
+      prometheus:
+        address: http://prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination",destination_service_name="{{args.service-name}}"}[1m])) by (le))
+
+  # Response time P99
+  - name: response-time-p99
+    interval: 30s
+    count: 10
+    successCondition: result[0] <= 500
+    failureLimit: 3
+    provider:
+      prometheus:
+        address: http://prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination",destination_service_name="{{args.service-name}}"}[1m])) by (le))
+
+  # CPU utilization
+  - name: cpu-usage
+    interval: 30s
+    count: 5
+    successCondition: result[0] <= 0.8
+    failureLimit: 3
+    provider:
+      prometheus:
+        address: http://prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          sum(rate(container_cpu_usage_seconds_total{container="saas-idp",namespace="saas-idp-production"}[1m])) by (pod) / 
+          sum(container_spec_cpu_quota{container="saas-idp",namespace="saas-idp-production"} / container_spec_cpu_period{container="saas-idp",namespace="saas-idp-production"}) by (pod)
+
+  # Memory utilization
+  - name: memory-usage
+    interval: 30s
+    count: 5
+    successCondition: result[0] <= 0.85
+    failureLimit: 3
+    provider:
+      prometheus:
+        address: http://prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          sum(container_memory_working_set_bytes{container="saas-idp",namespace="saas-idp-production"}) by (pod) / 
+          sum(container_spec_memory_limit_bytes{container="saas-idp",namespace="saas-idp-production"}) by (pod)
+
+---
+# Emergency Rollback Job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: emergency-rollback-job
+  namespace: saas-idp-production
+  annotations:
+    job.kubernetes.io/description: "Emergency rollback job for critical failures"
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: rollback-executor
+        image: argoproj/kubectl-argo-rollouts:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Executing emergency rollback..."
+          
+          # Check current rollout status
+          kubectl argo rollouts status saas-idp-production-canary -n saas-idp-production
+          
+          # Abort canary if in progress
+          kubectl argo rollouts abort saas-idp-production-canary -n saas-idp-production || true
+          
+          # Rollback to previous stable version
+          kubectl argo rollouts undo saas-idp-automated-rollback -n saas-idp-production
+          
+          # Wait for rollback completion
+          kubectl argo rollouts status saas-idp-automated-rollback -n saas-idp-production
+          
+          # Send notification
+          curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            --data '{"text":"🚨 Emergency rollback executed for SaaS IDP Production","channel":"#platform-alerts"}'
+        env:
+        - name: SLACK_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: notification-secrets
+              key: slack-webhook-url
+      serviceAccountName: rollback-service-account

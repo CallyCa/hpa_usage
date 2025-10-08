@@ -1,0 +1,135 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstanceReplicaSet
+metadata:
+  name: appreplicaset
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      kubevirt.io/domain: app-vm
+  template:
+    metadata:
+      labels:
+        kubevirt.io/size: small
+        kubevirt.io/domain: app-vm
+    spec:
+      domain:
+        cpu:
+          cores: 2
+        devices:
+          disks:
+            - name: containerdisk
+              disk:
+                bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+          interfaces:
+          - name: default
+            masquerade: {}
+        resources:
+          requests:
+            memory: 2048Mi
+      networks:
+      - name: default
+        pod: {}
+      volumes:
+        - name: containerdisk
+          containerDisk:
+            image: omersafakbebek/test-vm
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            userData: |-
+              #cloud-config
+              user: ubuntu
+              password: password
+              shell: /bin/bash
+              lock-passwd: false
+              ssh_pwauth: True
+              chpasswd: { expire: False }
+              sudo: ALL=(ALL) NOPASSWD:ALL
+              groups: users, admin
+              ssh_authorized_keys:
+              - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINlag+nDNGHa5ROa9QbI7oE002eiU/p2UnehYT+o9yS/ kim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vm-app-svc-1
+spec:
+  ports:
+  - port: 22
+    name: ssh
+    protocol: TCP
+    targetPort: 22
+  - port: 80
+    name: app
+    protocol: TCP
+    targetPort: 3000
+  selector:
+    kubevirt.io/domain: app-vm
+  type: LoadBalancer
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: myhpa
+spec:
+  scaleTargetRef:
+    kind: VirtualMachineInstanceReplicaSet
+    name: appreplicaset
+    apiVersion: kubevirt.io/v1
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstance
+metadata:
+  name: db-vm
+  labels:
+    kubevirt.io/size: small
+    kubevirt.io/domain: db-vm
+spec:
+  domain:
+    devices:
+      disks:
+        - name: containerdisk
+          disk:
+            bus: virtio
+        - name: cloudinitdisk
+          disk:
+            bus: virtio
+      interfaces:
+      - name: default
+        masquerade: {}
+    resources:
+      requests:
+        memory: 2048Mi
+  networks:
+  - name: default
+    pod: {}
+  volumes:
+    - name: containerdisk
+      containerDisk:
+        image: omersafakbebek/test-vm-db
+    - name: cloudinitdisk
+      cloudInitNoCloud:
+        userDataBase64: SGkuXG4=
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vm-app-svc
+spec:
+  ports:
+  - port: 22
+    name: ssh
+    protocol: TCP
+    targetPort: 22
+  - port: 27017
+    name: db
+    targetPort: 27017
+  selector:
+    kubevirt.io/domain: db-vm
+  type: LoadBalancer

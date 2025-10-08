@@ -1,0 +1,1120 @@
+# Default values for scaleops.
+
+prometheusEnabled: true
+useAuth: false
+useAuthHeader: Authorization
+googleServiceAccountCredentials: "" # string of the credentials.json file
+authConfigSecretName: "scaleops-auth-config"
+authProvider:
+  provider: ""
+  # Enable roles in scalesops Admin, Operator and Viewer based on the auth provider below
+  rolesEnabled: false
+  defaultAdminGroups:
+    - "scaleops-admins"
+  defaultOperatorGroups: []
+  defaultViewerGroups: []
+  # defaultAdminGroup: "scaleops-admins"
+  # defaultOperatorGroup: "scaleops-operators"
+  # defaultViewerGroup: "scaleops-viewers"
+  groupsAPI:
+    enable: false
+    groupsAPIMethod: GET
+    groupsAPIURL: ""
+    groupsAPIJSONPath: ""
+  builtInAuth:
+    enabled: false
+  simpleAuth:
+    enabled: false
+    #  github:
+    #    clientID: ""
+    #    clientSecret: ""
+    #    # Optional organizations and teams, communicated through the "groups" scope.
+    #    #
+    #    # NOTE: This is an EXPERIMENTAL config option and will likely change.
+    #    #
+    #    # Legacy 'org' field. 'org' and 'orgs' cannot be used simultaneously. A user
+    #    # MUST be a member of the following org to authenticate with dex.
+    #    # org: my-organization
+    #    #
+    #    # Dex queries the following organizations for group information if the
+    #    # "groups" scope is provided. Group claims are formatted as "(org):(team)".
+    #    # For example if a user is part of the "engineering" team of the "coreos"
+    #    # org, the group claim would include "coreos:engineering".
+    #    #
+    #    # If orgs are specified in the config then user MUST be a member of at least one of the specified orgs to
+    #    # authenticate with dex.
+    #    #
+    #    # If neither 'org' nor 'orgs' are specified in the config and 'loadAllGroups' setting set to true then user
+    #    # authenticate with ALL user's GitHub groups. Typical use case for this setup:
+    #    # provide read-only access to everyone and give full permissions if user has 'my-organization:admins-team' group claim.
+    #    orgs: [
+    #        "scaleops-sh"
+    #    ]
+    #    hostName: ""
+    #    rootCA: ""
+    #    teamNameField: ""
+    #    useLoginAsID: ""
+    #    preferredEmailDomain: "scaleops.com"
+    #  oauth2:
+    #    audiences:
+    #      - something
+    #    issuerUrl: https://idp # mandatory
+    #    clientID: client_id # mandatory
+    #    clientSecret: client_secret # mandatory
+    #    scopes:
+    #      - openid
+    #      - vlad
+    #      - profile
+    #      - guy
+    #      - email
+    #  okta:
+    #    audiences:
+    #      - something
+    #    issuerUrl: https://idp # mandatory
+    #    clientID: client_id # mandatory
+    #    clientSecret: client_secret # mandatory
+    #    scopes:
+    #      - openid
+    #      - vlad
+    #      - profile
+    #      - guy
+    #      - email
+  azure:
+    clientID: client_id # mandatory
+    clientSecret: client_secret # mandatory
+    audiences:
+      - "00000002-0000-0000-c000-000000000000"
+    scopes:
+      - openid
+      - profile
+      - email
+    skipIssuerCheck: true
+#    groupsClaim: groups
+#  google:
+#    clientID: client_id # mandatory
+#    clientSecret: client_secret # mandatory
+#    scopes: # optional
+#    issuerUrl: # optional
+#  To get groups enabled you need to set googleServiceAccountCredentials above can be set via --set-file googleServiceAccountCredentials=/path/to/credentials.json
+#  openshift:
+#    issuerUrl: "" # can be left empty will use https://openshift.default.svc as default
+#    clientID: client_id # mandatory
+#    clientSecret: client_secret # mandatory
+#    groups: # optional can provide a way to limit access to specific groups
+#    - cluster-admins
+#    insecureCA: false # optional defaults to false
+#    rootCA: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt # optional if not provided will use the default CA of the pod (not the service account one)
+gitSyncSecretName: scaleops-git-secret
+slackSecretName: scaleops-slack-secret
+childMultiClusterParentDetailsSecretName: scaleops-multi-cluster-parent-details
+prometheusOperatorIntegration: false
+prometheusAddress: "scaleops-prometheus-server"
+namespace:
+  annotations: {}
+readOnly: false
+global:
+  verbose: 0 # deprecated
+  logLevel: &logLevelAnchor error
+  openShift: false
+  podLabels: {}
+  podAnnotations: {}
+  image:
+    repository: ghcr.io/scaleops-sh/scaleops-sh
+    pullPolicy: Always
+    tag: ""
+  gpuCostInclusion: "enabled"
+  enableNetworkMonitoring: false
+  networkPolicy:
+    enabled: false
+    #    apiServerServiceCIDR: 172.20.0.1/32
+    #    apiServerEndpointsCIDRs:
+    #      - 10.0.150.43/32
+    #      - 10.0.88.188/32
+    repoUpdaterInternetEnabled: false
+  securityContext: {}
+  #    runAsNonRoot: true
+  #    runAsUser: 65534
+  #    runAsGroup: 65534
+  #    fsGroup: 65534
+
+  containerSecurityContext: {}
+  #    readOnlyRootFilesystem: true
+
+  defaultSecurityContextEnabled: false
+  defaultSecurityContext:
+    runAsNonRoot: true
+  defaultContainerSecurityContext:
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+    capabilities:
+      drop:
+        - ALL
+  imagePullSecretName: scaleops
+  disableIstioInjection: true
+global_anchor: &global_anchor
+  pprofPort: 6060
+  enabled: true
+  createMonitorNamespace: false
+  nameOverride: ""
+  fullnameOverride: ""
+  metrics:
+    port: 8080
+    targetPort: 8080
+    serviceName: scaleops
+  serviceAccount:
+    # Specifies whether a service account should be created
+    create: true
+    # Annotations to add to the service account
+    annotations: {}
+    # The name of the service account to use.
+    # If not set and create is true, a name is generated using the fullname template
+    # name: ""
+  #  podAnnotations:
+  #    prometheus.io/port: "8080"
+
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  resources:
+    requests:
+      cpu: 150m
+      memory: 200Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 80
+  nodeSelector: {}
+  tolerations: []
+  clusterRole:
+    enabled: true
+  # name: scaleops
+
+  config:
+    enabled: false
+    configMapName: scaleops
+    value: ""
+  serviceType: ClusterIP
+  # all of those services would be exposed as the service type above.
+  services:
+    metrics:
+      targetPort: 8080
+      protocol: TCP
+      port: 8080
+  extraArgs: []
+parentURL: "" # If set it will override .Values.multicluster.parent.url
+multicluster:
+  tags: []
+  parent:
+    url: ""
+    skipTLSCertValidation: false
+    auth: {} # Optional, if URL is provided defaults to BuiltInAuth
+#    {
+#      type: "Oauth2ClientCredentials"
+#      clientId": "",
+#      clientSecret": "",
+#      tokenUrl": "",
+#      scopes: [], # array of strings
+#      endpointParams: {}, # map of string to array of strings
+#    }
+#    {
+#      type: "GoogleServiceAccount" # Requires setting googleServiceAccountCredentials
+#    }
+#    {
+#      type: "Github"
+#      githubToken: "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+#    }
+#    {
+#      type: "OpenShift"
+#      openshiftToken: "eyxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+#    }
+
+networkMonitor:
+  !!merge <<: *global_anchor
+  disableTolerations: false
+  tolerations:
+    - operator: "Exists"
+  resources:
+    limits:
+      cpu: 250m
+      memory: 1Gi
+    requests:
+      cpu: 50m
+      memory: 50Mi
+  nameOverride: network-monitor
+  priorityClassName: scaleops-preempt-internal
+  image: {}
+  serviceAccount:
+    # Specifies whether a service account should be created
+    create: true
+    # Annotations to add to the service account
+    annotations: {}
+    # The name of the service account to use.
+    # If not set and create is true, a name is generated using the fullname template
+    name: "scaleops-network-monitor"
+  podAnnotations:
+    scaleops.prometheus.io/scrape: "true"
+    scaleops.prometheus.io/path: "/scaleops_network_metrics"
+  rbac:
+    rolesInternal:
+      name: scaleops-network-monitor-internals
+recommender:
+  !!merge <<: *global_anchor
+  securityContext: {}
+  containerSecurityContext: {}
+  podLabels: {}
+  # disableIstioInjection: false
+  podAnnotations: {}
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - prometheus
+          namespaces:
+            - scaleops-system
+          topologyKey: topology.kubernetes.io/hostname
+  fullnameOverride: scaleops-recommender
+  image: {}
+  #    repository: ""
+  #    pullPolicy: ""
+  #    tag: ""
+  nameOverride: recommender
+  serviceAccount:
+    # Specifies whether a service account should be created
+    create: true
+    # Annotations to add to the service account
+    annotations: {}
+    # The name of the service account to use.
+    # If not set and create is true, a name is generated using the fullname template
+    name: "scaleops-recommender"
+  replicaCount: 1
+  rbac:
+    rolesInternal:
+      name: scaleops-recommender-internals
+  livenessProbe:
+    failureThreshold: 30
+    timeoutSeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    successThreshold: 1
+    timeoutSeconds: 4
+    periodSeconds: 5
+  resources:
+    requests:
+      cpu: 350m
+      memory: 500Mi
+  gogc: 70
+  maxConcurrentReconciles: 5
+  extraArgs: []
+syncLevel: 3
+disableEgress: false
+disableSync: false
+clusterName: &clusterName "scaleops-cluster"
+scaleopsRegion: "eu"
+agent:
+  !!merge <<: *global_anchor
+  fullnameOverride: scaleops-agent
+  securityContext: {}
+  containerSecurityContext: {}
+  podLabels: {}
+  # disableIstioInjection: false
+  podAnnotations: {}
+  image: {}
+  #    repository: ""
+  #    pullPolicy: ""
+  #    tag: ""
+  nameOverride: agent
+  serviceAccount:
+    # Specifies whether a service account should be created
+    create: true
+    # Annotations to add to the service account
+    annotations: {}
+    # The name of the service account to use.
+    # If not set and create is true, a name is generated using the fullname template
+    name: "scaleops-agent"
+  replicaCount: 1
+  rbac:
+    rolesInternal:
+      name: scaleops-agent-internals
+    rolesExternal:
+      name: scaleops-agent-externals
+  resources:
+    requests:
+      cpu: 250m
+      memory: 500Mi
+  livenessProbe:
+    failureThreshold: 30
+    timeoutSeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    successThreshold: 1
+    timeoutSeconds: 4
+    periodSeconds: 5
+  teamLabel: "\"\""
+admissions:
+  !!merge <<: *global_anchor
+  image: {}
+  #    repository: ""
+  #    pullPolicy: ""
+  #    tag: ""
+  nameOverride: admissions
+  securityContext: {}
+  containerSecurityContext: {}
+  hostNetwork: false
+  hostNetworkBindPort: 8000
+  podLabels: {}
+  # disableIstioInjection: false
+  podAnnotations: {}
+  services:
+    metrics:
+      targetPort: 8080
+      protocol: TCP
+      port: 8080
+    admission:
+      # The port that the webhook should listen on for requests.
+      # In GKE private clusters, by default kubernetes apiservers are allowed to
+      # talk to the cluster nodes only on 443 and 10250. so configuring
+      # port: 10250, will work out of the box without needing to add firewall
+      # rules or requiring NET_BIND_SERVICE capabilities to bind port numbers <1000.
+      targetPort: 10250
+      protocol: TCP
+      port: 443
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 200Mi
+  livenessProbe:
+    failureThreshold: 30
+    timeoutSeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    successThreshold: 1
+    timeoutSeconds: 4
+    periodSeconds: 5
+  tls:
+    # -- Name of certificate to be used by cert-manager
+    certificate: ""
+    # -- Secret name to be mounted with Scaleops Admissions TLS certificates
+    secret: "scaleops-admissions-tls"
+  rbac:
+    rolesInternal:
+      name: scaleops-admissions-internals
+dashboard:
+  !!merge <<: *global_anchor
+  fullnameOverride: scaleops-dashboards
+  securityContext: {}
+  containerSecurityContext: {}
+  podLabels: {}
+  # disableIstioInjection: false
+  podAnnotations: {}
+  extraEnvs: 
+    - name: SCALEOPS_AUTH_CONFIG_SECRET_NAME
+      value: "scaleops-auth-config"
+  userIdHeaders: []
+  extraArgs: []
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - prometheus
+          namespaces:
+            - scaleops-system
+          topologyKey: topology.kubernetes.io/hostname
+  resources:
+    requests:
+      cpu: 500m
+      memory: 450Mi
+  image: {}
+  #    repository: ""
+  #    pullPolicy: ""
+  #    tag: ""
+  nameOverride: dashboards
+  # serviceType: NodePort
+  serviceAnnotations: {}
+  services:
+    dashboard:
+      targetPort: dashboard
+      protocol: TCP
+      port: 8080
+  replicaCount: 1
+  # -- Used if Scaleops is running behind reverse proxy under subpath different from /
+  ## if using ingress this should match the path in the ingress
+  rootPath: &rootPath /
+  ingress:
+    enabled: false
+    # className: "contour"
+    path: *rootPath
+    pathType: Prefix
+    labels: {}
+    annotations: 
+      cert-manager.io/cluster-issuer: my-ca-issuer
+
+    # host: dashboard.demo.scaleops.sh
+    host: "scaleops.apps.ocp-shlomi-lab-0.terasky.demo"
+    tls: 
+     - secretName: scaleops-ingress-tls
+       hosts:
+         - scaleops.apps.ocp-shlomi-lab-0.terasky.demo
+  livenessProbe:
+    failureThreshold: 30
+    timeoutSeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    successThreshold: 1
+    timeoutSeconds: 4
+    periodSeconds: 5
+scaleopsToken: ""
+updater:
+  !!merge <<: *global_anchor
+  image: {}
+  #    repository: ""
+  #    pullPolicy: ""
+  #    tag: ""
+  enabled: true
+  nameOverride: updater
+  fullnameOverride: scaleops-updater
+  securityContext: {}
+  containerSecurityContext: {}
+  podLabels: {}
+  # disableIstioInjection: false
+  podAnnotations: {}
+  serviceAccount:
+    # Specifies whether a service account should be created
+    create: true
+    # Annotations to add to the service account
+    annotations: {}
+    # The name of the service account to use.
+    # If not set and create is true, a name is generated using the fullname template
+    name: "scaleops-updater"
+  rbac:
+    enabled: true
+    clusterRoleReadOnly:
+      name: scaleops-updater-readonly
+    roleInternal:
+      name: scaleops-updater-internals
+    clusterRolePrivileged:
+      name: scaleops-updater-privileged
+  resources:
+    requests:
+      cpu: 200m
+      memory: 350Mi
+  containerName: updater
+  replicaCount: 1
+  livenessProbe:
+    failureThreshold: 30
+    timeoutSeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    successThreshold: 1
+    timeoutSeconds: 4
+    periodSeconds: 5
+  serviceType: ClusterIP
+  # all of those services would be exposed as the service type above.
+  services:
+    metrics:
+      targetPort: 8080
+      protocol: TCP
+      port: 8080
+    api:
+      targetPort: 8082
+      protocol: TCP
+      port: 8082
+repoUpdaterEnabled: false
+repo-updater:
+  imageCredentials:
+    enabled: false
+  resources:
+    requests:
+      cpu: 20m
+      memory: 100M
+prometheus-adapter:
+  prometheus:
+    url: http://scaleops-prometheus-server.scaleops-system.svc
+    port: 80
+  metricsRelistInterval: 1m
+  resources:
+    requests:
+      cpu: 200m
+      memory: 128Mi
+  rules:
+    default: false
+    custom:
+      - seriesQuery: 'http_latency_ms_bucket{namespace!="",pod!=""}'
+        resources:
+          template: <<.Resource>>
+        name:
+          matches: ^(.*)_bucket$
+          as: "${1}_50th"
+        metricsQuery: histogram_quantile(0.50, sum(rate(<<.Series>>{<<.LabelMatchers>>}[5m])) by (le, <<.GroupBy>>))
+      - seriesQuery: 'http_latency_ms_bucket{namespace!="",pod!=""}'
+        resources:
+          template: <<.Resource>>
+        name:
+          matches: ^(.*)_bucket$
+          as: "${1}_99th"
+        metricsQuery: histogram_quantile(0.99, sum(rate(<<.Series>>{<<.LabelMatchers>>}[5m])) by (le, <<.GroupBy>>))
+      - seriesQuery: '{__name__=~"^http_requests_total$",container!="POD",namespace!="",pod!=""}'
+        resources:
+          overrides:
+            namespace: {resource: "namespace"}
+            pod: {resource: "pod"}
+        name:
+          matches: "(.*)_total"
+          as: "${1}_scaleops-custom-1"
+        metricsQuery: sum(rate(<<.Series>>{<<.LabelMatchers>>}[5m])) by (<<.GroupBy>>) * 60
+pdbs:
+  enable: false
+healthCheck:
+  image: {}
+  #repository: ghcr.io/scaleops-sh/pause
+  # tag: v3.9
+  podLabels: {}
+  # disableIstioInjection: false
+  defaultLabels:
+    enabled: "true"
+    app: "scaleops"
+    app.kubernetes.io/name: "scaleops"
+    app.kubernetes.io/component: "healthcheck"
+  resources:
+    requests:
+      memory: 10Mi
+      cpu: 10m
+    limits:
+      memory: 20Mi
+      cpu: 20m
+prometheus:
+  configmapReload:
+    prometheus:
+      image:
+        repository: ghcr.io/scaleops-sh/configmap-reload
+        tag: v0.74.0
+        pullPolicy: Always
+  alertmanager:
+    enabled: false
+  server:
+    image:
+      repository: ghcr.io/scaleops-sh/prometheus
+      tag: v2.51.5
+      pullPolicy: Always
+    fullnameOverride: scaleops-prometheus-server
+    priorityClassName: scaleops-preempt-internal
+    persistentVolume:
+      enabled: true
+      size: 40Gi
+    extraSecretMounts:
+      - name: scaleops-secret
+        optional: true
+        mountPath: /etc/secrets
+        subPath: ""
+        secretName: scaleops
+        readOnly: true
+    env:
+      - name: GOGC
+        value: "75"
+    resources:
+      requests:
+        memory: 1.5G
+        cpu: 900m
+    retention: "30d"
+    extraArgs:
+      storage.tsdb.retention.size: 34GiB
+    extraFlags:
+      - web.enable-lifecycle
+      - web.enable-admin-api
+    #    extraInitContainers:
+    #      - name: delete-wal
+    #        image: quay.io/prometheus/busybox
+    #        command: [ 'sh', '-c', "rm -rf /data/wal;" ]
+    #        volumeMounts:
+    #          - mountPath: /data
+    #            name: storage-volume
+    affinity:
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: eks.amazonaws.com/capacityType
+                  operator: In
+                  values:
+                    - ON_DEMAND
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: kubernetes.azure.com/scalesetpriority
+                  operator: NotIn
+                  values:
+                    - spot
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: karpenter.sh/capacity-type
+                  operator: NotIn
+                  values:
+                    - spot
+  #    podDisruptionBudget:
+  #      enabled: true
+  kube-state-metrics:
+    prometheusScrape: false
+    image:
+      repository: ghcr.io/scaleops-sh/kube-state-metrics
+      tag: v2.12.2
+      pullPolicy: Always
+    resources:
+      requests:
+        memory: 150Mi
+        cpu: 20m
+    fullnameOverride: scaleops-kube-state-metrics
+    collectors:
+      - horizontalpodautoscalers
+      - jobs
+      - limitranges
+      - namespaces
+      - nodes
+      - pods
+      - replicasets
+      - replicationcontrollers
+      - resourcequotas
+      - statefulsets
+      - cronjobs
+      - daemonsets
+      - deployments
+      - persistentvolumeclaims
+      - persistentvolumes
+      - poddisruptionbudgets
+      - storageclasses
+    extraArgs:
+      - --metric-labels-allowlist=pods=[*]
+      - --metric-labels-allowlist=nodes=[*],pods=[*]
+#    podDisruptionBudget:
+#      minAvailable: 1
+grafana:
+  fullnameOverride: scaleops-grafana
+  testFramework:
+    enabled: false
+  rbac:
+    pspEnabled: false
+  adminPassword: prom-operator
+  image:
+    pullSecrets:
+      - name: scaleops
+  sidecar:
+    image:
+      repository: ghcr.io/scaleops-sh/k8s-sidecar
+      tag: 1.21.0
+    dashboards:
+      enabled: true
+      labelValue: "1"
+      searchNamespace: "scaleops-system"
+  service:
+    type: NodePort
+  grafana.ini:
+    paths:
+      data: /var/lib/grafana/
+      logs: /var/log/grafana
+      plugins: /var/lib/grafana/plugins
+      provisioning: /etc/grafana/provisioning
+    analytics:
+      check_for_updates: true
+    log:
+      mode: console
+    grafana_net:
+      url: https://grafana.net
+    # new
+    security:
+      allow_embedding: true
+    server:
+      root_url: "%(protocol)s://%(domain)s/grafana"
+      serve_from_sub_path: true
+      enable_gzip: true
+  env:
+    GF_USERS_DEFAULT_THEME: "light"
+    GF_AUTH_ANONYMOUS_ENABLED: "true"
+    GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/tmp/dashboards/overview.json"
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          uid: prometheus
+          url: http://scaleops-prometheus-server/
+          access: proxy
+          #          isDefault: true
+          jsonData:
+            timeInterval: 10s
+metrics-server:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 100M
+policyDefaults:
+  completionPeriodSeconds: 180
+  binPackUnEvictablePods: true
+  binPackUnEvictableNotHealthyPods: true
+  fastReaction:
+    enabled:
+      cpu: true
+      memory: true
+    historyMinutes:
+      cpu: 20
+      memory: 20
+    reactionMinutes:
+      cpu: 12
+      memory: 12
+    windows:
+      cpu: 9h
+      memory: 9h
+    percentilePercentages:
+      cpu: 99
+      memory: 99
+    headroomPercentages:
+      cpu: 5
+      memory: 5
+    minScaleUpChangeDiff:
+      cpu: 0.5
+      memory: 0.5
+    minScaleDownChangeDiff:
+      cpu: 0.85
+      memory: 0.9
+    minScaleUpUnits:
+      cpu: 800m
+      memory: 1Gi
+    minScaleDownUnits:
+      cpu: 3000m
+      memory: 4Gi
+  production:
+    cpu:
+      window: 24h
+      requestPercentile: 93
+      requestHeadroom: 10
+      keepLimit: true
+      noLimit: true
+      limitPercentile: 99
+      limitHeadroom: 200
+      minAllowed: 10m
+      maxAllowed: ""
+    memory:
+      window: 24h
+      requestPercentile: 93
+      requestHeadroom: 5
+      keepLimit: true
+      noLimit: true
+      limitPercentile: 99
+      limitHeadroom: 200
+      minAllowed: 20Mi
+      maxAllowed: ""
+    nodeCappingAuto: true
+    hpaUtilTriggerRightsizeProtection: true
+    updatePolicy:
+      updateByTypeMode:
+        deployment: Ongoing
+        statefulSet: OnCreate
+        daemonSet: OnCreate
+        job: OnCreate
+        family: OnCreate
+        deploymentConfig: Ongoing
+      requiredWindowCoveragePercentage: 2
+      requiredWindowCoveragePercentageLocalStorage: 2
+      advancedBinPackCasLimitations: true
+      bootTime: false
+      maxUnavailablePodsPercentage: 10
+      minReplicas: 1
+      stabilizationWindowSeconds:
+        scaleDown: 3600
+        scaleUp: 900
+      minScaleDownUnits:
+        cpu: 350m
+        memory: 500M
+      minScaleUpUnits:
+        cpu: 300m
+        memory: 350M
+      minScaleDownRatio:
+        cpu: 0.35
+        memory: 0.35
+      minScaleUpRatio:
+        cpu: 0.30
+        memory: 0.30
+      allowRollingUpdate: true
+      skipRolloutUponAutomation: false
+    autoHealing:
+      minSteps:
+        cpu: 0.14
+        memory: 0.1
+      multiplier:
+        cpu: 1.2
+        memory: 1.2
+      enabled: true
+  costEfficient:
+    cpu:
+      window: 8h
+      requestPercentile: 75
+      requestHeadroom: 5
+      keepLimit: true
+      noLimit: true
+      limitPercentile: 99
+      limitHeadroom: 200
+      minAllowed: 1m
+      maxAllowed: ""
+    memory:
+      window: 12h
+      requestPercentile: 90
+      requestHeadroom: 5
+      keepLimit: true
+      noLimit: true
+      limitPercentile: 99
+      limitHeadroom: 200
+      minAllowed: 10Mi
+      maxAllowed: ""
+    nodeCappingAuto: true
+    hpaUtilTriggerRightsizeProtection: true
+    updatePolicy:
+      updateByTypeMode:
+        deployment: Ongoing
+        statefulSet: OnCreate
+        daemonSet: OnCreate
+        job: OnCreate
+        family: OnCreate
+        deploymentConfig: Ongoing
+      requiredWindowCoveragePercentage: 1
+      advancedBinPackCasLimitations: true
+      bootTime: false
+      maxUnavailablePodsPercentage: 10
+      minReplicas: 1
+      stabilizationWindowSeconds:
+        scaleDown: 3600
+        scaleUp: 360
+      minScaleDownUnits:
+        cpu: 350m
+        memory: 700M
+      minScaleUpUnits:
+        cpu: 350m
+        memory: 500M
+      minScaleDownRatio:
+        cpu: 0.35
+        memory: 0.40
+      minScaleUpRatio:
+        cpu: 0.30
+        memory: 0.35
+      allowRollingUpdate: true
+      skipRolloutUponAutomation: false
+    autoHealing:
+      minSteps:
+        cpu: 0.14
+        memory: 0.1
+      multiplier:
+        cpu: 1.2
+        memory: 1.2
+      enabled: true
+  weekendOptimized:
+    cpu:
+      window: 168h
+      requestPercentile: 90
+      requestHeadroom: 5
+      keepLimit: true
+      noLimit: true
+      limitPercentile: 99
+      limitHeadroom: 200
+      minAllowed: 10m
+      maxAllowed: ""
+    memory:
+      window: 168h
+      requestPercentile: 95
+      requestHeadroom: 5
+      keepLimit: true
+      noLimit: true
+      limitPercentile: 99
+      limitHeadroom: 200
+      minAllowed: 20Mi
+      maxAllowed: ""
+    nodeCappingAuto: true
+    hpaUtilTriggerRightsizeProtection: true
+    updatePolicy:
+      updateByTypeMode:
+        deployment: Ongoing
+        statefulSet: OnCreate
+        daemonSet: OnCreate
+        job: OnCreate
+        family: OnCreate
+        deploymentConfig: Ongoing
+      requiredWindowCoveragePercentage: 1
+      advancedBinPackCasLimitations: true
+      bootTime: false
+      maxUnavailablePodsPercentage: 10
+      minReplicas: 1
+      stabilizationWindowSeconds:
+        scaleDown: 3600
+        scaleUp: 900
+      minScaleDownUnits:
+        cpu: 300m
+        memory: 500M
+      minScaleUpUnits:
+        cpu: 250m
+        memory: 250M
+      minScaleDownRatio:
+        cpu: 0.25
+        memory: 0.25
+      minScaleUpRatio:
+        cpu: 0.20
+        memory: 0.20
+      allowRollingUpdate: true
+      skipRolloutUponAutomation: false
+    autoHealing:
+      minSteps:
+        cpu: 0.14
+        memory: 0.1
+      multiplier:
+        cpu: 1.2
+        memory: 1.2
+      enabled: true
+  highAvailability:
+    cpu:
+      window: 96h
+      requestPercentile: 95
+      requestHeadroom: 5
+      keepLimit: true
+      noLimit: true
+      limitPercentile: 99
+      limitHeadroom: 200
+      minAllowed: 70m
+      maxAllowed: ""
+    memory:
+      window: 96h
+      requestPercentile: 95
+      requestHeadroom: 5
+      keepLimit: true
+      noLimit: true
+      limitPercentile: 99
+      limitHeadroom: 200
+      minAllowed: 100Mi
+      maxAllowed: ""
+    nodeCappingAuto: true
+    hpaUtilTriggerRightsizeProtection: true
+    updatePolicy:
+      updateByTypeMode:
+        deployment: OnCreate
+        statefulSet: OnCreate
+        daemonSet: OnCreate
+        job: OnCreate
+        family: OnCreate
+        deploymentConfig: OnCreate
+      requiredWindowCoveragePercentage: 7
+      advancedBinPackCasLimitations: true
+      bootTime: false
+      maxUnavailablePodsPercentage: 10
+      minReplicas: 1
+      stabilizationWindowSeconds:
+        scaleDown: 3600
+        scaleUp: 360
+      minScaleDownUnits:
+        cpu: 600m
+        memory: 700M
+      minScaleUpUnits:
+        cpu: 300m
+        memory: 350M
+      minScaleDownRatio:
+        cpu: 0.35
+        memory: 0.35
+      minScaleUpRatio:
+        cpu: 0.30
+        memory: 0.30
+      allowRollingUpdate: true
+      skipRolloutUponAutomation: false
+    autoHealing:
+      minSteps:
+        cpu: 0.14
+        memory: 0.1
+      multiplier:
+        cpu: 1.2
+        memory: 1.2
+      enabled: true
+  batch:
+    cpu:
+      window: 96h
+      requestPercentile: 90
+      requestHeadroom: 5
+      keepLimit: true
+      noLimit: true
+      limitPercentile: 99
+      limitHeadroom: 200
+      minAllowed: 10m
+      maxAllowed: ""
+    memory:
+      window: 96h
+      requestPercentile: 95
+      requestHeadroom: 5
+      keepLimit: true
+      noLimit: true
+      limitPercentile: 99
+      limitHeadroom: 200
+      minAllowed: 100Mi
+      maxAllowed: ""
+    nodeCappingAuto: true
+    hpaUtilTriggerRightsizeProtection: true
+    updatePolicy:
+      updateByTypeMode:
+        deployment: OnCreate
+        statefulSet: OnCreate
+        daemonSet: OnCreate
+        job: OnCreate
+        family: OnCreate
+        deploymentConfig: OnCreate
+      requiredWindowCoveragePercentage: 1
+      advancedBinPackCasLimitations: true
+      bootTime: false
+      maxUnavailablePodsPercentage: 10
+      minReplicas: 1
+      stabilizationWindowSeconds:
+        scaleDown: 3600
+        scaleUp: 360
+      minScaleDownUnits:
+        cpu: 600m
+        memory: 700M
+      minScaleUpUnits:
+        cpu: 300m
+        memory: 350M
+      minScaleDownRatio:
+        cpu: 0.35
+        memory: 0.35
+      minScaleUpRatio:
+        cpu: 0.30
+        memory: 0.30
+      allowRollingUpdate: true
+      skipRolloutUponAutomation: true
+    autoHealing:
+      minSteps:
+        cpu: 0.14
+        memory: 0.1
+      multiplier:
+        cpu: 1.2
+        memory: 1.2
+      enabled: true
+# customPolicies: [] - l
+customPolicies: []
+#httpsProxy: "http://someproxydomain.com:8080"
+httpsProxy: ""
+karpenter:
+  settings:
+    aws:
+      clusterName: *clusterName
+    azure:
+      clusterName: *clusterName
+      clusterResourceGroup: ""
+    runMode: "simulation-only"
+  replicas: 1
+  soloInstallation: false
+  logLevel: *logLevelAnchor
+

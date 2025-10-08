@@ -1,0 +1,193 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monitored-app-config
+  namespace: monitored-app
+  labels:
+    app.kubernetes.io/name: monitored-app
+    app.kubernetes.io/component: config
+data:
+  nginx.conf: |
+    events {
+        worker_connections 1024;
+    }
+    
+    http {
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+        
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                        '$status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for"';
+        
+        access_log /var/log/nginx/access.log main;
+        error_log /var/log/nginx/error.log warn;
+        
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        
+        server {
+            listen 8080;
+            server_name localhost;
+            
+            location / {
+                root /usr/share/nginx/html;
+                index index.html;
+            }
+            
+            location /health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+            
+            location /ready {
+                access_log off;
+                return 200 "ready\n";
+                add_header Content-Type text/plain;
+            }
+            
+            location /metrics {
+                root /usr/share/nginx/html;
+                try_files /metrics.html =404;
+                add_header Content-Type text/plain;
+            }
+            
+            location /slow {
+                access_log off;
+                return 200 "slow response\n";
+                add_header Content-Type text/plain;
+                # Simulate slow response
+                add_header X-Sleep "2s";
+            }
+            
+            location /error {
+                access_log off;
+                return 500 "simulated error\n";
+                add_header Content-Type text/plain;
+            }
+        }
+    }
+  
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Monitored App - Homelab Foundations</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; }
+            .container { background: rgba(255,255,255,0.1); padding: 30px; border-radius: 15px; backdrop-filter: blur(10px); }
+            h1 { color: #fff; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+            .info { background: rgba(255,255,255,0.2); padding: 20px; border-radius: 8px; margin: 20px 0; }
+            .status { color: #4ade80; font-weight: bold; }
+            .metrics { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; font-family: monospace; }
+            a { color: #60a5fa; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+            .endpoint { background: rgba(255,255,255,0.1); padding: 10px; margin: 5px 0; border-radius: 5px; }
+        </style>
+        <script>
+            function updateMetrics() {
+                fetch('/metrics')
+                    .then(response => response.text())
+                    .then(data => {
+                        document.getElementById('live-metrics').textContent = data;
+                    })
+                    .catch(error => console.error('Error fetching metrics:', error));
+            }
+            
+            setInterval(updateMetrics, 5000);
+            window.onload = updateMetrics;
+        </script>
+    </head>
+    <body>
+        <div class="container">
+            <h1>📊 Monitored App - Comprehensive Monitoring Example</h1>
+            <p>This application demonstrates comprehensive monitoring integration with Prometheus, Grafana, and alerting.</p>
+            
+            <div class="info">
+                <h3>Monitoring Features</h3>
+                <ul>
+                    <li><strong>Status:</strong> <span class="status">Running with Full Monitoring</span></li>
+                    <li><strong>Metrics:</strong> Prometheus ServiceMonitor configured</li>
+                    <li><strong>Alerting:</strong> PrometheusRule with 6 alert conditions</li>
+                    <li><strong>Scaling:</strong> HorizontalPodAutoscaler based on CPU/Memory</li>
+                    <li><strong>Dashboard:</strong> Custom Grafana dashboard</li>
+                    <li><strong>Health Checks:</strong> Liveness and readiness probes</li>
+                </ul>
+            </div>
+            
+            <h3>Available Endpoints</h3>
+            <div class="endpoint"><strong>/</strong> - This monitoring dashboard</div>
+            <div class="endpoint"><strong>/health</strong> - Health check endpoint (liveness probe)</div>
+            <div class="endpoint"><strong>/ready</strong> - Readiness check endpoint</div>
+            <div class="endpoint"><strong>/metrics</strong> - Prometheus metrics endpoint</div>
+            <div class="endpoint"><strong>/slow</strong> - Simulate slow response (for testing alerts)</div>
+            <div class="endpoint"><strong>/error</strong> - Simulate error response (for testing alerts)</div>
+            
+            <h3>Live Metrics</h3>
+            <div class="metrics">
+                <pre id="live-metrics">Loading metrics...</pre>
+            </div>
+            
+            <h3>Monitoring Integration</h3>
+            <ul>
+                <li><strong>Prometheus:</strong> Scrapes metrics every 30 seconds</li>
+                <li><strong>Grafana:</strong> Custom dashboard with key metrics</li>
+                <li><strong>Alertmanager:</strong> Configured alerts for errors, performance, and availability</li>
+                <li><strong>HPA:</strong> Auto-scaling based on resource utilization</li>
+            </ul>
+            
+            <h3>Testing Monitoring</h3>
+            <p>Test the monitoring system:</p>
+            <ul>
+                <li><a href="/slow">Generate slow responses</a> (triggers HighResponseTime alert)</li>
+                <li><a href="/error">Generate errors</a> (triggers HighErrorRate alert)</li>
+                <li>Scale the deployment to test HPA</li>
+                <li>Check Grafana dashboard for visualizations</li>
+            </ul>
+            
+            <h3>Alert Conditions</h3>
+            <ul>
+                <li><strong>HighErrorRate:</strong> Error rate > 5% for 5 minutes</li>
+                <li><strong>HighResponseTime:</strong> 95th percentile > 1s for 5 minutes</li>
+                <li><strong>ApplicationDown:</strong> Service unreachable for 1 minute</li>
+                <li><strong>HighMemoryUsage:</strong> Memory usage > 80% for 5 minutes</li>
+                <li><strong>HighCPUUsage:</strong> CPU usage > 80% for 5 minutes</li>
+                <li><strong>PodCrashLooping:</strong> Pod restarts detected</li>
+            </ul>
+        </div>
+    </body>
+    </html>
+  
+  metrics.html: |
+    # HELP monitored_app_requests_total Total number of HTTP requests
+    # TYPE monitored_app_requests_total counter
+    monitored_app_requests_total{method="GET",status="200"} 1234
+    monitored_app_requests_total{method="GET",status="404"} 12
+    monitored_app_requests_total{method="GET",status="500"} 3
+    
+    # HELP monitored_app_request_duration_seconds Request duration in seconds
+    # TYPE monitored_app_request_duration_seconds histogram
+    monitored_app_request_duration_seconds_bucket{le="0.1"} 800
+    monitored_app_request_duration_seconds_bucket{le="0.5"} 1200
+    monitored_app_request_duration_seconds_bucket{le="1.0"} 1240
+    monitored_app_request_duration_seconds_bucket{le="2.0"} 1248
+    monitored_app_request_duration_seconds_bucket{le="+Inf"} 1249
+    monitored_app_request_duration_seconds_sum 156.7
+    monitored_app_request_duration_seconds_count 1249
+    
+    # HELP monitored_app_active_connections Current active connections
+    # TYPE monitored_app_active_connections gauge
+    monitored_app_active_connections 42
+    
+    # HELP monitored_app_uptime_seconds Application uptime in seconds
+    # TYPE monitored_app_uptime_seconds counter
+    monitored_app_uptime_seconds 86400
+    
+    # HELP monitored_app_errors_total Total number of errors by type
+    # TYPE monitored_app_errors_total counter
+    monitored_app_errors_total{type="timeout"} 5
+    monitored_app_errors_total{type="connection"} 2
+    monitored_app_errors_total{type="internal"} 3

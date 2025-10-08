@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: restaurant-api-config
+  labels:
+    app: restaurant-api
+data:
+  APP_PORT: "8080"
+  DATABASE_HOST: "database-clusterip.default.svc.cluster.local"
+  DATABASE_USER: postgres
+  DATABASE_PASSWORD: admin123
+  DATABASE_PORT: "5432"
+  DATABASE: postgres
+  MERCADOPAGO_URL: "http://mercadopago-api-clusterip.default.svc.cluster.local:3004"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restaurant-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: restaurant-api
+  template:
+    metadata:
+      labels:
+        app: restaurant-api
+    spec:
+      containers:
+        - name: restaurant-api
+          image: negreirosdev/restaurant-server:latest
+          imagePullPolicy: "IfNotPresent"
+          envFrom:
+            - configMapRef:
+                name: restaurant-api-config
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "0.5"
+              memory: "1Gi"
+              ephemeral-storage: "2Gi"
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: restaurant-api
+  namespace: rms
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: restaurant-api
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: restaurant-api-clusterip
+spec:
+  type: NodePort
+  selector:
+    app: restaurant-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30001

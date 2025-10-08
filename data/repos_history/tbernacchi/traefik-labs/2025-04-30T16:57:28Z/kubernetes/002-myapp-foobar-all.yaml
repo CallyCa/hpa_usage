@@ -1,0 +1,156 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traefik-foo-bar
+  namespace: foobar
+  labels:
+    app: traefik-foo-bar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traefik-foo-bar
+  template:
+    metadata:
+      labels:
+        app: traefik-foo-bar
+    spec:
+      securityContext:
+        fsGroup: 101
+        runAsUser: 100
+        runAsGroup: 101
+      containers:
+      - image: ambrosiaaaaa/foobar-api:v0.0.6
+        name: foobar-app
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: certificados
+          mountPath: /cert 
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 5 
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+            scheme: HTTPS
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+      volumes:
+      - name: certificados
+        persistentVolumeClaim:
+          claimName: certificados
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: traefik-foo-bar-hpa
+  namespace: traefik-v2
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: traefik-foo-bar
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik-foo-bar
+  namespace: traefik-v2
+spec:
+  ports:
+  - name: traefik-foo-bar
+    port: 443
+    targetPort: 80
+  selector:
+    app: traefik-foo-bar
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-myapp-prefix
+  namespace: traefik-v2
+spec:
+  stripPrefix:
+    prefixes:
+      - /myapp
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: test-auth
+  namespace: traefik-v2
+spec:
+  basicAuth:
+    secret: basic-auth-secret # See kubernetes/users/README.md
+---
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: secure-transport
+  namespace: traefik-v2
+spec:
+  serverName: traefik.mykubernetes.com
+  rootCAsSecrets:
+  - traefik-cert  # 005-myapp-secret.yaml
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: traefik-foo-bar
+  namespace: traefik-v2
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - kind: Rule
+    match: |
+      Host(`traefik.mykubernetes.com`) &&
+      PathPrefix(`/myapp`) &&
+      (Path(`/myapp`) || Path(`/myapp/`) ||
+      Path(`/myapp/data`) || Path(`/myapp/data/`) ||
+      Path(`/myapp/echo`) || Path(`/myapp/echo/`) ||
+      Path(`/myapp/bench`) || Path(`/myapp/bench/`) ||
+      Path(`/myapp/api`) || Path(`/myapp/api/`) ||
+      Path(`/myapp/health`) || Path(`/myapp/health/`))
+    services:
+    - name: traefik-foo-bar
+      port: 443
+      serversTransport: secure-transport
+    middlewares:
+    - name: strip-myapp-prefix
+    - name: test-auth
+  tls:
+    secretName: traefik-foo-bar-cert # See certs/README.md

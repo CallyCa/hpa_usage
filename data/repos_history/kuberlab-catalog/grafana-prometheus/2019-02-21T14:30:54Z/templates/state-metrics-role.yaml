@@ -1,0 +1,60 @@
+{{- if .Values.RBAC }}
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Namespace }}-kube-state-metrics
+rules:
+- apiGroups: [""]
+  resources:
+    - namespaces
+    - nodes
+    - persistentvolumeclaims
+    - pods
+    - services
+    - resourcequotas
+    - replicationcontrollers
+    - limitranges
+    - persistentvolumeclaims
+    - persistentvolumes
+    - endpoints
+    - secrets
+    - configmaps
+  verbs: ["list", "watch"]
+- apiGroups: ["extensions", "apps"]
+  resources:
+    - daemonsets
+    - deployments
+    - replicasets
+    - statefulsets
+  verbs: ["list", "watch"]
+- apiGroups: ["apps"]
+  resources:
+    - statefulsets
+  verbs:
+    - get
+    - list
+    - watch
+- apiGroups:
+    - batch
+  resources:
+    - cronjobs
+    - jobs
+  verbs:
+    - list
+    - watch
+- apiGroups:
+    - autoscaling
+  resources:
+    - horizontalpodautoscalers
+  verbs:
+    - list
+    - watch
+- apiGroups:
+    - policy
+  resources:
+    - poddisruptionbudgets
+  verbs:
+    - list
+    - watch
+{{- end }}

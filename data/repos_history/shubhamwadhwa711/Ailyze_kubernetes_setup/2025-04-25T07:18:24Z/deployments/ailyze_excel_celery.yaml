@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ailyze-excel-celery-deployment
+  labels:
+    app:  ailyze-excel-celery
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ailyze-excel-celery
+  template:
+    metadata:
+      labels:
+        app: ailyze-excel-celery
+    spec:
+      terminationGracePeriodSeconds: 60
+      affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: ailyze-excel-celery
+            topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: ailyze-excel
+        image: ailyzeregistery.azurecr.io/ailyze-django:latest 
+        imagePullPolicy: Always
+        command: ["celery", "-A", "AILYZE", "worker", "-l", "info", "-Q", "celery","-Ofair"]
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: CELERY_BROKER_URL
+          valueFrom:
+            secretKeyRef:
+              name: ailyze-secret
+              key: celery-broker-url
+        - name: CELERY_RESULT_BACKEND
+          valueFrom:
+            secretKeyRef:
+              name: ailyze-secret
+              key: celery-result-backend
+        - name: DJANGO_SETTINGS_MODULE
+          value: "AILYZE.settings"  
+        volumeMounts:
+        - name: app-source
+          mountPath: /usr/src/app 
+        resources:
+          requests:
+            memory: "1500Mi"
+          limits:
+            memory: "3Gi"
+      volumes:
+      - name: app-source
+        persistentVolumeClaim:
+          claimName: ailyze-celeryworkers-pvc
+      imagePullSecrets:
+      - name: acr-secret

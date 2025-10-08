@@ -1,0 +1,347 @@
+# Kustomization configuration for production environment
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: managex-school-production
+namePrefix: managex-
+nameSuffix: -production
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: false
+    includeTemplates: true
+    
+resources:
+  - ../../base
+  
+# Patches for different Kubernetes resources
+patches:
+  # Patch for CronJob configuration
+  - target:
+      kind: CronJob
+      name: school-cronjob
+    patch: |-
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: school-cronjob
+        labels:
+          app: school-cronjob
+      spec:
+        jobTemplate:
+          spec:
+            template:
+              metadata:
+                labels:
+                  app: school-cronjob
+              spec:
+                volumes:
+                  - name: school-secrets
+                    csi:
+                      driver: secrets-store.csi.k8s.io
+                      readOnly: true
+                      volumeAttributes:
+                        secretProviderClass: managex-school-secrets-production
+
+  # Patch for Deployment configuration
+  - target:
+      kind: Deployment
+      name: school
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: school
+      spec:
+        template:
+          spec:
+            volumes:
+              - name: school-secrets
+                csi:
+                  driver: secrets-store.csi.k8s.io
+                  readOnly: true
+                  volumeAttributes:
+                    secretProviderClass: managex-school-secrets-production
+              - name: school-server-configuration
+                configMap:
+                  name: managex-school-server-config-production
+              - name: school-nginx-configuration
+                configMap:
+                  name: managex-school-nginx-config-production
+            containers:
+              - name: managex-school
+                resources:
+                  requests:
+                    cpu: 1
+                    memory: 4Gi
+                  limits:
+                    cpu: 2
+                    memory: 8Gi
+
+  # Patch for Ingress configuration
+  - target:
+      kind: Ingress
+      name: school-ingress
+    patch: |-
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: school-ingress
+        annotations:
+          alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-south-1:399600302704:certificate/39c09169-0ac4-43ee-9ba7-627391f0f45e
+          alb.ingress.kubernetes.io/cors-allow-origin: >-
+            https://heycampus.app,https://www.heycampus.app,https://*.heycampus.app
+          alb.ingress.kubernetes.io/load-balancer-attributes: >-
+            idle_timeout.timeout_seconds=60,
+            deletion_protection.enabled=true,
+            routing.http2.enabled=true,
+            routing.http.drop_invalid_header_fields.enabled=true,
+            access_logs.s3.enabled=true,
+            access_logs.s3.bucket=heycampuslive,
+            access_logs.s3.prefix=ELBLogs
+
+      spec:
+        rules:
+          - http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: managex-school-service-production
+                      port:
+                        number: 80
+        tls:
+          - hosts:
+              - heycampus.app
+            secretName: tls-secret
+
+  # Patch for ConfigMap configuration
+  - target:
+      kind: ConfigMap
+      name: school-server-config
+    patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: school-server-config
+      data:
+        default: |
+          # Map for real scheme from CloudFront
+          map $http_x_forwarded_proto $real_scheme {
+            default $http_x_forwarded_proto;
+            ''      $scheme;
+          }
+
+
+          # HTTP server block - CloudFront will handle HTTPS termination
+          server {
+            listen 80;
+            listen [::]:80;
+            server_name heycampus.app www.heycampus.app *.heycampus.app;
+
+            # Set the real IP from CloudFront and ALB
+            real_ip_header X-Forwarded-For;
+            set_real_ip_from 0.0.0.0/0; 
+            real_ip_recursive on;
+
+            # Specify the root directory for your application
+            root /var/www/html/public;
+            
+            # CORS (Cross-Origin Resource Sharing) headers for API access
+            set $cors_origin '';
+            if ($http_origin ~* ^https?://(localhost:[0-9]+|([a-z0-9-]+\.)?heycampus\.app(:[0-9]+)?)$) {
+                set $cors_origin $http_origin;
+            }
+            add_header 'Access-Control-Allow-Origin' $cors_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, DELETE, PUT' always;
+            add_header 'Access-Control-Allow-Headers' 'Origin, X-Requested-With, Content-Type, Accept, Authorization' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Vary' 'Origin' always;
+            
+            # Security headers
+            add_header X-Frame-Options "SAMEORIGIN" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header X-XSS-Protection "1; mode=block" always;
+
+            # Specify index files
+            index index.php index.html index.htm;
+
+            # Set character encoding
+            charset utf-8;
+
+            # Set maximum client body size
+            client_max_body_size 1024M;
+
+
+            # Main location block for handling requests
+            location / {
+                try_files $uri $uri/ /index.php?$query_string;
+            }
+
+
+            # Handle favicon and robots.txt requests separately
+            location = /favicon.ico {
+                access_log off;
+                log_not_found off;
+            }
+            
+            location = /robots.txt {
+                access_log off;
+                log_not_found off;
+            }
+
+
+            # Error page handling for 404 errors
+            error_page 404 /index.php;
+
+
+            # Error page handling for 502, 503, and 504 errors
+            error_page 502 503 504 /error.html;
+
+
+            # PHP handling configuration
+            location ~ \.php$ {
+                include snippets/fastcgi-php.conf;  # Default PHP handling snippet
+
+                # Pass PHP requests to the PHP-FPM socket
+                fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+                fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                include fastcgi_params;
+            }
+
+
+            # Restrict access to hidden files
+            location ~ /\.(?!well-known).* {
+                deny all;
+            }
+
+
+            # Enhance security with rate limiting (Uncomment to enable)
+            # limit_req zone=mylimit burst=10 nodelay;
+            
+            # Enable gzip compression (Uncomment to enable)
+            gzip on;
+            gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+          }
+
+  # Patch for HorizontalPodAutoscaler configuration
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: school-pod-autoscaler
+    patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: school-pod-autoscaler
+      spec:
+        scaleTargetRef:
+          name: managex-school-production
+        behavior:
+          scaleDown:
+            stabilizationWindowSeconds: 60
+
+  # Patch for SecretProviderClass configuration
+  - target:
+      kind: SecretProviderClass
+      name: school-secrets
+    patch: |-
+      apiVersion: secrets-store.csi.x-k8s.io/v1
+      kind: SecretProviderClass
+      metadata:
+        name: school-secrets
+      spec:
+        parameters:
+          objects: |
+            - objectName: arn:aws:secretsmanager:ap-south-1:399600302704:secret:ManageX-School-Production-lks03l
+              objectAlias: ".env"
+              objectType: "secretsmanager"
+
+  # Patch for Nginx ConfigMap configuration
+  - target:
+      kind: ConfigMap
+      name: school-nginx-config
+    patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: school-nginx-config
+      data:
+        nginx.conf: |
+          # Nginx user and process configuration
+          user www-data;
+          worker_processes auto;
+          pid /run/nginx.pid;
+          include /etc/nginx/modules-enabled/*.conf;
+
+          # Event handling configuration
+          events {
+              worker_connections 1024;
+              multi_accept on;
+              use epoll;
+          }
+
+          http {
+              ##
+              # Basic Settings
+              ##
+              sendfile on;
+              tcp_nopush on;
+              tcp_nodelay on;
+              keepalive_timeout 65;
+              types_hash_max_size 2048;
+              server_tokens off;
+              
+              # Global timeout settings
+              proxy_read_timeout 600;
+              proxy_connect_timeout 600;
+              proxy_send_timeout 600;
+              fastcgi_read_timeout 600;
+              fastcgi_connect_timeout 600;
+              fastcgi_send_timeout 600;
+
+              # Global buffer sizes
+              client_body_buffer_size 128k;
+              client_header_buffer_size 3k;
+              large_client_header_buffers 4 8k;
+              client_max_body_size 1024M;
+
+              # Global timeouts
+              client_body_timeout 12;
+              client_header_timeout 12;
+              send_timeout 10;
+
+              # Log format configuration
+              log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                              '$status $body_bytes_sent "$http_referer" '
+                              '"$http_user_agent" "$http_x_forwarded_for"';
+
+              # MIME type configuration
+              include /etc/nginx/mime.types;
+              default_type application/octet-stream;
+
+              # SSL/TLS configuration
+              ssl_protocols TLSv1.2 TLSv1.3;
+              ssl_prefer_server_ciphers on;
+              ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+
+              # Logging configuration
+              access_log /var/log/nginx/access.log main;
+              error_log /var/log/nginx/error.log;
+
+              # Gzip compression configuration
+              gzip on;
+              gzip_vary on;
+              gzip_proxied any;
+              gzip_comp_level 6;
+              gzip_buffers 16 8k;
+              gzip_http_version 1.1;
+              gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+              # Error handling configuration
+              fastcgi_intercept_errors off;
+              proxy_intercept_errors off;
+
+              # Virtual host configuration includes
+              include /etc/nginx/conf.d/*.conf;
+              include /etc/nginx/sites-enabled/*;
+          }

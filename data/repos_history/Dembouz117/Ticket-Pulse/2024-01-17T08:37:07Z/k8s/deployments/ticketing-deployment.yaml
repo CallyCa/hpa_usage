@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticketing-deployment
+  namespace: cs203
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ticketing
+  template:
+    metadata:
+      labels:
+        app: ticketing
+        type: ticketing
+    spec:
+      terminationGracePeriodSeconds: 3
+      containers:
+        - name: ticketing
+          readinessProbe:
+            httpGet:
+              path: /ticketing/health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          imagePullPolicy: Always
+          image: tigercxx/cs203-ticketing:v2.2.0
+          resources:
+            limits:
+              memory: "500Mi"
+              cpu: "200m"
+          env:
+            - name: POSTGRES_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  name: db-redis-secrets
+                  key: POSTGRES_ADDRESS
+            - name: REDIS_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  name: db-redis-secrets
+                  key: REDIS_ADDRESS
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: auth-secrets
+                  key: SECRET_KEY
+            - name: COOKIE_DOMAIN
+              value: "localhost"
+            - name: ENVIRONMENT
+              value: "development"
+          ports:
+            - containerPort: 8081
+            - containerPort: 5003
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ticketing-service
+  namespace: cs203
+spec:
+  type: NodePort
+  selector:
+    app: ticketing
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8081
+      targetPort: 8081
+      nodePort: 30082 # Optional: Specify a nodePort for HTTP
+    - name: grpc
+      protocol: TCP
+      port: 5003
+      targetPort: 5003
+      nodePort: 30083 # Optional: Specify a nodePort for gRPC
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ticketing-hpa
+  namespace: cs203
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ticketing-deployment
+  minReplicas: 1
+  maxReplicas: 5 # Adjust as needed
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70 # Adjust the target CPU utilization percentage

@@ -1,0 +1,328 @@
+# Ref:-https://www.zupzup.org/k8s-rabbitmq-cluster/index.html
+# Ref:-https://github.com/marcel-dempers/docker-development-youtube-series/tree/master/messaging/rabbitmq
+# Ref:-https://www.linkedin.com/pulse/setup-rabbitmq-cluster-ubuntu-using-multipass-mahmoud-hamdy
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dev-rmq
+  namespace: development
+type: Opaque
+data:
+  RABBITMQ-USERNAME: Ymx1ZWVk #echo -n "blueed" | base64
+  RABBITMQ-PASSWORD: Ymx1ZWVkRGV2 #echo -n "blueedDev" | base64
+  #echo -n ADZOMBEQUWULYVODGOFQ | base64
+  RABBITMQ_ERLANG_COOKIE: QURaT01CRVFVV1VMWVZPREdPRlE=
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: dev-rmq
+  namespace: development
+  labels:
+    app: dev-rmq
+    env: development
+spec:
+  storageClassName: nfs-csi
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+# ---
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: dev-rmq-cookie
+#   namespace: development
+# type: Opaque
+# data:
+#   # openssl rand -hex 32
+#   # echo -n YOUR_ERLANG_COOKIE | base64
+#   RABBITMQ_ERLANG_COOKIE: MjA2YjRlMWE5Njc3YjIxNGZjNThlZWJjODJkZTU0ZDcxZmEzNDJlMjc2YjhiYTk0YTJiMmQzY2JhNDc5YmNlMA==
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dev-rmq
+  namespace: development
+  labels:
+    app: dev-rmq
+    env: development
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  serviceName: "rabbitmq-internal"
+  selector:
+    matchLabels:
+      app: dev-rmq
+  template:
+    metadata:
+      labels:
+        app: dev-rmq
+    spec:
+      serviceAccountName: "krishna"
+      terminationGracePeriodSeconds: 10
+      imagePullSecrets:
+      - name: regcred
+      restartPolicy: Always
+      containers:
+      - name: dev-rmq
+        image: "registry:5000/rmq_dev_custom:1.0"
+        livenessProbe:
+          tcpSocket:
+            port: 15674
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 2
+        readinessProbe:
+          tcpSocket:
+            port: 15674
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 2
+        lifecycle:
+          postStart:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - >
+                until rabbitmqctl --erlang-cookie ${RABBITMQ_ERLANG_COOKIE} await_startup; do sleep 5; done; rabbitmqctl --erlang-cookie ${RABBITMQ_ERLANG_COOKIE} set_policy ha-ttl ".*" '{"ha-mode":"exactly", "ha-params":2, "ha-sync-mode":"automatic", "expires":259200000}' --apply-to queues --priority 1
+        imagePullPolicy: "IfNotPresent"
+        # securityContext:
+        #   privileged: true
+        ports:
+        - name: prometheus
+          containerPort: 15692
+        - name: amqps-port
+          containerPort: 5671
+        - name: amqp-port
+          containerPort: 5672
+        - name: rabbitmq-ui
+          containerPort: 15672
+        - name: rabbitmq-ws
+          containerPort: 15674
+        - name: discovery
+          containerPort: 4369
+        envFrom:
+        - secretRef:
+            name: dev-frontend-env
+        env:
+        - name: TZ
+          value: Asia/Kolkata
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name # status.podIP metadata.name
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: RABBITMQ_NODENAME
+          value: "rabbit@$(HOSTNAME).rabbitmq-internal.$(NAMESPACE).svc.cluster.local"
+        - name: RABBITMQ_USE_LONGNAME
+          value: "true"
+        - name: K8S_SERVICE_NAME
+          value: "rabbitmq-internal"
+        - name: RABBITMQ_ERLANG_COOKIE
+          valueFrom:
+            secretKeyRef:
+              name: dev-rmq
+              key: RABBITMQ_ERLANG_COOKIE
+        - name: RABBITMQ_DEFAULT_USER
+          valueFrom:
+            secretKeyRef:
+              name: dev-rmq
+              key: RABBITMQ-USERNAME
+        - name: RABBITMQ_DEFAULT_PASS
+          valueFrom:
+            secretKeyRef:
+              name: dev-rmq
+              key: RABBITMQ-PASSWORD
+        resources:
+          limits:
+            cpu: "250m"
+            memory: "2Gi"
+          requests:
+            cpu: "250m"
+            memory: "2Gi"
+        volumeMounts:
+        - name: dev-rmq
+          mountPath: /var/lib/rabbitmq
+          readOnly: false
+      volumes:
+      - name: dev-rmq
+        persistentVolumeClaim:
+          claimName: dev-rmq
+        # - name: dev-rmq-config
+      #   mountPath: /etc/rabbitmq
+      # volumes:
+      # - name: dev-rmq-config
+      #   configMap:
+      #     name: dev-rmq
+      # readinessProbe:
+      #   exec:
+      #     command:
+      #     - rabbitmqctl
+      #     - wait
+      #     - rabbit@localhost
+      #     - --timeout
+      #     - "30"
+      #   initialDelaySeconds: 30
+      #   periodSeconds: 10
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: env
+                operator: In
+                values:
+                - development
+  # volumeClaimTemplates:
+# - metadata:
+#     name: dev-rmq
+#   spec:
+#     accessModes:
+#     - ReadWriteOnce
+#     storageClassName: nfs-csi
+#     resources:
+#       requests:
+#         storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dev-rmq
+  namespace: development
+  annotations:
+    prometheus_io_scrape: "true"
+  labels:
+    app: dev-rmq
+    env: development
+spec:
+  selector:
+    app: dev-rmq
+  type: NodePort # ClusterIP, NodePort
+  ports:
+  - name: amqps-service
+    protocol: TCP
+    port: 5671
+    targetPort: amqps-port
+    nodePort: 30007
+  - name: amqp-service
+    protocol: TCP
+    port: 5672
+    targetPort: amqp-port
+    nodePort: 30008
+  - name: ui-service
+    protocol: TCP
+    port: 15672
+    targetPort: rabbitmq-ui
+    nodePort: 30009
+  - name: ws-service
+    protocol: TCP
+    port: 15674
+    targetPort: rabbitmq-ws
+    nodePort: 30010
+  - name: discovery
+    protocol: TCP
+    port: 4369
+    targetPort: discovery
+    nodePort: 30022
+  - name: prometheus
+    protocol: TCP
+    port: 15692
+    targetPort: prometheus
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-internal
+  namespace: development
+  labels:
+    app: dev-rmq
+    env: development
+spec:
+  selector:
+    app: dev-rmq
+  # type: ClusterIP # ClusterIP, NodePort, None
+  clusterIP: None
+  ports:
+  - name: amqps-service
+    protocol: TCP
+    port: 5671
+    targetPort: amqps-port
+  - name: amqp-service
+    protocol: TCP
+    port: 5672
+    targetPort: amqp-port
+  - name: ui-service
+    protocol: TCP
+    port: 15672
+    targetPort: rabbitmq-ui
+  - name: ws-service
+    protocol: TCP
+    port: 15674
+    targetPort: rabbitmq-ws
+  - name: discovery
+    protocol: TCP
+    port: 4369
+    targetPort: discovery
+  - name: prometheus
+    protocol: TCP
+    port: 15692
+    targetPort: prometheus
+# ---
+# apiVersion: autoscaling/v1
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: dev-rmq
+#   namespace: development
+#   labels:
+#     app: dev-rmq
+#     env: development
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: StatefulSet
+#     name: dev-rmq
+#   minReplicas: 1
+#   maxReplicas: 10
+#   targetCPUUtilizationPercentage: 50
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: dev-rmq
+  namespace: development
+  labels:
+    app: dev-rmq
+    env: development
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: dev-rmq
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # behavior:
+#   scaleDown:
+#     stabilizationWindowSeconds: 120

@@ -1,0 +1,84 @@
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: linuxhost-client
+  namespace: linklab
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: linuxhost-client
+  minReplicas: 1
+  maxReplicas: 2
+  targetCPUUtilizationPercentage: 100
+---
+apiVersion: apps/v1 
+kind: StatefulSet 
+metadata: 
+  name: linuxhost-client
+  namespace: linklab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: linuxhost-client
+  serviceName: linuxhost-client
+  volumeClaimTemplates:
+  - metadata:
+      name: writespace-volume
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "linuxhost-client-writespace"
+      resources:
+        requests:
+          storage: 1Gi
+  template:
+    metadata:
+      labels:
+        app: linuxhost-client
+    spec:
+      containers: 
+      - name: linuxhost-client
+        image: registry.cn-hangzhou.aliyuncs.com/linklab/device-control-v2-linuxhost-client:v2.0-beta
+        imagePullPolicy: Always
+        volumeMounts:
+          - name: config-volume
+            mountPath: /app/config
+          # - name: log-volume
+          #   mountPath: /app/log
+          #   subPath: linuxhost-client
+          - name: writespace-volume
+            mountPath: /app/tmp
+            subPath: tmp
+          - name: writespace-volume
+            mountPath: /app/workspace
+            subPath: workspace
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          requests:
+            memory: "20Mi"
+            cpu: "10m"
+          limits:
+            memory: "200Mi"
+            cpu: "50m"
+      volumes:
+        - name: config-volume
+          configMap:
+            name: linuxhost-client-config
+            items:
+            - key: k8s-config.json
+              path: config.json
+        # - name: log-volume
+        #   persistentVolumeClaim:
+        #     claimName: log-data-pvc
+      imagePullSecrets:
+        - name: linklab-aliyun

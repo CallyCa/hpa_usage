@@ -1,0 +1,84 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: backend
+  namespace: expense
+data:
+  DB_HOST: {{ .Values.deployment.db_host}}
+
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: backend
+  namespace: expense
+  labels:
+    project: expense
+    environment: dev
+    module: backend
+    tier: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels: 
+      project: expense
+      environment: dev
+      module: backend
+      tier: api
+  template:
+    metadata:
+      labels:
+        project: expense
+        environment: dev
+        module: backend
+        tier: api
+    spec:
+      containers:
+      - name: backend
+        image: {{ .Values.deployment.imageUrl}}:{{ .Values.deployment.imageVersion }}
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+        envFrom:
+        - configMapRef:
+            name: backend
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: backend
+  namespace: expense
+spec:
+  selector:
+    project: expense
+    environment: dev
+    module: backend
+    tier: api
+  ports:
+  - name: backend
+    protocol: TCP
+    port: 8080
+    targetPort: 8080
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+ name: backend
+ namespace: expense
+spec:
+ scaleTargetRef:
+   apiVersion: apps/v1
+   kind: Deployment
+   name: backend
+ minReplicas: 1
+ maxReplicas: 10
+ targetCPUUtilizationPercentage: {{ .Values.hpa.cpuutilization }} # usually 75 in real environment
+
+
+
+  

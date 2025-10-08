@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodejs-mfa-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nodejs-mfa-api
+  template:
+    metadata:
+      labels:
+        app: nodejs-mfa-api
+    spec:
+      containers:
+      - name: nodejs-mfa-api
+        image: mfa:lastest
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        requests: 
+          cpu: 200m 
+          memory: 256Mi 
+        ports:
+        - containerPort: 3000

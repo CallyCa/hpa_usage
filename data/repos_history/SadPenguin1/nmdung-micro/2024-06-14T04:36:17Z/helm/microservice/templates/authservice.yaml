@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service-deploy  
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: auth-service-deploy
+spec:
+  replicas: {{ .Values.authservice.replicaCount }}  
+  selector:
+    matchLabels:
+      app: auth-service-deploy
+  template:
+    metadata:
+      labels:
+        app: auth-service-deploy
+    spec:
+      containers:
+      - name: auth-service-container
+        image: {{ .Values.authservice.image.repository }}:{{ .Values.authservice.image.tag }}  
+        imagePullPolicy: {{ .Values.authservice.image.pullPolicy }}  
+        ports:
+        - containerPort: {{ .Values.authservice.service.port }}  
+        envFrom:
+        - configMapRef:
+            name: microservice-configmap 
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_ROOT_PASSWORD 
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service-service
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: {{ .Values.authservice.service.type }}  
+  selector:
+    app: auth-service-deploy
+  ports:
+    - protocol: TCP
+      port: {{ .Values.authservice.service.port }}  
+      targetPort: {{ .Values.authservice.service.targetPort }}  
+      nodePort: {{ .Values.authservice.service.nodePort }}  
+

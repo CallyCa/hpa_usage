@@ -1,0 +1,306 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: create-tale-a
+  managedFields:
+    - apiVersion: apps/v1
+      fieldsType: FieldsV1
+      fieldsV1:
+        "f:metadata":
+          "f:labels":
+            .: {}
+            "f:app": {}
+        "f:spec":
+          "f:progressDeadlineSeconds": {}
+          "f:replicas": {}
+          "f:revisionHistoryLimit": {}
+          "f:selector": {}
+          "f:strategy":
+            "f:rollingUpdate":
+              .: {}
+              "f:maxSurge": {}
+              "f:maxUnavailable": {}
+            "f:type": {}
+          "f:template":
+            "f:metadata":
+              "f:labels":
+                .: {}
+                "f:app": {}
+            "f:spec":
+              "f:containers":
+                'k:{"name":"softales-backend-1"}':
+                  .: {}
+                  "f:env":
+                    .: {}
+                    'k:{"name":"APP_ENV"}':
+                      .: {}
+                      "f:name": {}
+                      "f:valueFrom":
+                        .: {}
+                        "f:configMapKeyRef": {}
+                    'k:{"name":"DB_DATABASE"}':
+                      .: {}
+                      "f:name": {}
+                      "f:valueFrom":
+                        .: {}
+                        "f:configMapKeyRef": {}
+                    'k:{"name":"DB_HOST"}':
+                      .: {}
+                      "f:name": {}
+                      "f:valueFrom":
+                        .: {}
+                        "f:configMapKeyRef": {}
+                    'k:{"name":"DB_PASSWORD"}':
+                      .: {}
+                      "f:name": {}
+                      "f:valueFrom":
+                        .: {}
+                        "f:configMapKeyRef": {}
+                    'k:{"name":"DB_USERNAME"}':
+                      .: {}
+                      "f:name": {}
+                      "f:valueFrom":
+                        .: {}
+                        "f:configMapKeyRef": {}
+                  "f:image": {}
+                  "f:imagePullPolicy": {}
+                  "f:name": {}
+                  "f:resources": {}
+                  "f:terminationMessagePath": {}
+                  "f:terminationMessagePolicy": {}
+              "f:dnsPolicy": {}
+              "f:restartPolicy": {}
+              "f:schedulerName": {}
+              "f:securityContext": {}
+              "f:terminationGracePeriodSeconds": {}
+      manager: GoogleCloudConsole
+      operation: Update
+      time: "2022-12-22T03:47:54Z"
+    - apiVersion: apps/v1
+      fieldsType: FieldsV1
+      fieldsV1:
+        "f:metadata":
+          "f:annotations":
+            .: {}
+            "f:deployment.kubernetes.io/revision": {}
+        "f:status":
+          "f:availableReplicas": {}
+          "f:conditions":
+            .: {}
+            'k:{"type":"Available"}':
+              .: {}
+              "f:lastTransitionTime": {}
+              "f:lastUpdateTime": {}
+              "f:message": {}
+              "f:reason": {}
+              "f:status": {}
+              "f:type": {}
+            'k:{"type":"Progressing"}':
+              .: {}
+              "f:lastTransitionTime": {}
+              "f:lastUpdateTime": {}
+              "f:message": {}
+              "f:reason": {}
+              "f:status": {}
+              "f:type": {}
+          "f:observedGeneration": {}
+          "f:readyReplicas": {}
+          "f:replicas": {}
+          "f:updatedReplicas": {}
+      manager: kube-controller-manager
+      operation: Update
+      subresource: status
+      time: "2022-12-22T03:48:23Z"
+  name: create-tale-a
+  namespace: default-2
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: create-tale-a
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: create-tale-a
+    spec:
+      containers:
+        - env:
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  key: APP_ENV
+                  name: create-tale-a-config-gcdh
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  key: DB_HOST
+                  name: create-tale-a-config-gcdh
+            - name: DB_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  key: DB_DATABASE
+                  name: create-tale-a-config-gcdh
+            - name: DB_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  key: DB_USERNAME
+                  name: create-tale-a-config-gcdh
+            - name: DB_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  key: DB_PASSWORD
+                  name: create-tale-a-config-gcdh
+          image: gcr.io/encoded-aspect-371604/github.com/huamanangel/softales_backend
+          imagePullPolicy: IfNotPresent
+          name: softales-backend-1
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  labels:
+    app: create-tale-a
+  managedFields:
+    - apiVersion: autoscaling/v2
+      fieldsType: FieldsV1
+      fieldsV1:
+        "f:metadata":
+          "f:labels":
+            .: {}
+            "f:app": {}
+        "f:spec":
+          "f:maxReplicas": {}
+          "f:metrics": {}
+          "f:minReplicas": {}
+          "f:scaleTargetRef":
+            "f:apiVersion": {}
+            "f:kind": {}
+            "f:name": {}
+      manager: GoogleCloudConsole
+      operation: Update
+      time: "2022-12-22T03:47:55Z"
+    - apiVersion: autoscaling/v2
+      fieldsType: FieldsV1
+      fieldsV1:
+        "f:status":
+          "f:conditions":
+            .: {}
+            'k:{"type":"AbleToScale"}':
+              .: {}
+              "f:lastTransitionTime": {}
+              "f:message": {}
+              "f:reason": {}
+              "f:status": {}
+              "f:type": {}
+            'k:{"type":"ScalingActive"}':
+              .: {}
+              "f:lastTransitionTime": {}
+              "f:message": {}
+              "f:reason": {}
+              "f:status": {}
+              "f:type": {}
+            'k:{"type":"ScalingLimited"}':
+              .: {}
+              "f:lastTransitionTime": {}
+              "f:message": {}
+              "f:reason": {}
+              "f:status": {}
+              "f:type": {}
+          "f:currentMetrics": {}
+          "f:currentReplicas": {}
+          "f:desiredReplicas": {}
+      manager: vpa-recommender
+      operation: Update
+      subresource: status
+      time: "2022-12-22T03:48:11Z"
+  name: create-tale-a-hpa-ki9d
+  namespace: default-2
+spec:
+  maxReplicas: 5
+  metrics:
+    - resource:
+        name: cpu
+        target:
+          averageUtilization: 80
+          type: Utilization
+      type: Resource
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: create-tale-a
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    cloud.google.com/neg: '{"ingress":true}'
+  finalizers:
+    - service.kubernetes.io/load-balancer-cleanup
+  labels:
+    app: create-tale-a
+  managedFields:
+    - apiVersion: v1
+      fieldsType: FieldsV1
+      fieldsV1:
+        "f:metadata":
+          "f:labels":
+            .: {}
+            "f:app": {}
+        "f:spec":
+          "f:allocateLoadBalancerNodePorts": {}
+          "f:externalTrafficPolicy": {}
+          "f:internalTrafficPolicy": {}
+          "f:ports":
+            .: {}
+            'k:{"port":80,"protocol":"TCP"}':
+              .: {}
+              "f:port": {}
+              "f:protocol": {}
+              "f:targetPort": {}
+          "f:selector": {}
+          "f:sessionAffinity": {}
+          "f:type": {}
+      manager: GoogleCloudConsole
+      operation: Update
+      time: "2022-12-22T03:50:08Z"
+    - apiVersion: v1
+      fieldsType: FieldsV1
+      fieldsV1:
+        "f:metadata":
+          "f:finalizers":
+            .: {}
+            'v:"service.kubernetes.io/load-balancer-cleanup"': {}
+        "f:status":
+          "f:loadBalancer":
+            "f:ingress": {}
+      manager: kube-controller-manager
+      operation: Update
+      subresource: status
+      time: "2022-12-22T03:50:58Z"
+  name: create-tale-a-service
+  namespace: default-2
+spec:
+  allocateLoadBalancerNodePorts: true
+  clusterIP: 10.28.6.23
+  clusterIPs:
+    - 10.28.6.23
+  externalTrafficPolicy: Cluster
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+    - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+    - nodePort: 31948
+      port: 80
+      protocol: TCP
+      targetPort: 8000
+  selector:
+    app: create-tale-a
+  sessionAffinity: None
+  type: LoadBalancer

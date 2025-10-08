@@ -1,0 +1,29 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: filewcount
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: filewcount
+  name: filewcount
+  namespace: filewcount
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: filewcount
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: filewcount
+    spec:
+      containers:
+      - image: bldrtech/filewcount
+        name: filewcount
+        resources: {}

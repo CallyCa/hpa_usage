@@ -1,0 +1,174 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wpk8s
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: wpk8s
+spec:
+  selector:
+    app: redis
+    project: wordpress-kubernetes-infrastructure
+  ports:
+  - protocol: TCP
+    port: 6379
+    targetPort: 6379
+  type: NodePort
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: php
+  namespace: wpk8s
+spec:
+  selector:
+    app: php
+    project: wordpress-kubernetes-infrastructure
+  ports:
+  - protocol: TCP
+    port: 9000
+    targetPort: 9000
+  type: NodePort
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: wpk8s
+spec:
+  selector:
+    app: nginx
+    project: wordpress-kubernetes-infrastructure
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: wpk8s
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+      project: wordpress-kubernetes-infrastructure
+  template:
+    metadata:
+      labels:
+        app: nginx
+        project: wordpress-kubernetes-infrastructure
+    spec:
+      initContainers:
+      - name: clone-repo-buid-structure
+        image: k4izen/php:latest
+        command: ["/bin/bash", "-c", "git clone --single-branch -- https://github.com/k4izen/wordpress-kubernetes-infrastructure.git /PROJECT && cd /PROJECT/wordpress && composer install --no-interaction --optimize-autoloader --no-dev"]
+        volumeMounts:
+        - name: wpdata
+          mountPath: /PROJECT
+      containers:
+      - name: nginx
+        image: k4izen/nginx:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        env:
+        - name: REDIS_CONNECTION
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-kubernetes-infrastructure
+              key: redis_connection
+        volumeMounts:
+        - name: wpdata
+          mountPath: /PROJECT
+      volumes:
+      - name: wpdata
+        emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: php
+  namespace: wpk8s
+spec:
+  replicas: 8
+  selector:
+    matchLabels:
+      app: php
+      project: wordpress-kubernetes-infrastructure
+  template:
+    metadata:
+      labels:
+        app: php
+        project: wordpress-kubernetes-infrastructure
+    spec:
+      initContainers:
+      - name: clone-repo-buid-structure
+        image: k4izen/php:latest
+        command: ["/bin/bash", "-c", "git clone --single-branch -- https://github.com/k4izen/wordpress-kubernetes-infrastructure.git /PROJECT && cd /PROJECT/wordpress && composer install --no-interaction --optimize-autoloader --no-dev"]
+        volumeMounts:
+        - name: wpdata
+          mountPath: /PROJECT
+      containers:
+      - name: php
+        image: k4izen/php:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 9000
+        env:
+        - name: REDIS_CONNECTION
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-kubernetes-infrastructure
+              key: redis_connection
+        - name: MYSQL_CONNECTION
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-kubernetes-infrastructure
+              key: mysql_connection
+        - name: WORDPRESS
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-kubernetes-infrastructure
+              key: wordpress
+        - name: WORDPRESS_MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-mysql-user-password
+              key: wordpress-db-password
+        volumeMounts:
+        - name: wpdata
+          mountPath: /PROJECT
+      volumes:
+      - name: wpdata
+        emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: wpk8s
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+      project: wordpress-kubernetes-infrastructure
+  template:
+    metadata:
+      labels:
+        app: redis
+        project: wordpress-kubernetes-infrastructure
+    spec:
+      containers:
+      - name: redis
+        image: redis
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 6379

@@ -1,0 +1,49 @@
+apiVersion : apps/v1
+kind: Deployment
+metadata:
+  name: my-web-deployment-autoscaling
+  labels:
+    app  : my-web-application
+    env  : autoscaling
+    owner: Yevhenii_Halenko
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cossack
+  template:
+    metadata:
+      labels:
+        app: cossack
+    spec:
+      containers:
+        - name : cossack-web
+          image: re4port/k8sphp:latest
+          ports:
+            - containerPort: 80
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-web-deployment-autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1.1.0
+    kind: Deployment
+    name: my-web-deployment-autoscaling
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

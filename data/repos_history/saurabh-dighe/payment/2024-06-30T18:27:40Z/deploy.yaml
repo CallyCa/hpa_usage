@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-deploy
+  labels:
+    app: payment
+spec:
+  replicas: 3
+  selector:
+    matchLabels: 
+      app: payment
+  strategy: 
+    type: RollingUpdate
+    rollingUpdate:
+     maxUnavailable: 2
+  template:
+    metadata:
+      labels:
+        app: payment
+    spec:
+      containers:
+      - name: payment
+        image: 992382386864.dkr.ecr.us-east-1.amazonaws.com/payment:301
+        ports:
+        - containerPort: 8080
+        #livenessProbe
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        #Readiness probe
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "250m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        envFrom: 
+          - configMapRef: 
+              name: payment-cm
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payment-cm
+data:
+  USER_HOST: "user-svc"
+  CART_HOST: "cart-svc"
+---
+#NodePort service
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-svc
+spec:
+  selector:
+    app: payment
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+
+---
+#HPA
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70

@@ -1,0 +1,958 @@
+# "^" key is reserved for a parent object's general definition/hyperlinks
+browser:
+  cache: https://developer.mozilla.org/en-US/docs/Web/API/Cache
+  chrome:
+    ^: https://developer.chrome.com/docs/
+    devtools: https://developer.chrome.com/docs/devtools/overview/
+    source-code: chromium is the open source component https://github.com/chromium/chromium
+    v8: javascript engine https://github.com/v8/v8
+  cookie:
+    ^: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/cookies
+    type:
+      ^: https://www.cloudflare.com/learning/privacy/what-are-cookies/
+      authentication:
+      persistent:
+      session:
+      tracking:
+      zombie:
+    first-party:
+    third-party:
+  css:
+    ^: cascading style sheets https://developer.mozilla.org/en-US/docs/Web/CSS
+    example:
+      - https://htmlcheatsheet.com/css/
+      - 58 bytes of css that look great anywhere https://news.ycombinator.com/item?id=32972004
+  html:
+    ^: https://developer.mozilla.org/en-US/docs/Web/HTML
+    csp: Content Security Policy https://www.w3.org/TR/CSP/
+    dom: https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model
+    example:
+      ^: https://htmlcheatsheet.com/
+  pwa: progressive web app https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps
+  storage:
+    ^: https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API
+    local: https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage
+    session: https://developer.mozilla.org/en-US/docs/Web/API/Window/sessionStorage
+  wasm: web assembly https://developer.mozilla.org/en-US/docs/WebAssembly
+  worker:
+    ^: https://developer.mozilla.org/en-US/docs/Web/API/Worker
+    service: service worker https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API
+    web: web worker https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API
+  xss:
+    ^: cross site scripting https://www.cloudflare.com/learning/security/threats/cross-site-scripting/
+chem:
+  bio:
+    neuromodulator:
+      acetylcholine: memory/focus
+      adrenaline: epinephrine
+      dopamine: motivation
+      serotonin: contentness
+    routine:
+      - sunlight
+      - meditate
+      - maximize repitions
+      - focus on errors
+      - caffeine
+      - snapshot review
+      - cold exposure
+cloud:
+  ^: https://www.cloudflare.com/learning/cloud/what-is-the-cloud/ https://en.wikipedia.org/wiki/Cloud_computing
+  aws:
+    ^: Amazon Web Services https://docs.aws.amazon.com/
+    ec2:
+      asg:
+        - https://docs.aws.amazon.com/autoscaling/ec2/userguide/as-scaling-target-tracking.html#available-metrics
+    iam:
+    s3:
+    vpc:
+    note:
+      - https://docs.aws.amazon.com/autoscaling/ec2/userguide/as-scaling-target-tracking.html#available-metrics
+      - https://docs.aws.amazon.com/autoscaling/ec2/APIReference/API_TargetTrackingConfiguration.html
+      - https://docs.aws.amazon.com/vpc/latest/privatelink/vpc-endpoints.html
+      - https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_examples_aws_deny-ip.html
+      - https://docs.aws.amazon.com/service-authorization/latest/reference/reference_policies_actions-resources-contextkeys.html
+      - https://docs.aws.amazon.com/vpc/latest/reachability/what-is-reachability-analyzer.html
+      - https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_TagSpecification.html
+      - https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_TagSpecification.html
+      - https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html
+
+  cloudflare:
+    ^: https://www.cloudflare.com/learning/what-is-cloudflare/
+    cdn: content delivery network https://www.cloudflare.com/learning/cdn/what-is-a-cdn/
+    firewall: https://www.cloudflare.com/learning/cloud/what-is-a-cloud-firewall/
+  gcp:
+    ^: Google Cloud Platform https://cloud.google.com/docs
+    sql:
+    vpc:
+    notes:
+      - https://cloud.google.com/certificate-authority-service/docs/using-cel
+  hybrid-cloud: https://www.cloudflare.com/learning/cloud/what-is-hybrid-cloud/
+  iac:
+    ^: infrastructure as code
+    crossplane:
+      ^: https://crossplane.io/docs/
+      source: https://github.com/crossplane/crossplane
+      aws-provider: https://doc.crds.dev/github.com/crossplane/provider-aws/aws.crossplane.io/ProviderConfig/v1beta1@v0.31.0
+    terraform:
+      ^:
+      modules: https://registry.terraform.io/browse/modules
+      provider:
+        aws: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
+        gcp: https://registry.terraform.io/providers/hashicorp/google/latest/docs
+      source: https://github.com/hashicorp/terraform
+  multi-cloud: https://www.cloudflare.com/learning/cloud/what-is-multicloud/
+  twilio:
+    sendgrid:
+      ^: https://docs.sendgrid.com/onboarding/email-api
+      api: https://docs.sendgrid.com/api-reference/how-to-use-the-sendgrid-v3-api
+      settings: https://docs.sendgrid.com/ui/account-and-settings/mail
+code:
+  ^: https://github.com/collections/programming-languages
+  git:
+    ^: https://github.com/git/git https://mirrors.edge.kernel.org/pub/software/scm/git/
+    cli:
+      ^: https://git-scm.com/docs
+      examples:
+        - http://guides.beanstalkapp.com/version-control/common-git-commands.html
+    github:
+      ^: https://docs.github.com/en
+      actions:
+      cli:
+        ^: https://cli.github.com/manual/gh_help_reference
+      language-stats: https://madnight.github.io/githut/
+    gitlab:
+  golang:
+    ^: https://go.dev/doc/ https://github.com/golang/go
+    notes:
+      - https://github.com/valyala/goloris/blob/master/goloris.go
+      - https://golangcode.com/print-the-current-memory-usage/
+      - https://golang.google.cn/pkg/os/signal/
+      - https://github.com/lizrice/strace-from-scratch
+      - vulnerability management https://go.dev/blog/vuln
+      - https://github.com/zcalusic/sysinfo
+      - how to write golang https://go.dev/doc/code
+    project-layout: https://github.com/golang-standards/project-layout
+    ref:
+      ^: https://go.dev/ref/spec
+      context:
+        notes:
+          - https://www.linkedin.com/pulse/its-time-understand-golang-contexts-lucas-schenkel-schieferdecker/
+    std:
+      ^: standard library https://pkg.go.dev/std
+  javascript:
+    ^: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference
+    api:
+      ^: https://developer.mozilla.org/en-US/docs/Web/API
+      fetch: https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API
+    closure: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Closures
+    node:
+      ^: https://nodejs.org/en/docs/
+      npm:
+        ^: https://docs.npmjs.com/
+    promise:
+      ^: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise
+    typescript: https://www.typescriptlang.org/docs/
+  vscode:
+    ^: https://code.visualstudio.com/docs
+comp-sci:
+  ^: https://github.com/jwasham/coding-interview-university
+  ai:
+    diffusion: https://en.wikipedia.org/wiki/Diffusion_process
+    machine-learning:
+      tool:
+        - https://dreamfusion3d.github.io/
+        - https://github.com/nv-tlabs/GET3D
+        - https://phenaki.video/index.html
+      deep-learning: https://github.com/tensorflow/tensorflow
+      neural-network: https://datadan.io/blog/neural-net-with-go (https://github.com/dwhitena/gophernet/blob/master/main.go)
+  algorithm: https://github.com/trekhleb/javascript-algorithms
+  big-o-notation:
+    ^: https://www.freecodecamp.org/news/big-o-notation-why-it-matters-and-why-it-doesnt-1674cfa8a23c/
+    example:
+      - efficiency of a function as the number of elements (n) trends towards infinity
+      - big o complexity chart http://biercoff.com/content/images/2016/07/Screenshot-2016-07-15-16-16-10.png
+      - Big O notation https://en.wikipedia.org/wiki/Big_O_notation
+  binary:
+    byte:
+      ^: arbitrary yet standard data size
+      min-value: [ 0, 0b00000000, 0x00 ]
+      max-value: [ 0b11111111, 07777, 255, 0xFF ]
+      unit:
+        kB: 
+        Ki: { kibibit: 2^10 }
+        Mi: { mebibit: 2^20 }
+        MB:
+        GB:
+  encryption:
+  ephemeral: Lasting for a very short time.
+  hash:
+  immutable: Not subject or susceptible to change.
+  jit: just in time compilation https://www.freecodecamp.org/news/just-in-time-compilation-explained/
+  normalize:
+datastore:
+  elk: https://www.elastic.co/what-is/elk-stack
+  kafka:
+    ^: event streaming application by apache https://kafka.apache.org/documentation/
+    explanation:
+      - https://www.kai-waehner.de/blog/2020/03/12/can-apache-kafka-replace-database-acid-storage-transactions-sql-nosql-data-lake/
+      - https://materialize.com/blog/kafka-is-not-a-database/
+      - https://logz.io/blog/kafka-vs-redis/#:~:text=Redis'%20in%2Dmemory%20database%20is,for%20longer%20periods%20of%20time.
+    strimzi: k8s operator https://github.com/strimzi/strimzi-kafka-operator
+  mongodb:
+    change-streams: https://www.mongodb.com/docs/manual/changeStreams/
+  redis: https://redis.io/docs/reference/
+  sql:
+    ^: https://www.digitalocean.com/community/tutorials/sqlite-vs-mysql-vs-postgresql-a-comparison-of-relational-database-management-systems
+    mysql:
+      ^: https://dev.mysql.com/doc/
+      ddl: data definition language https://dev.mysql.com/doc/refman/8.0/en/sql-data-definition-statements.html
+      transaction: https://dev.mysql.com/doc/refman/8.0/en/sql-transactional-statements.html
+      locking: https://dev.mysql.com/doc/refman/8.0/en/lock-tables.html
+      innodb: https://dev.mysql.com/doc/refman/8.0/en/innodb-introduction.html
+    postgres: https://www.postgresql.org/docs/
+    sqllite:
+      ^: https://www.sqlite.org/docs.html
+      cli: sqlite3 /var/lib/rancher/k3s/server/db/state.db
+      compression: https://github.com/phiresky/sqlite-zstd
+      litestream:
+        ^: https://litestream.io/how-it-works/
+        tips: https://litestream.io/tips/
+        example:
+          - https://mtlynch.io/litestream/
+      query:
+        - select value from kine where name = "/registry/apiregistration.k8s.io/apiservices/v1.events.k8s.io" order by create_revision desc limit 1
+engineering:
+  electronics:
+    transistor:
+      bjt:
+      mosfet:
+      op-amp:
+k8s:
+  ^: kubernetes https://kubernetes.io/docs/concepts/overview/components/ https://github.com/kubernetes/kubernetes/tree/master/pkg
+  cncf: 
+    ^: cloud native compute foundation https://landscape.cncf.io/card-mode?grouping=no&sort=stars
+    certified-k8s-installers: https://landscape.cncf.io/card-mode?category=certified-kubernetes-installer&grouping=category
+  cni:
+    ^: container network interface https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/
+    interface-name: cni0
+    notes:
+      - https://itnext.io/kubernetes-networking-behind-the-scenes-39a1ab1792bb
+    type:
+      cilium:
+        ^: eBPF based https://github.com/cilium/cilium
+      flannel:
+        vxlan-device: https://github.com/flannel-io/flannel/blob/master/backend/vxlan/device.go
+        netlink-dependency: https://github.com/vishvananda/netlink
+        source: https://github.com/flannel-io/flannel
+        note:
+          - no network policy capability
+      calico:
+        note:
+          - 
+  cluster-data:
+    alias: backing-store
+    etcd: https://etcd.io/docs https://github.com/etcd-io/etcd
+  cloud-controller-manager:
+  controller-manager:
+  cri:
+    ^: container runtime interface https://kubernetes.io/docs/concepts/architecture/cri/
+    container: 
+      ^: https://en.wikipedia.org/wiki/OS-level_virtualization
+    cri-o: https://github.com/cri-o/cri-o
+    containerd:
+      ^: https://github.com/containerd/containerd/tree/main/docs
+      cli:
+        example:
+          - ctr version
+          - ctr image pull docker.io/library/hello-world:latest
+          - ctr image list
+          - ctr run docker.io/library/hello-world:latest demo
+          - ctr container list
+          - ctr image remove docker.io/library/hello-world:latest
+          - ctr container remove demo
+    docker:
+      ^: https://docs.docker.com/reference/
+      cli:
+        ^: https://github.com/docker/cli
+        examples:
+          run-container-endlessly: docker run --name alpine --rm --detached --publish 3000:80 golang:alpine sleep infinity
+          shell-into-container: docker exec -it alpine sh
+      compose: https://github.com/docker/compose
+    oci: open container initiative
+    pause-container: https://www.ianlewis.org/en/almighty-pause-container
+    runsc: https://gvisor.dev/docs/
+  helm:
+    public-charts: https://artifacthub.io/
+    common-expression-language: https://github.com/google/cel-spec/blob/master/doc/intro.md
+  kube-api: 
+    ^: https://kubernetes.io/docs/concepts/overview/kubernetes-api/
+    aggregation: https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/apiserver-aggregation/
+    example:
+      - curl -k https://localhost:6443
+    metrics:
+      pipeline: https://kubernetes.io/docs/tasks/debug/debug-cluster/resource-metrics-pipeline/#metrics-api
+      server: https://github.com/kubernetes-sigs/metrics-server
+  kube-proxy:
+  kube-schedule:
+  kubectl:
+    example:
+      change-namespace: kubectl config set-context --current --namespace=my-namespace
+      kube-proxy: kubectl proxy
+  kubelet:
+  network-model: https://kubernetes.io/docs/concepts/services-networking/#the-kubernetes-network-model
+  resources:
+    clusterrole:
+    crd:
+      ^: custom resource definition https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/
+      operator-pattern: https://kubernetes.io/docs/concepts/extend-kubernetes/operator/
+    deploy:
+    event:
+      - https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/ Events such as the ones you saw at the end of kubectl describe pod are persisted in etcd and provide high-level information on what is happening in the cluster
+      - https://www.youtube.com/watch?v=K-F-p-ekSsM&t=737s
+      - https://github.com/vmware-archive/eventrouter/blob/master/main.go#L111
+    ing:
+      controller:
+        nginx:
+        gloo:
+    pod: https://www.ianlewis.org/en/what-are-kubernetes-pods-anyway
+    pvc:
+    svc:
+      type:
+        NodePort:
+        ClusterIP:
+        None:
+          alias: "headless"
+    storageclass:
+    sts:
+    role:
+    volume:
+  service-mesh:
+    istio: https://istio.io/latest/about/service-mesh/#what-is-a-service-mesh
+    linkerd:
+  type:
+    eks:
+    gke:
+    kops:
+    kubeadm: https://kubernetes.io/docs/reference/setup-tools/kubeadm/ https://github.com/kubernetes/kubernetes/tree/master/cmd/kubeadm
+    k3s:
+      ^: https://docs.k3s.io/
+      config: https://docs.k3s.io/reference/server-config
+      logs: https://medium.com/kubernetes-tutorials/cluster-level-logging-in-kubernetes-with-fluentd-e59aa2b6093a
+      storage: https://docs.k3s.io/storage
+    rke:
+      ^: rancher kubernetes engine
+linux:
+  ^: https://www.kernel.org/doc/html/latest/
+  shell:
+    ^: https://www.tutorialspoint.com/unix/unix-what-is-shell.htm
+    bash: bourne-again-shell https://www.gnu.org/savannah-checkouts/gnu/bash/manual/bash.html
+    background-process:
+      ^: https://linuxhint.com/send-process-background-linux/
+      characer: "&"
+    pipe:
+      character: "|"
+    redirect:
+      character: ">"
+      examples:
+        - command 2> error.txt 1> output.txt
+        - command > output_file 2>&1 & # redirect background process
+    io-file-descriptor:
+      stdin: 0
+      stdout: 1
+      stderr: 2
+  command:
+    alias: https://tldp.org/LDP/abs/html/aliases.html
+    list-all-available-commands: compgen -ac
+    list: 
+      anacrontab: https://www.man7.org/linux/man-pages/man5/anacrontab.5.html
+      crontab: https://man7.org/linux/man-pages/man5/crontab.5.html
+      du:
+        ^: disk usage
+        example:
+          - du -had 2 /etc | sort -h
+      grep:
+        - https://regex101.com/
+      ls:
+        example:
+          - ls -thal
+      ptrace:
+      ssh:
+        - https://carlosbecker.dev/posts/ssh-tips-and-tricks/
+      strace:
+      systemctl:
+      watch:
+        examples:
+          view-open-sockets: watch -n 0.2 "date +%s.%N && lsof -i"
+    practice:
+      - run a golang proxy container
+      - run a javascript proxy container
+      - create an eks cluster and install prometheus and grafana
+      - create a k3s cluster on ec2 and install prometheus and grafana
+      - list largest files in a directory
+      - find the docker service, find the service using the most memory
+      - list ip address
+      - list ip tables
+      - monitor open sockets and the epoch date down to nano seconds
+      - list all root directories and compare results
+      - install yq
+      - filter notes.yaml and bashrc
+      - create a tcpdump systemd service
+    sym-link: symbolic link
+  filesystem:
+    directories:
+      normal:
+        boot:
+        bin:
+        etc:
+          /etc/hosts:
+          /etc/crontab:
+            ^: https://www.man7.org/linux/man-pages/man8/cron.8.html
+          /etc/anacrontab:
+            ^: https://www.man7.org/linux/man-pages/man8/anacron.8.html
+        home:
+        mount:
+        opt:
+        root:
+        run: https://refspecs.linuxfoundation.org/FHS_3.0/fhs/ch03s15.html
+        srv:
+        tmp:
+        usr:
+          bin:
+          include:
+          lib:
+          lib32:
+          lib64:
+          libexec:
+          libx32:
+          local:
+          sbin:
+          shared:
+          src:
+        var:
+      virtual:
+        dev:
+        proc:
+        sys:
+      sym-linked:
+        bin: /usr/bin
+        lib: /usr/lib
+        lib32: /usr/lib32
+        lib64: /usr/lib64
+        libx32: /usr/libx32
+        sbin: /usr/sbin
+    ext4: https://ext4.wiki.kernel.org/index.php/Ext4_Howto
+    inode: https://www.redhat.com/sysadmin/inodes-linux-filesystem
+  hardware:
+    spi: Serial Peripheral Interface https://docs.kernel.org/spi/spi-summary.html
+    notes:
+      - https://discord.com/blog/how-discord-supercharges-network-disks-for-extreme-low-latency
+  kernel:
+    ^: https://github.com/torvalds/linux
+    ebpf: 
+      ^: https://ebpf.io/what-is-ebpf
+      bpftrace:
+        examples:
+          hello-world: bpftrace -e 'BEGIN { printf("hello world\n") }'
+          list-probes: bpftrace -l 'tracepoint:syscalls:sys_enter_*'
+          syscall-counts-by-process: bpftrace -e 'tracepoint:raw_syscalls:sys_enter { @[comm] = count() }'
+          file-opens: bpftrace -e 'tracepoint:syscalls:sys_enter_open { printf("%s %s\n", comm, str(args->filename)) }'
+          distribution-of-read-bytes: bpftrace -e 'tracepoint:syscalls:sys_exit_read /pid == 18644/ { @bytes = hist(args->retval) }'
+          kernel-dynamic-tracing-read-bytes: bpftrace -e 'kretprobe:vfs_read { @bytes = lhist(retval, 0, 2000, 200) }'
+          timing-reads: bpftrace -e 'kprobe:vfs_read { @start[tid] = nsecs } kretprobe:vfs_read /@start[tid]/ { @ns[comm] = hist(nsecs - @start[tid]); delete(@start[tid]) }'
+          count-process-level-events: bpftrace -e 'tracepoint:sched:sched* { @[name] = count() } interval:s:5 { exit() }'
+          profile-on-CPU-kernel-stacks: bpftrace -e 'profile:hz:99 { @[stack] = count() }'
+          scheduler-tracing: bpftrace -e 'tracepoint:sched:sched_switch { @[stack] = count() }'
+          block-io-tracing: bpftrace -e 'tracepoint:block:block_rq_issue { @ = hist(args->bytes); }
+    syscall: https://man7.org/linux/man-pages/man2/syscalls.2.html
+    cgroup:
+      ^: >
+        control groups for dynamically limit and monitor cpu, memory, disk, and network resource limits on processes.
+        Processes can use more than their cgroup limits as long as their is no resource contention.
+      example: 
+        - cat /sys/fs/cgroup/cpu/tasks
+        - cat /proc/3378/cgroup
+        - https://www.linuxjournal.com/content/everything-you-need-know-about-linux-containers-part-i-linux-control-groups-and-process
+  process:
+    exit-code: https://richardsnider.github.io/notes/linux.process.exit-code.yaml
+  storage:
+    iops:
+  user-space:
+    ^: user data https://en.wikipedia.org/wiki/User_space_and_kernel_space
+    dist:
+      ^: distribution https://en.wikipedia.org/wiki/Linux_distribution
+      alpine:
+        busybox: https://github.com/mirror/busybox
+      debian:
+        ubuntu:
+      redhat:
+        centos:
+    user-data:
+    virtual-memory:
+network:
+  control-plane: https://en.wikipedia.org/wiki/Control_plane
+  data-plane: https://en.wikipedia.org/wiki/Data_plane
+  ietf:
+    ^: Internet Engineering Task Force https://en.wikipedia.org/wiki/Internet_Engineering_Task_Force
+    rfc:
+      ^: Request for Comments https://en.wikipedia.org/wiki/Request_for_Comments
+      1918: private network address allocations https://www.rfc-editor.org/rfc/rfc1918
+  interface:
+    nic: https://en.wikipedia.org/wiki/Network_interface_controller
+    vif: https://en.wikipedia.org/wiki/Virtual_network_interface
+  ip:
+    packet:
+      ^: https://www.baeldung.com/cs/networking-packet-fragment-frame-datagram-segment
+      explanation: A TCP segment is carried in one or more IP packets, which are each carried in one or more Ethernet frames.
+      ipv4:
+        address:
+        cidr:
+        header:
+      ipv6:
+        address:
+        cidr:
+        header:
+        tunnel:
+      fragment:
+      protocol-number: https://en.wikipedia.org/wiki/List_of_IP_protocol_numbers
+      ospf: 
+        ^: https://en.wikipedia.org/wiki/Open_Shortest_Path_First
+        protocol-number: 89
+      icmp:
+        notes:
+          - https://www.cloudflare.com/learning/ddos/glossary/internet-control-message-protocol-icmp/
+          - https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol
+          - > 
+            Although ICMP messages are contained within standard IP packets, 
+            ICMP messages are usually processed as a special case, distinguished from normal IP processing.
+        ping:
+      transport:
+        datagram:
+          segment:
+        port:
+        socket: https://en.wikipedia.org/wiki/Network_socket
+        tcp:
+          header:
+          connection:
+            session:
+          protocol:
+            bgp:
+              ^: https://www.cloudflare.com/learning/security/glossary/what-is-bgp/
+              port: 179
+              notes:
+                - The initiating router uses a dynamic source port, but the destination port is 179. https://www.ciscopress.com/articles/article.asp?p=2756480&seqNum=4
+            http:
+              ^: https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP
+              http/1.1:
+              http/2:
+                ^: https://www.upwork.com/resources/what-is-http2
+                description: response multiplexing, binary instead of textua
+                grpc:
+                  - can't be used in a browser out-of-the-box https://grpc.io/blog/state-of-grpc-web/
+                  - https://github.com/grpc-ecosystem/grpc-gateway
+              headers:
+                ^: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers
+                cors:
+                  ^: Cross-Origin Resource Sharing https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+                  example:
+                    wildcard-header: "Access-Control-Allow-Origin: *"
+                    single-domain-header: "Access-Control-Allow-Origin: https://example.com"
+              mime:
+                ^: Multipurpose Internet Mail Extensions https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types
+                header: Content-Type
+              port: 80
+              url:
+                ^: https://developer.mozilla.org/en-US/docs/Learn/Common_questions/What_is_a_URL
+            https:
+              port: 443
+            ssh:
+              port: 22
+            tls/ssl:
+        udp:
+          connectionless: true
+          protocol:
+            dhcp: https://en.wikipedia.org/wiki/Dynamic_Host_Configuration_Protocol
+            dns:
+              ^: domain name service https://www.rfc-editor.org/rfc/rfc1035
+              dns-flood:
+                ^: https://www.cloudflare.com/learning/ddos/dns-flood-ddos-attack/
+              fqdn:
+                ^: fully qualified domain name
+              port: 53
+            http/3:
+              ^: QUIC https://en.wikipedia.org/wiki/HTTP/3
+            rip:
+              ^: https://en.wikipedia.org/wiki/Routing_Information_Protocol
+              port: 520
+            traceroute:
+              port: 33434 + (max-ttl * numberofprobes - 1)
+              notes:
+                - must use "-I" option to actually use ICMP
+            wireguard: 
+              ^: https://www.wireguard.com/protocol/
+              port: 51820
+              notes:
+                - configure to use port 53 in because DNS is allowed on most networks https://github.com/trailofbits/algo/pull/1594
+    socket:
+      golang-dial: https://pkg.go.dev/net@latest#Dial
+      syscall-name: socket()
+      syscall-constant: 
+        SOCK_DGRAM:
+        SOCK_STREAM:
+    routing:
+      ^: https://www.cloudflare.com/learning/network-layer/what-is-routing/
+      firewall: 
+        ^:
+          - https://www.cloudflare.com/learning/security/what-is-a-firewall/
+          - https://www.bu.edu/tech/about/security-resources/host-based/intro/
+        example:
+          - https://github.com/pfsense/pfsense
+      networking-mode:
+        ^: https://docs.oracle.com/en/virtualization/virtualbox/6.0/user/networkingmodes.html
+        bridged:
+        nat:
+          ^: network address translations
+          notes:
+            - http://www.ciscozine.com/nat-and-pat-a-complete-explanation/
+            - https://avinetworks.com/glossary/network-address-translation/
+          pat:
+            ^: layer 4 (transport) port address translation, the most common form of nat
+            port-forwarding:
+            vip: https://en.wikipedia.org/wiki/Virtual_IP_address
+            example:
+             netfilter-iptables-nftables: linux packet filter
+      router:
+        cisco:
+      subnet:
+        cidr:
+        lan: https://en.wikipedia.org/wiki/Local_area_network
+        mask: [ /32: 1, /31: 2, /30: 4, /29: 8, /28: 16, /27: 32, /26: 64, /25: 128, /24: 256, /23: 512, /22: 1024, /21: 2048, /20: 4096,  ]
+        wan: https://en.wikipedia.org/wiki/Wide_area_network
+      vpn: 
+        ^: virtual private network
+        openvpn: https://en.wikipedia.org/wiki/OpenVPN
+        ipsec:
+        wireguard:
+          unofficial-docs: https://github.com/pirate/wireguard-docs
+          videos:
+            - https://www.youtube.com/watch?v=88GyLoZbDNw
+            - https://www.youtube.com/watch?v=iVal1M3SLNI&t=1185s
+          tailscale:
+            ^: https://tailscale.com/kb/
+            cidr-block: 100.64.0.0/10
+            source-code:
+              - https://github.com/tailscale/tailscale/blob/main/wgengine/wgcfg/device.go
+              - https://github.com/tailscale/tailscale/blob/main/ipn/doc.go
+              - https://github.com/tailscale/tailscale/blob/main/safesocket/unixsocket.go
+  programming: https://beej.us/guide/bgnet/html/index-wide.html
+  osi:
+    ^: Open Systems Interconnection model https://www.cloudflare.com/learning/ddos/glossary/open-systems-interconnection-model-osi/
+    layer:
+      1: 
+        ^: https://osi-model.com/physical-layer/
+        involves: [ ethernet, fiber, wifi ]
+      2:
+        ^: https://osi-model.com/data-link-layer/
+        involves: [ frames, switches, tunnels ]
+      3:
+        ^: https://osi-model.com/network-layer/
+        involves: [ ip, nat, routers, vpn (data-plane) ]
+      4:
+        ^: https://osi-model.com/transport-layer/
+        involves: [ ports, pat, icmp, tcp, tcp sessions, udp, vpn (control-plane) ]
+      5: 
+        ^: https://osi-model.com/session-layer/
+        involves: []
+      6: 
+        ^: https://osi-model.com/presentation-layer/
+        involves: [] 
+      7: 
+        ^: https://osi-model.com/application-layer/
+        involves: [ http, https, ssl, tls ]
+  topology: https://www.educba.com/types-of-network-topology/
+  tunnel:
+  wifi:
+    wlan:
+      wlan:
+      wlan2:
+      wlan3:
+security:
+  ^: https://www.cloudflare.com/learning/security/what-is-web-application-security/
+  attacks:
+    ddos: distributed denial of service https://www.cloudflare.com/learning/ddos/what-is-a-ddos-attack/
+    phishing:
+      example:
+        - twilio signal phishing attack https://support.signal.org/hc/en-us/articles/4850133017242
+        - https://blog.cloudflare.com/2022-07-sms-phishing-attacks/
+  authoritative:
+  incidents:
+    - https://blog.lastpass.com/2022/08/notice-of-recent-security-incident/
+  okta:
+  ssl:
+    ^: https://www.cloudflare.com/learning/ssl/what-is-ssl/
+    lets-encrypt: https://letsencrypt.org/how-it-works/
+    certificate-authority: https://github.com/letsencrypt/boulder
+  sso:
+    ^: single sign on https://www.cloudflare.com/learning/access-management/what-is-sso/
+  tls:
+    ^: https://www.cloudflare.com/learning/ssl/transport-layer-security-tls/
+  totp:
+    ^: https://www.twilio.com/docs/glossary/totp
+  waf:
+    ^: https://www.cloudflare.com/learning/ddos/glossary/web-application-firewall-waf/
+uncategorized:
+  - Conflict-Free Replicated Data Type (CRDT) https://github.com/automerge/automerge
+  - WLAN Sensing
+  - deepfake zoom call detection, turn sideways https://news.ycombinator.com/item?id=32385555
+  - cellular network bioelectric signals physiological software layer https://www.youtube.com/watch?v=Z-9rLlFgcm0
+  - https://en.wikipedia.org/wiki/Solar_Foods
+  - map generator https://github.com/tepperly/Azimuthal
+  - stable diffusion text-to-image https://news.ycombinator.com/item?id=32634074
+  - lightweight VM "microVM" https://github.com/firecracker-microvm/firecracker
+  - https://github.com/jitsi/jitsi-meet
+  - https://codeburst.io/prometheus-by-example-4804ab86e741
+  - https://www.tigera.io/learn/guides/prometheus-monitoring/prometheus-kubernetes/
+  - https://kubernetes.io/docs/concepts/cluster-administration/system-metrics/
+  - https://github.com/kubernetes/kubernetes/blob/1be1ec4aa3e0270d591b33024532c8fd3ba8ab08/staging/src/k8s.io/component-base/metrics/histogram.go
+  - https://docs.ranchermanager.rancher.io/v2.5/faq/container-network-interface-providers
+  - https://github.com/open-telemetry/opentelemetry-go/tree/main/exporters/otlp
+  - https://stackoverflow.com/questions/52029656/how-to-retrieve-kubernetes-metrics-via-client-go-and-golang
+  - https://kubernetes.io/docs/tasks/debug/debug-cluster/resource-metrics-pipeline/#metrics-api
+  - https://levelup.gitconnected.com/how-to-watch-for-file-change-in-golang-4d1eaa3d2964
+  - https://github.com/vladimirvivien/k8s-client-examples/blob/master/go/podlist/maing.go
+  - https://github.com/prometheus/prometheus/blob/main/discovery/kubernetes/node.go
+  - https://gist.github.com/groob/a70af7e7ed3567eb6b6801f65c7a1393
+  - https://groob.io/tutorial/go-github-webhook/
+  - https://www.artstation.com/rutkowski
+  - https://pub.towardsai.net/stable-diffusion-based-image-compresssion-6f1f0a399202
+  - https://justine.lol/cosmopolitan/functions.html
+  - https://type-level-typescript.com/
+  - https://github.com/junegunn/fzf
+  - https://crawshaw.io/blog/thankful-for-technology
+  - https://github.com/zcalusic/sysinfo/blob/master/bios.go
+  - https://github.com/zcalusic/sysinfo
+  - https://github.com/microsoft/vscode-extension-samples/tree/main/tree-view-sample
+  - https://mtlynch.io/litestream/
+  - https://hub.docker.com/r/fluent/fluentd-kubernetes-daemonset/tags?page=1&name=s3
+  - https://github.com/fluent/fluentd-kubernetes-daemonset/blob/master/fluentd-daemonset-syslog.yaml
+  - https://sesar.di.unimi.it/corsi/sistemi/Lezioni/M2/M2_U4_DEF/complementiNAT.pdf
+  - https://networkengineering.stackexchange.com/questions/3145/what-layer-of-the-osi-model-does-nat-work
+  - https://justinjaffray.com/what-does-write-skew-look-like/
+  - https://materialize.com/blog/kafka-is-not-a-database/
+  - https://www.youtube.com/watch?v=7K0gAYmWWho
+  - https://www.youtube.com/watch?v=BlzRx6ROiX0
+  - https://letsencrypt.org/how-it-works/
+  - https://github.com/stefansundin/aws-rotate-key
+  - https://tailscale.com/blog/tailscale-ssh/
+  - https://yourbasic.org/golang/create-image/
+  - https://github.com/dwhitena/gophernet/blob/master/main.go
+  - https://www.freecodecamp.org/news/how-to-create-a-neural-network-in-javascript-in-only-30-lines-of-code-343dafc50d49/
+  - https://webrtc.github.io/samples/src/content/capture/canvas-pc/
+  - https://github.com/g3n/engine
+  - https://marmoset.co/posts/basic-theory-of-physically-based-rendering/
+  - https://github.com/pion/webrtc/blob/master/examples/play-from-disk/main.go
+  - https://blog.container-solutions.com/10-predictions-for-the-future-of-computing
+  - https://github.com/fastly/compute-actions
+  - https://developers.cloudflare.com/workers/
+  - https://rancher.com/docs/k3s/latest/en/installation/install-options/server-config/#customized-flags-for-kubernetes-processes
+  - https://kubernetes.io/releases/download/
+  - https://www.theladders.com/apply4me
+  - https://alternativeto.net/list/66/software-used-in-mr-robot/
+  - https://www.synthesia.io/features/avatars
+  - https://fabianlee.org/
+  - https://gitlab.com/gitlab-org/gitlab-foss/-/issues/24935
+  - https://book.systemsapproach.org/congestion/tcpcc.html
+  - https://github.com/pion/webrtc
+  - https://www.youtube.com/watch?v=cKaryf7qp9w
+  - https://www.infoq.com/presentations/streaming-databases/
+  - https://www.kai-waehner.de/blog/2020/03/12/can-apache-kafka-replace-database-acid-storage-transactions-sql-nosql-data-lake/
+  - https://mattwestcott.org/blog/redis-streams-vs-kafka
+  - https://blog.vamc19.dev/posts/dockerfile-copy-chmod/
+  - https://github.com/grpc/grpc/blob/master/doc/health-checking.md
+  - https://kubernetes.io/docs/reference/kubernetes-api/
+  - https://kubernetes.io/docs/reference/
+  - https://kubernetes.io/docs/reference/glossary/?fundamental=true
+  - https://www.datadoghq.com/blog/how-to-collect-and-graph-kubernetes-metrics/
+  - https://docs.docker.com/config/containers/runmetrics/
+  - https://kubernetes.io/docs/reference/kubectl/cheatsheet/
+  - https://medium.com/google-cloud/deploy-to-cloud-run-using-gitlab-ci-e056685b8eeb
+  - https://www.trickster.dev/post/decrypting-your-own-https-traffic-with-wireshark/
+  - https://medium.com/wasm/compile-and-deploy-an-erc20-contract-on-ewasm-d91d890665e6
+  - https://github.blog/2015-09-19-subresource-integrity/
+  - https://medium.com/google-cloud/deploy-to-cloud-run-using-gitlab-ci-e056685b8eeb
+  - https://docs.gitlab.com/ee/development/cicd/templates.html#template-directories
+  - https://cloud.google.com/sdk/gcloud/reference
+  - https://github.com/terraform-google-modules/terraform-google-kubernetes-engine/blob/master/examples/simple_autopilot_private/main.tf
+  - https://news.ycombinator.com/item?id=23833362
+  - https://www.youtube.com/watch?v=ritLB405a8E
+  - https://sidbala.com/h-264-is-magic/
+  - https://medium.com/cloudzone/gke-networking-options-explained-demonstrated-5c0253415eba
+  - https://www.youtube.com/watch?v=GrozSkmVHdw
+  - https://github.com/crossplane/provider-gcp/blob/master/examples/gke/gke.yaml
+  - https://www.youtube.com/watch?v=3VddZSTPc4Y
+  - https://medium.com/google-cloud/deploying-service-or-ingress-on-gke-59a49b134e3b
+  - https://medium.com/google-cloud/deploy-to-cloud-run-using-gitlab-ci-e056685b8eeb
+  - https://github.com/actions/cache/blob/main/examples.md#node---npm
+  - https://github.com/orgs/actions/repositories?q=&type=all&language=&sort=stargazers
+  - https://hackernoon.com/create-an-api-to-interact-with-ethereum-blockchain-using-golang-part-1-sqf3z7z
+  - https://towardsdev.com/creating-a-simple-ethereum-smart-contract-in-golang-138b9439f64e
+  - https://f-droid.org/en/2022/02/28/no-user-accounts-by-design.html
+  - https://bitfieldconsulting.com/golang
+  - https://watabou.itch.io/
+  - https://zulip.com/
+  - https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html
+  - https://portswigger.net/research/top-10-web-hacking-techniques-of-2021
+  - https://paulbutler.org/2022/what-does-it-mean-to-listen-on-a-port/
+  - https://sha256algorithm.com/
+  - https://twitter.com/kelvinfichter/status/1489041221947375616
+  - https://github.com/gomidi/midi
+  - https://www.youtube.com/watch?v=i8wFExDSZv0
+  - https://blog.ujomusic.com/how-to-buy-eth-using-metamask-coinbase-ecffe9ede78e
+  - https://github.com/liyue201/gostl
+  - https://github.com/charmbracelet/bubbles
+  - https://github.com/ewasm/go-ethereum/blob/ewasm/trie/trie.go
+  - https://github.com/ewasm/go-ethereum/blob/ewasm/core/types/block.go
+  - https://github.com/ethereum/go-ethereum/blob/b1e72f7ea998ad662166bcf23705ca59cf81e925/core/vm/opcodes.go
+  - https://gitlab.com/ubports/core/lomiri
+  - https://docs.ubports.com/en/latest/appdev/index.html
+  - https://github.com/google/gousb
+  - https://pine64.com/product/pinephone-beta-edition-with-convergence-package/
+  - https://www.ctrl.blog/entry/systemd-service-hardening.html
+  - http://matrixmultiplication.xyz/
+  - https://gist.githubusercontent.com/lrvick/5ecabfc4bb5a2f55783a/raw/d83753d0eb583adc045dc812bf4531d3f2caae4d/basecampbs.sh
+  - https://ciechanow.ski/gps/
+  - https://ropsten.etherscan.io/
+  - https://medium.com/chainsafe-systems/ethereum-2-0-a-complete-guide-ewasm-394cac756baf
+  - https://ewasm.readthedocs.io/en/mkdocs/determining_wasm_gas_costs/
+  - https://medium.com/loom-network/understanding-blockchain-fundamentals-part-1-byzantine-fault-tolerance-245f46fe8419
+  - https://dev.to/nheindev/build-the-hello-world-of-blockchain-in-go-bli
+  - https://www.youtube.com/watch?v=qyj0qEsBZPA
+  - https://medium.com/codechain/modified-merkle-patricia-trie-how-ethereum-saves-a-state-e6d7555078dd
+  - https://medium.com/chainsafe-systems/ethereum-2-0-a-complete-guide-ewasm-394cac756baf
+  - https://github.com/syndtr/goleveldb
+  - https://github.com/ethereum/go-ethereum/blob/master/docs/postmortems/2021-08-22-split-postmortem.md
+  - https://kauri.io/#communities/Getting%20started%20with%20dapp%20development/understanding-smart-contract-compilation-and-depl/
+  - https://hyperledger-fabric.readthedocs.io/en/release-2.2/smartcontract/smartcontract.html
+  - https://github.com/hyperledger/burrow
+  - https://jsonresume.org/schema/
+  - https://ethereum.org/en/developers/tutorials/how-to-write-and-deploy-an-nft/
+  - https://golang.google.cn/pkg/os/signal/#example_Notify
+  - https://github.com/lizrice/strace-from-scratch/blob/master/main.go
+  - https://github.com/torvalds/linux/blob/8cb1ae19bfae92def42c985417cd6e894ddaa047/arch/x86/entry/syscalls/syscall_64.tbl
+  - https://stackoverflow.com/questions/4042201/how-does-sigint-relate-to-the-other-termination-signals-such-as-sigterm-sigquit
+  - https://github.com/golang/go/blob/master/src/os/file.go#L65
+  - https://en.wikipedia.org/wiki/Signal_(IPC)
+  - https://github.com/torvalds/linux/blob/master/kernel/bpf/syscall.c
+  - https://github.com/cilium/ebpf/blob/70d770f1e5f97263e4e66ffeee928f3aa50eb5d4/prog.go#L393
+  - https://www.kernel.org/doc/html/latest/userspace-api/ebpf/syscall.html
+  - https://github.com/cilium/ebpf/blob/master/examples/tracepoint_in_go/main.go
+  - https://www.youtube.com/watch?v=wf8N0RO81Cs
+  - https://www.iana.org/assignments/media-types/media-types.xhtml#application
+  - https://httpwg.org/http-core/draft-ietf-httpbis-semantics-latest.html
+  - https://nickolinger.com/blog/2021-08-04-you-dont-need-that-cors-request/
+  - https://apenwarr.ca/log/20211229
+  - https://arxiv.org/abs/2008.11619
+  - https://github.community/t/docker-pull-from-public-github-package-registry-fail-with-no-basic-auth-credentials-error/16358/86
+  - https://caylent.com/blog/aws/github-actions-on-self-hosted-runners-for-kubernetes
+  - https://en.wikipedia.org/wiki/User_space#USERLAND
+  - https://en.wikipedia.org/wiki/Shor's_algorithm
+  - https://sebastian.itch.io/digital-logic-sim
+  - https://www.cloudsavvyit.com/11072/linux-signals-hacks-definition-and-more/
+  - https://blog.immersed.team/working-from-orbit-39bf95a6d385
+  - https://globe.gl/example/submarine-cables/
+  - https://www.dotnetperls.com/convert-map-slice-go
+  - https://hak5.org/
+  - https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial/Paths
+  - https://github.com/golang/go/wiki/MutexOrChannel
+  - https://farmer.golang.org/
+  - https://build.golang.org/
+  - https://dwm.suckless.org/
+  - https://ns6t.net/word/?page_id=10
+  - https://globe.adsbexchange.com/
+  - https://developers.google.com/maps/documentation/javascript/examples/map-projection-simple#maps_map_projection_simple-javascript
+  - https://ns6t.net/azimuth/
+  - https://secrethub.io/integrations/github-actions/
+  - https://yourbasic.org/golang/format-parse-string-time-date-example/
+  - https://devhints.io/jsdoc
+  - https://docs.github.com/en/actions/reference/context-and-expression-syntax-for-github-actions
+  - https://favicon.io/favicon-generator/
+  - https://avatars.githubusercontent.com/u/40783698?s=200&v=4
+  - https://developer.mozilla.org/en-US/docs/Web/CSS/box-sizing
+  - https://blog.golang.org/defer-panic-and-recover
+  - https://pkg.go.dev/github.com/gorilla/mux#Router
+  - https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-an-environment-variable
+  - https://fly.io/blog/the-5-hour-content-delivery-network/
+  - https://github.com/rdkr/oniongen-go/blob/master/main.go
+  - https://stackoverflow.com/questions/47876997/github-rest-api-full-example
+  - https://docs.github.com/en/rest/reference/actions#example-using-registration-token
+  - https://www.devdungeon.com/content/packet-capture-injection-and-analysis-gopacket
+  - http://www.staroceans.org/kernel-and-driver/eBook.O%27Reilly.-.Understanding.The.Linux.Kernel.pdf
+  - https://github.com/pirate/wireguard-docs
+  - https://upcloud.com/community/tutorials/get-started-wireguard-vpn/
+  - https://www.wireguard.com/quickstart/
+  - https://github.com/subspacecommunity/subspace
+  - https://www.the-digital-life.com/wireguard-docker/
+  - https://sachsenhofer.io/setup-tor-docker-container/
+  - https://buoyant.io/2020/12/23/kubernetes-network-policies-with-cilium-and-linkerd/
+  - https://www.skiff.org/#referrer=bravesponsor
+  - https://www.cncf.io/projects/
+  - https://markodenic.com/html-tips/
+  - https://github.com/lizrice/strace-from-scratch/blob/master/main.go
+  - https://lofi.cafe/
+  - https://codesandbox.io/s/github/reduxjs/redux/tree/master/examples/counter-vanilla?from-embed=&file=/index.html:914-920
+  - https://redux.js.org/introduction/getting-started#basic-example
+  - https://www.okta.com/identity-101/saml-vs-oauth/
+  - https://stackoverflow.com/questions/750172/how-to-change-the-author-and-committer-name-and-e-mail-of-multiple-commits-in-gi
+  - https://sci-hub.se/
+  - https://webdesign.tutsplus.com/tutorials/how-to-create-an-open-source-directory-on-github-pages--cms-26225
+  - https://www.theplanetstoday.com/index.html
+  - https://www.digitalattackmap.com/#anim=1&color=0&country=ALL&list=0&time=18681&view=map
+  - https://globe.akamai.com/
+  - https://carltheperson.com/posts/10-things-linux
+  - https://clerk.dev/
+  - https://robotmoon.com/ssh-tunnels/
+  - https://docs.unrealengine.com/en-US/SharingAndReleasing/Linux/BeginnerLinuxDeveloper/SettingUpAnUnrealWorkflow/index.html
+  - https://github.com/EpicGames/UnrealEngine
+  - https://medium.com/dot-debug/running-chrome-in-a-docker-container-a55e7f4da4a8
+  - https://blog.landr.com/types-of-synthesis/
+  - https://aws.amazon.com/blogs/storage/querying-data-without-servers-or-databases-using-amazon-s3-select/
+  - https://www.w3schools.com/cssref/css3_pr_flex-shrink.asp
+  - https://css-tricks.com/svg-use-with-external-reference-take-2/
+  - https://ciechanow.ski/archives/
+  - https://www.protondb.com/
+  - https://stackoverflow.com/questions/56108144/using-s3-as-a-database-vs-database-e-g-mongodb
+  - https://itnext.io/modern-storage-is-plenty-fast-it-is-the-apis-that-are-bad-6a68319fbc1a
+  - https://iconmonstr.com/
+  - https://www.descript.com/overdub
+  - https://threatmap.checkpoint.com/
+  - https://cybermap.kaspersky.com/
+  - https://livemap.pingdom.com/
+  - https://ss2.climatecentral.org/
+  - https://github.blog/2020-11-16-standing-up-for-developers-youtube-dl-is-back/
+  - https://www.howtogeek.com/465350/everything-you-ever-wanted-to-know-about-inodes-on-linux/
+  - https://blog.packagecloud.io/eng/2016/04/05/the-definitive-guide-to-linux-system-calls/#what-is-a-system-call
+  - https://stackoverflow.com/questions/33963467/parse-http-requests-and-responses-from-text-file-in-go
+  - https://www.pauladamsmith.com/blog/2016/04/max-clients-go-net-http.html
+  - https://promiseauthentication.org/
+  - https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_client_applications
+  - https://www.howtogeek.com/117435/htg-explains-the-linux-directory-structure-explained/
+  - https://www.quantamagazine.org/computer-scientists-achieve-crown-jewel-of-cryptography-20201110/
+  - https://yqnn.github.io/svg-path-editor/
+  - https://www.mgasch.com/post/scratch/
+  - https://github.com/surma/gobox
+  - https://github.com/robertdavidgraham/masscan
+  - https://secretgeek.github.io/html_wysiwyg/html.html
+  - https://jrl.ninja/etc/1/
+  - https://buoyant.io/service-mesh-manifesto/
+  - https://aws.amazon.com/blogs/security/how-to-use-g-suite-as-external-identity-provider-aws-sso/
+  - https://read.acloud.guru/why-and-how-do-we-build-a-multi-region-active-active-architecture-6d81acb7d208?gi=c38419eb0d95
+  - https://github.com/kubernetes-client/javascript/blob/master/src/proto-client.ts
+  - https://www.oreilly.com/library/view/http-the-definitive/1565925092/ch04s07.html
+  - https://howtonode.org/capturing-packets-in-javascript
+  - https://iximiuz.com/en/posts/from-docker-container-to-bootable-linux-disk-image/
+  - https://keepvid.pro/en3/youtube-video-downloader
+  - https://css-tricks.com/snippets/css/a-guide-to-flexbox/
+  - https://medium.com/netscape/a-guide-to-create-a-nodejs-command-line-package-c2166ad0452e
+  - http://blog.functorial.com/posts/2018-04-08-Incrementally-Improving-The-DOM.html
+  - https://blog.sessionstack.com/how-does-javascript-actually-work-part-1-b0bacc073cf
+  - https://app.codility.com/programmers/
+  - https://pkg.go.dev/net@latest#Dial

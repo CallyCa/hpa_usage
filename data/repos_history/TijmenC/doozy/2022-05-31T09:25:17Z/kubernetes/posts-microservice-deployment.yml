@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: posts-deployment
+  namespace: doozy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: doozy-posts
+  template:
+    metadata:
+      labels:
+        app: doozy-posts
+    spec:
+      containers:
+        - name: doozy-posts
+          image: 50307031/postmicroservice
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "256m"
+            limits:
+              memory: "256Mi"
+              cpu: "256m"
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: doozy-posts
+  namespace: doozy
+spec:
+  type: ClusterIP
+  selector:
+    app: doozy-posts
+  ports:
+  - name: doozy-posts
+    protocol: TCP
+    port: 80
+    targetPort: 80
+---
+ apiVersion: autoscaling/v1
+ kind: HorizontalPodAutoscaler
+ metadata:
+   name: posts-deployment-autoscaler
+   namespace: doozy
+ spec:
+   scaleTargetRef:
+     apiVersion: apps/v1
+     kind: Deployment
+     name: posts-deployment
+   minReplicas: 1
+   maxReplicas: 5
+   targetCPUUtilizationPercentage: 75
+ 

@@ -1,0 +1,608 @@
+# Kubernetes Manifest File Cheat Sheet with Detailed Comments and Explanations
+
+# General Structure of a Kubernetes Manifest File
+# Every Kubernetes manifest follows this general structure:
+# apiVersion: Defines the version of the Kubernetes API you're using
+# kind:     Specifies the type of Kubernetes object you're creating (e.g., Pod, Service)
+# metadata:   Provides data to uniquely identify the object, including name, namespace, labels, and annotations
+# spec:     Describes the desired state of the object (object-specific configuration)
+
+---
+# 1. Pod
+
+# **What is a Pod?**
+# A Pod is the smallest and simplest unit in the Kubernetes object model that you create or deploy.
+# It represents a single instance of a running process in your cluster.
+# A Pod encapsulates one or more containers (such as Docker containers), storage resources, a unique network IP, and options that govern how the container(s) should run.
+
+apiVersion: v1 # Uses the core API group version 'v1'
+kind: Pod # Specifies that this object is a Pod
+metadata:
+    name: my-pod # Unique name of the Pod within the namespace
+    labels:
+        app: my-app # Key-value pairs to categorize and select the Pod
+spec:
+    containers:
+        - name: my-container # Name of the container within the Pod
+          image: nginx:1.19 # Docker image to run in the container
+          ports:
+              - containerPort: 80 # Port that the container listens on
+          env:
+              - name: ENVIRONMENT # Name of an environment variable
+                value: 'production' # Value of the environment variable
+
+---
+# 2. Deployment
+
+# **What is a Deployment?**
+# A Deployment provides declarative updates for Pods and ReplicaSets.
+# You describe a desired state in a Deployment, and the Deployment Controller changes the actual state to the desired state at a controlled rate.
+# Deployments are recommended for stateless applications and are ideal for managing applications where scaling, rolling updates, and rollbacks are required.
+
+apiVersion: apps/v1 # Uses the 'apps' API group version 'v1'
+kind: Deployment # Specifies that this object is a Deployment
+metadata:
+    name: my-deployment # Unique name of the Deployment within the namespace
+spec:
+    replicas: 3 # Desired number of Pod replicas
+    selector:
+        matchLabels:
+            app: my-app # Label selector to identify Pods managed by this Deployment
+    template: # Template for the Pods created by the Deployment
+        metadata:
+            labels:
+                app: my-app # Labels applied to the Pods created
+        spec:
+            containers:
+                - name: my-container
+                  image: nginx:1.19
+                  ports:
+                      - containerPort: 80 # Port that the container exposes
+
+---
+# 3. Service
+
+# **What is a Service?**
+# A Service is an abstraction that defines a logical set of Pods and a policy by which to access them.
+# Services enable loose coupling between dependent Pods.
+# Kubernetes Services can expose an application running on a set of Pods as a network service, allowing other Pods or external clients to access it.
+
+apiVersion: v1
+kind: Service
+metadata:
+    name: my-service # Unique name of the Service within the namespace
+spec:
+    selector:
+        app: my-app # Selects Pods with this label to route traffic to
+    ports:
+        - protocol: TCP # Protocol used (TCP or UDP)
+          port: 80 # Port that the Service exposes internally
+          targetPort: 80 # Port on the Pod that the traffic is directed to
+    type: ClusterIP # Type of Service (ClusterIP, NodePort, LoadBalancer, ExternalName)
+
+---
+# 4. ConfigMap
+
+# **What is a ConfigMap?**
+# A ConfigMap is an API object used to store non-confidential data in key-value pairs.
+# ConfigMaps allow you to decouple configuration artifacts from image content to keep containerized applications portable.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: my-config # Unique name of the ConfigMap within the namespace
+data:
+    DATABASE_URL: 'localhost:5432' # Key-value pairs storing configuration data
+    DATABASE_USER: 'admin' # Additional configuration parameters
+
+---
+# 5. Secret
+
+# **What is a Secret?**
+# A Secret is an object that contains a small amount of sensitive data such as a password, a token, or a key.
+# Such information might otherwise be put in a Pod specification or in a container image.
+# Using a Secret means that you don't need to include confidential data in your application code.
+
+apiVersion: v1
+kind: Secret
+metadata:
+    name: my-secret # Unique name of the Secret within the namespace
+type: Opaque # Indicates a generic Secret (other types include kubernetes.io/tls)
+data:
+    password: cGFzc3dvcmQ= # Base64 encoded value of 'password' ('password' encoded is 'cGFzc3dvcmQ=')
+    username: YWRtaW4= # Base64 encoded value of 'admin' ('admin' encoded is 'YWRtaW4=')
+# Note: Use `echo -n 'your_value' | base64` to encode data before putting into the Secret.
+
+---
+# 6. PersistentVolume
+
+# **What is a PersistentVolume?**
+# A PersistentVolume (PV) is a piece of storage in the cluster that has been provisioned by an administrator or dynamically provisioned using Storage Classes.
+# It is a resource in the cluster just like a node.
+# PVs are volume plugins like Volumes, but have a lifecycle independent of any individual Pod that uses the PV.
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+    name: my-pv # Unique name of the PersistentVolume within the cluster
+spec:
+    capacity:
+        storage: 1Gi # Total amount of storage provided by the volume
+    accessModes:
+        - ReadWriteOnce # Access mode (ReadWriteOnce, ReadOnlyMany, ReadWriteMany)
+    persistentVolumeReclaimPolicy: Retain # Policy for reclaiming the volume after it is released (Retain, Recycle, Delete)
+    hostPath:
+        path: /data # Filesystem path on the host node
+
+---
+# 7. PersistentVolumeClaim
+
+# **What is a PersistentVolumeClaim?**
+# A PersistentVolumeClaim (PVC) is a request for storage by a user.
+# It is similar to a Pod.
+# Pods consume node resources and PVCs consume PV resources.
+# PVCs can request specific size and access modes (e.g., can be mounted once read/write or many times read-only).
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+    name: my-pvc # Unique name of the PersistentVolumeClaim within the namespace
+spec:
+    accessModes:
+        - ReadWriteOnce # Desired access mode
+    resources:
+        requests:
+            storage: 1Gi # Amount of storage requested
+
+---
+# 8. StatefulSet
+
+# **What is a StatefulSet?**
+# A StatefulSet is the workload API object used to manage stateful applications.
+# It manages the deployment and scaling of a set of Pods, and provides guarantees about the ordering and uniqueness of these Pods.
+# StatefulSet is useful for applications that require stable, unique network identifiers and persistent storage.
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+    name: my-statefulset # Unique name of the StatefulSet within the namespace
+spec:
+    serviceName: 'my-service' # Name of the Service governing the StatefulSet
+    replicas: 3 # Desired number of Pod replicas
+    selector:
+        matchLabels:
+            app: my-app # Label selector for Pods managed by the StatefulSet
+    template:
+        metadata:
+            labels:
+                app: my-app # Labels applied to the Pods
+        spec:
+            terminationGracePeriodSeconds: 10 # Time given to the Pod to terminate gracefully
+            containers:
+                - name: my-container
+                  image: nginx:1.19
+                  ports:
+                      - containerPort: 80
+                  volumeMounts:
+                      - name: data
+                        mountPath: /data # Path inside the container where the volume is mounted
+    volumeClaimTemplates:
+        - metadata:
+              name: data # Name of the volume, referenced in volumeMounts
+          spec:
+              accessModes: ['ReadWriteOnce']
+              resources:
+                  requests:
+                      storage: 1Gi # Storage size requested for each Pod's volume
+
+---
+# 9. DaemonSet
+
+# **What is a DaemonSet?**
+# A DaemonSet ensures that all (or some) Nodes run a copy of a Pod.
+# As nodes are added to the cluster, Pods are added to them.
+# As nodes are removed from the cluster, those Pods are garbage collected.
+# Deleting a DaemonSet will clean up the Pods it created.
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+    name: my-daemonset # Unique name of the DaemonSet within the namespace
+spec:
+    selector:
+        matchLabels:
+            app: my-app # Label selector for Pods managed by the DaemonSet
+    template:
+        metadata:
+            labels:
+                app: my-app # Labels applied to the Pods
+        spec:
+            containers:
+                - name: my-container
+                  image: fluentd:latest # Image to run on each node (e.g., a logging agent)
+
+---
+# 10. Job
+
+# **What is a Job?**
+# A Job creates one or more Pods and ensures that a specified number of them successfully terminate.
+# As Pods successfully complete, the Job tracks the successful completions.
+# When a specified number of successful completions is reached, the Job itself is complete.
+# Jobs are used for finite tasks such as batch processing.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+    name: my-job # Unique name of the Job within the namespace
+spec:
+    completions: 1 # Total number of successful completions desired
+    parallelism: 1 # Maximum number of Pods to run in parallel
+    template:
+        spec:
+            containers:
+                - name: my-container
+                  image: busybox
+                  command: ['echo', 'Hello World'] # Command executed by the container
+            restartPolicy: Never # Do not restart containers upon failure
+
+---
+# 11. CronJob
+
+# **What is a CronJob?**
+# A CronJob creates Jobs on a repeating schedule.
+# CronJobs are useful for creating periodic and recurring tasks, like running backups or sending emails.
+# They are scheduled based on a Cron format schedule.
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+    name: my-cronjob # Unique name of the CronJob within the namespace
+spec:
+    schedule: '0 0 * * *' # Cron format schedule (runs at midnight every day)
+    jobTemplate:
+        spec:
+            template:
+                spec:
+                    containers:
+                        - name: my-container
+                          image: busybox
+                          command: ['echo', 'Hello World']
+                    restartPolicy: OnFailure # Restart containers upon failure
+
+---
+# 12. Ingress
+
+# **What is an Ingress?**
+# An Ingress is an API object that manages external access to the services in a cluster, typically HTTP.
+# Ingress can provide load balancing, SSL termination, and name-based virtual hosting.
+# It routes traffic from the outside world to Services inside the cluster.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+    name: my-ingress # Unique name of the Ingress within the namespace
+spec:
+    rules:
+        - host: example.com # Domain name for the Ingress rule
+          http:
+              paths:
+                  - path: / # URL path to match
+                    pathType: Prefix # Type of path matching (Prefix, Exact, ImplementationSpecific)
+                    backend:
+                        service:
+                            name: my-service # Name of the Service to route traffic to
+                            port:
+                                number: 80 # Port of the Service
+
+---
+# 13. ServiceAccount
+
+# **What is a ServiceAccount?**
+# A ServiceAccount provides an identity for processes that run in a Pod.
+# When processes in a Pod communicate with the Kubernetes API, they do so with the identity of the ServiceAccount associated with the Pod.
+# ServiceAccounts are used to provide access control for Pods.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+    name: my-serviceaccount # Unique name of the ServiceAccount within the namespace
+
+---
+# 14. Role
+
+# **What is a Role?**
+# A Role defines a set of permissions within a namespace.
+# It specifies which actions (verbs) can be performed on which resources.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+    namespace: default # Namespace where the Role applies
+    name: pod-reader # Unique name of the Role within the namespace
+rules:
+    - apiGroups: [''] # "" indicates the core API group
+      resources: ['pods'] # Resources this Role grants access to
+      verbs: ['get', 'watch', 'list'] # Allowed actions (verbs) on the resources
+
+---
+# 14. RoleBinding
+
+# **What is a RoleBinding?**
+# A RoleBinding grants permissions defined in a Role to a user or set of users.
+# It associates a Role with a subject (user, group, or ServiceAccount) within a namespace.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+    name: read-pods # Unique name of the RoleBinding within the namespace
+    namespace: default
+subjects:
+    - kind: User # Type of subject (User, Group, ServiceAccount)
+      name: jane # Name of the user the Role is bound to
+      apiGroup: rbac.authorization.k8s.io
+roleRef:
+    kind: Role # Kind of the Role being referred to
+    name: pod-reader # Name of the Role being referred to
+    apiGroup: rbac.authorization.k8s.io
+
+---
+# 15. ClusterRole
+
+# **What is a ClusterRole?**
+# A ClusterRole is similar to a Role but applies cluster-wide and not to a specific namespace.
+# It defines permissions that are cluster-scoped or can be used across all namespaces.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    name: cluster-admin # Unique name of the ClusterRole within the cluster
+rules:
+    - apiGroups: ['*'] # Applies to all API groups
+      resources: ['*'] # Applies to all resources
+      verbs: ['*'] # Allows all actions (create, get, list, watch, etc.)
+
+---
+# 15. ClusterRoleBinding
+
+# **What is a ClusterRoleBinding?**
+# A ClusterRoleBinding grants cluster-scoped permissions to a user or set of users.
+# It associates a ClusterRole with a subject (user, group, or ServiceAccount) at the cluster level.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+    name: admin-binding # Unique name of the ClusterRoleBinding within the cluster
+subjects:
+    - kind: User
+      name: admin # Name of the user the ClusterRole is bound to
+      apiGroup: rbac.authorization.k8s.io
+roleRef:
+    kind: ClusterRole # Kind of the ClusterRole being referred to
+    name: cluster-admin # Name of the ClusterRole being referred to
+    apiGroup: rbac.authorization.k8s.io
+
+---
+# 16. NetworkPolicy
+
+# **What is a NetworkPolicy?**
+# A NetworkPolicy is a specification of how groups of Pods are allowed to communicate with each other and other network endpoints.
+# It allows you to control the flow of traffic at the IP address or port level (OSI layer 3 or 4).
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+    name: allow-nginx # Unique name of the NetworkPolicy within the namespace
+    namespace: default
+spec:
+    podSelector:
+        matchLabels:
+            app: nginx # Selects Pods with the label 'app: nginx' to apply the policy to
+    policyTypes:
+        - Ingress # Policy applies to ingress traffic
+    ingress:
+        - from:
+              - ipBlock:
+                cidr: 172.17.0.0/16 # Allow traffic from this CIDR block
+          ports:
+              - protocol: TCP
+                port: 80 # Allow traffic on this port
+
+---
+# 17. HorizontalPodAutoscaler
+
+# **What is a HorizontalPodAutoscaler?**
+# A HorizontalPodAutoscaler (HPA) automatically scales the number of Pods in a Deployment, ReplicaSet, or StatefulSet based on observed CPU utilization or other custom metrics.
+# It helps in adjusting the capacity of an application to meet demand.
+
+apiVersion: autoscaling/v2 # Version of the autoscaling API
+kind: HorizontalPodAutoscaler
+metadata:
+    name: my-hpa # Unique name of the HPA within the namespace
+spec:
+    scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: my-deployment # Name of the Deployment to scale
+    minReplicas: 1 # Minimum number of Pods to scale down to
+    maxReplicas: 10 # Maximum number of Pods to scale up to
+    metrics:
+        - type: Resource # Type of metric (Resource, Pods, Object)
+          resource:
+              name: cpu # Resource type to monitor (cpu, memory)
+              target:
+                  type: Utilization
+                  averageUtilization: 50 # Target average CPU utilization percentage
+
+---
+# 18. Pod with Volume
+
+# **What are Volumes and VolumeMounts?**
+# Volumes are a way to provide persistent storage to Pods in Kubernetes.
+# A Volume represents a directory accessible to containers in a Pod, which is mounted at a specific path.
+# Volumes allow data to survive container restarts and can share data between containers in the same Pod.
+
+apiVersion: v1
+kind: Pod
+metadata:
+    name: volume-demo # Unique name of the Pod within the namespace
+spec:
+    containers:
+        - name: volume-demo-container
+          image: nginx:1.19
+          volumeMounts:
+              - mountPath: '/usr/share/nginx/html' # Path inside the container to mount the volume
+                name: html-volume # Reference to the volume defined below
+    volumes:
+        - name: html-volume # Name of the volume
+          configMap:
+              name: my-config # Name of the ConfigMap to use as the volume source
+
+---
+# 19. Pod Disruption Budget
+
+# **What is a Pod Disruption Budget?**
+# A Pod Disruption Budget (PDB) is an object that specifies the minimum number or percentage of Pods that must be available during voluntary disruptions.
+# PDBs are used to ensure that a certain number of Pods remain operational during maintenance activities like node upgrades.
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+    name: my-pdb # Unique name of the PDB within the namespace
+spec:
+    minAvailable: 2 # Minimum number of Pods that must be available after a voluntary eviction
+    selector:
+        matchLabels:
+            app: my-app # Selects Pods with the label 'app: my-app'
+
+---
+# 20. ResourceQuota
+
+# **What is a ResourceQuota?**
+# A ResourceQuota provides constraints that limit aggregate resource consumption per namespace.
+# It can limit the total amount of resources like CPU, memory, and the number of objects like Pods and Services that can be created in a namespace.
+
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+    name: compute-resources # Unique name of the ResourceQuota within the namespace
+spec:
+    hard:
+        requests.cpu: '2' # Maximum total CPU requests for the namespace
+        requests.memory: 1Gi # Maximum total memory requests for the namespace
+        limits.cpu: '4' # Maximum total CPU limits for the namespace
+        limits.memory: 2Gi # Maximum total memory limits for the namespace
+
+---
+# 21. LimitRange
+
+# **What is a LimitRange?**
+# A LimitRange sets resource usage limits for each Pod or Container in a namespace.
+# It can enforce minimum and maximum compute resources usage per Pod or Container, ensuring efficient resource utilization.
+
+apiVersion: v1
+kind: LimitRange
+metadata:
+    name: limits # Unique name of the LimitRange within the namespace
+spec:
+    limits:
+        - max:
+              cpu: '2' # Maximum CPU limit per Container
+              memory: 1Gi # Maximum memory limit per Container
+          min:
+              cpu: 200m # Minimum CPU request per Container (200 milli-cores)
+              memory: 6Mi # Minimum memory request per Container
+          type: Container # Type of object the limits apply to (Container or Pod)
+
+---
+# 22. Custom Resource Definition (CRD)
+
+# **What is a Custom Resource Definition?**
+# A CustomResourceDefinition (CRD) allows you to create your own custom resources.
+# With CRDs, you can extend the Kubernetes API to store and retrieve structured data.
+# It is a powerful feature that allows you to manage application-specific configurations.
+
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+    name: crontabs.stable.example.com # Fully qualified name of the CRD (plural.group)
+spec:
+    group: stable.example.com # API group name
+    versions:
+        - name: v1 # Version name
+          served: true # CRD is served
+          storage: true # CRD is stored in etcd
+    scope: Namespaced # Resource is namespaced (or Cluster)
+    names:
+        plural: crontabs # Plural name of the resource
+        singular: crontab # Singular name of the resource
+        kind: CronTab # CamelCase name of the resource
+        shortNames:
+            - ct # Short name(s) for the resource
+
+---
+# 23. Pod Security Policy
+
+# **What is a Pod Security Policy?**
+# **Note:** As of Kubernetes v1.25, PodSecurityPolicy is deprecated and removed. Consider using alternative mechanisms like Pod Security Admission.
+# A PodSecurityPolicy is a cluster-level resource that controls security-sensitive aspects of the Pod specification.
+# It defines a set of conditions that a Pod must meet to be accepted into the system, acting as a whitelist.
+
+apiVersion: policy/v1beta1 # Note: This API version is deprecated
+kind: PodSecurityPolicy
+metadata:
+    name: privileged
+spec:
+    privileged: true # Allow privileged Pods
+    volumes:
+        - '*' # Allow all volume types
+    hostNetwork: true # Allow Pods to use the host's network namespace
+    hostIPC: true # Allow Pods to use the host's IPC namespace
+    hostPID: true # Allow Pods to use the host's PID namespace
+    runAsUser:
+        rule: 'RunAsAny' # No restriction on the user ID
+    seLinux:
+        rule: 'RunAsAny' # No restriction on SELinux labels
+    supplementalGroups:
+        rule: 'RunAsAny' # No restriction on supplemental groups
+    fsGroup:
+        rule: 'RunAsAny' # No restriction on filesystem group
+
+---
+# 24. Event
+
+# **What is an Event?**
+# An Event is a Kubernetes object that records significant occurrences or changes in the state of a cluster.
+# Events provide a timeline of activities in the cluster, which can be useful for debugging.
+
+apiVersion: v1
+kind: Event
+metadata:
+    name: my-event # Unique name of the Event within the namespace
+involvedObject:
+    kind: Pod # The object that this event is about
+    namespace: default
+    name: my-pod
+message: 'Scheduled pod' # Description of the event
+reason: 'Scheduled' # Short, machine-understandable string that gives the reason for the transition
+type: Normal # Type of event (Normal, Warning)
+source:
+    component: default-scheduler # Name of the controller or component that generated this event
+
+---
+# 25. Endpoints
+
+# **What is an Endpoints object?**
+# An Endpoints object is a collection of IP addresses and ports that represents the endpoints of a Service.
+# Endpoints are created automatically when a Service is created, and they track the Pods matching the Service's selector.
+# They provide the actual network addresses to which the Service routes traffic.
+
+apiVersion: v1
+kind: Endpoints
+metadata:
+    name: my-service # Name must match the Service to which this Endpoints object corresponds
+subsets:
+    - addresses:
+          - ip: 192.168.1.1 # IP addresses of the endpoint (e.g., Pod IPs)
+      ports:
+          - port: 9376 # Port number of the endpoint (e.g., container ports)
+

@@ -1,0 +1,48 @@
+{{- if and .Values.n8n.worker.enabled .Values.n8n.worker.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "n8n-scalable.fullname" . }}-worker
+  labels:
+    {{- include "n8n-scalable.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "n8n-scalable.fullname" . }}-worker
+  minReplicas: {{ .Values.n8n.worker.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.n8n.worker.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.n8n.worker.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.n8n.worker.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.n8n.worker.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.n8n.worker.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+    # Custom metrics for queue depth
+    - type: External
+      external:
+        metric:
+          name: redis_bull_queue_waiting_jobs
+          selector:
+            matchLabels:
+              queue_name: "n8n-jobs"
+        target:
+          type: AverageValue
+          averageValue: "5"
+  {{- with .Values.n8n.worker.autoscaling.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }} 

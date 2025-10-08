@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: techchallenge-microservico-pedido
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: techchallenge-microservico-pedido
+  template:
+    metadata:
+      labels:
+        app: techchallenge-microservico-pedido
+    spec:
+      containers:
+      - name: techchallenge-microservico-pedido
+        image: wviegas/tech-ms:ms-pedido-img
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1024Mi"
+            cpu: "1.0"
+        readinessProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        startupProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        envFrom:
+        - configMapRef:
+            name: my-config
+      # imagePullSecrets:
+      # - name: regcred
+        
+
+# ---
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: localstack
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: localstack
+#   template:
+#     metadata:
+#       labels:
+#         app: localstack
+#     spec:
+#       containers:
+#       - name: localstack
+#         image: wviegas/tech-lanchonetetotem-rep:localstack
+#         ports:
+#         - containerPort: 4510
+#         - containerPort: 4559
+#         - containerPort: 4566
+#         resources:
+#           requests:
+#             memory: "512Mi"
+#             cpu: "250m"
+#           limits:
+#             memory: "1024Mi"
+#             cpu: "1.0"
+#         readinessProbe:
+#           tcpSocket:
+#             port: 4566
+#           initialDelaySeconds: 30
+#           periodSeconds: 10
+#         livenessProbe:
+#           tcpSocket:
+#             port: 4566
+#           initialDelaySeconds: 30
+#           periodSeconds: 10
+#         startupProbe:
+#           tcpSocket:
+#             port: 4566
+#           initialDelaySeconds: 30
+#           periodSeconds: 10
+#         envFrom:
+#         - configMapRef:
+#             name: my-config
+# ---
+# apiVersion: autoscaling/v2
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: techchallenge-microservico-pedido-hpa
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: techchallenge-microservico-pedido
+#   minReplicas: 1
+#   maxReplicas: 2
+#   metrics:
+#     - type: Resource
+#       resource:
+#         name: cpu
+#         target:
+#           type: Utilization
+#           averageUtilization: 60
+# ---
+# apiVersion: autoscaling/v2
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: localstack-hpa
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: localstack
+#   minReplicas: 1
+#   maxReplicas: 2
+#   metrics:
+#     - type: Resource
+#       resource:
+#         name: cpu
+#         target:
+#           type: Utilization
+#           averageUtilization: 60

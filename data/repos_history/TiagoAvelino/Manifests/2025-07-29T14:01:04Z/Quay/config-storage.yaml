@@ -1,0 +1,34 @@
+apiVersion: quay.redhat.com/v1
+kind: QuayRegistry
+metadata:
+  creationTimestamp: '2025-04-29T17:46:59Z'
+  generation: 2
+  name: example-registry
+  namespace: openshift-operators
+  resourceVersion: '113466'
+  uid: 6f470e55-14c9-49fa-92c1-da812b130ac3
+spec:
+  components:
+    - kind: clair
+      managed: true
+    - kind: postgres
+      managed: true
+    - kind: objectstorage
+      managed: true
+    - kind: redis
+      managed: true
+    - kind: horizontalpodautoscaler
+      managed: true
+    - kind: route
+      managed: true
+    - kind: mirror
+      managed: true
+    - kind: monitoring
+      managed: true
+    - kind: tls
+      managed: true
+    - kind: quay
+      managed: true
+    - kind: clairpostgres
+      managed: true
+  configBundleSecret: example-registry-config-bundle-9cmst

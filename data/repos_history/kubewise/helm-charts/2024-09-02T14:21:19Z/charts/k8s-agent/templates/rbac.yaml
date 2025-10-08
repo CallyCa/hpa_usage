@@ -1,0 +1,72 @@
+---
+#
+# Cluster role for the K8s agent
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubewise-{{ .Release.Name }}-k8s-agent
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/app: kubewise-{{ .Release.Name }}-k8s-agent
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+rules:
+- apiGroups: [""]
+  resources: ["nodes","namespaces","services"]
+  verbs: ["get","watch","list"]
+- apiGroups: [""]
+  resources: ["pods","pods/log"]
+  verbs: ["get","watch","list"]
+- apiGroups: ["apps"]
+  resources: ["daemonsets","deployments","replicasets","statefulsets"]
+  verbs: ["get","watch","list"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs","jobs"]
+  verbs: ["get","watch","list"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get","watch","list"]
+- apiGroups: ["networking"]
+  resources: ["networkpolicies"]
+  verbs: ["get","watch","list"]
+- apiGroups: ["aquasecurity.github.io"]
+  resources: ["clustercompliancereports","clusterconfigauditreports","clusterinfraassessmentreports","clusterrbacassessmentreports","clustersbomreports","clustervulnerabilityreports","configauditreports","exposedsecretreports","infraassessmentreports","rbacassessmentreports","sbomreports","vulnerabilityreports"]
+  verbs: ["get","watch","list"]
+
+---
+#
+# Service account for the K8s agent
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubewise-{{ .Release.Name }}-k8s-agent
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/app: kubewise-{{ .Release.Name }}-k8s-agent
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+
+---
+#
+# Cluster role binding for the K8s agent
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubewise-{{ .Release.Name }}-k8s-agent
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/app: kubewise-{{ .Release.Name }}-k8s-agent
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+subjects:
+- kind: ServiceAccount
+  name: kubewise-{{ .Release.Name }}-k8s-agent
+  namespace: {{ .Release.Namespace }}
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubewise-{{ .Release.Name }}-k8s-agent

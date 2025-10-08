@@ -1,0 +1,53 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-app
+  minReplicas: 2  # Минимум 2 пода для отказоустойчивости
+  maxReplicas: 5  # Максимум 5 подов (на 1 больше чем тест)
+  metrics:
+  - type: Resource  # Метрика по CPU
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70  # Более агрессивное масштабирование
+  - type: Resource  # Метрика по памяти
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 85  # Целевая загрузка памяти чтоб не пришел oom-kill
+  - type: External  # Кастомная метрика (например, от Prometheus)
+    external:
+      metric:
+        name: requests_per_second  # Метрика RPS
+        selector:
+          matchLabels:
+            app: web-app
+      target:
+        type: AverageValue
+        averageValue: 1000  # Примерное значение RPS для масштабирования
+  behavior:
+    scaleDown:  # Политика уменьшения реплик
+      stabilizationWindowSeconds: 900  # Окно стабилизации (15 минут)
+      policies:
+      - type: Percent
+        value: 25  # Более плавное уменьшение
+        periodSeconds: 300
+      - type: Pods
+        value: 1    # Или 1 под за период
+        periodSeconds: 120
+    scaleUp:  # Политика увеличения реплик
+      stabilizationWindowSeconds: 30  # Короткое окно стабилизации (быстрое масштабирование вверх)
+      policies:
+      - type: Percent
+        value: 100  # До 100% от текущего количества
+        periodSeconds: 30
+      - type: Pods
+        value: 2    # Или 2 пода за период
+        periodSeconds: 30

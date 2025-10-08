@@ -1,0 +1,190 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "healthcare-platform.fullname" . }}-data-processor
+  labels:
+    {{- include "healthcare-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-processor
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount.dataProcessor }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "healthcare-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: data-processor
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.annotations.pod }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "healthcare-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: data-processor
+        azure.workload.identity/use: "true"
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "healthcare-platform.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.podAntiAffinity.enabled }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                  - data-processor
+              topologyKey: {{ .Values.podAntiAffinity.topologyKey }}
+        {{- with .Values.nodeAffinity }}
+        nodeAffinity:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: data-processor
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.registry }}/data-processor:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.ports.dataProcessor }}
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          env:
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- range $key, $value := .Values.configMaps.dataProcessor }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            - name: AZURE_CLIENT_ID
+              value: {{ .Values.workloadIdentity.clientId | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ include "healthcare-platform.fullname" . }}-secrets
+          {{- if .Values.healthChecks.enabled }}
+          livenessProbe:
+            {{- toYaml .Values.healthChecks.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.healthChecks.readinessProbe | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources.dataProcessor | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /app/cache
+            {{- if .Values.persistence.enabled }}
+            - name: logs
+              mountPath: /app/logs
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "healthcare-platform.fullname" . }}-cache-pvc
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.persistence.enabled }}
+        - name: logs
+          persistentVolumeClaim:
+            claimName: {{ include "healthcare-platform.fullname" . }}-logs-pvc
+        {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "healthcare-platform.fullname" . }}-data-processor
+  labels:
+    {{- include "healthcare-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-processor
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.ports.dataProcessor }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: 9090
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "healthcare-platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: data-processor
+
+{{- if .Values.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "healthcare-platform.fullname" . }}-data-processor-hpa
+  labels:
+    {{- include "healthcare-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-processor
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "healthcare-platform.fullname" . }}-data-processor
+  minReplicas: {{ .Values.autoscaling.minReplicas.dataProcessor }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas.dataProcessor }}
+  metrics:
+    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+
+{{- if .Values.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "healthcare-platform.fullname" . }}-data-processor-pdb
+  labels:
+    {{- include "healthcare-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-processor
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable.dataProcessor }}
+  selector:
+    matchLabels:
+      {{- include "healthcare-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: data-processor
+{{- end }}

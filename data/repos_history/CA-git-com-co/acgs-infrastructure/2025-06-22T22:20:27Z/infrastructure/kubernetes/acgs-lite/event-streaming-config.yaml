@@ -1,0 +1,476 @@
+# ACGS-1 Lite Event Streaming Configuration
+# Additional configurations for RedPanda event streaming
+
+---
+# ConfigMap for RedPanda Consumer Groups Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redpanda-consumer-config
+  namespace: shared
+  labels:
+    app.kubernetes.io/name: acgs-lite
+    app.kubernetes.io/component: streaming
+    acgs-lite.io/service-type: redpanda-consumer-config
+data:
+  consumer-groups.yaml: |
+    # ACGS-1 Lite Consumer Groups Configuration
+    consumer_groups:
+      audit_archiver:
+        topics:
+          - audit.trail
+        consumer_count: 2
+        auto_offset_reset: earliest
+        enable_auto_commit: false
+        max_poll_records: 100
+        session_timeout_ms: 30000
+        heartbeat_interval_ms: 3000
+        
+      policy_evaluator:
+        topics:
+          - policy.evaluations
+        consumer_count: 3
+        auto_offset_reset: latest
+        enable_auto_commit: true
+        max_poll_records: 500
+        session_timeout_ms: 30000
+        heartbeat_interval_ms: 3000
+        
+      violation_processor:
+        topics:
+          - constitutional.violations
+          - sandbox.events
+        consumer_count: 2
+        auto_offset_reset: earliest
+        enable_auto_commit: false
+        max_poll_records: 50
+        session_timeout_ms: 30000
+        heartbeat_interval_ms: 3000
+        
+      human_review_processor:
+        topics:
+          - human.review.requests
+        consumer_count: 1
+        auto_offset_reset: earliest
+        enable_auto_commit: false
+        max_poll_records: 10
+        session_timeout_ms: 30000
+        heartbeat_interval_ms: 3000
+        
+      metrics_collector:
+        topics:
+          - constitutional.events
+          - policy.evaluations
+          - sandbox.events
+        consumer_count: 2
+        auto_offset_reset: latest
+        enable_auto_commit: true
+        max_poll_records: 1000
+        session_timeout_ms: 30000
+        heartbeat_interval_ms: 3000
+
+  topic-schemas.yaml: |
+    # Event Schema Definitions for ACGS-1 Lite
+    schemas:
+      constitutional_event:
+        type: object
+        required:
+          - eventId
+          - timestamp
+          - sourceService
+          - eventType
+        properties:
+          eventId:
+            type: string
+            format: uuid
+          timestamp:
+            type: string
+            format: date-time
+          sourceService:
+            type: string
+            enum: ["PolicyEngine", "EvolutionOversight", "AuditEngine", "SandboxController"]
+          eventType:
+            type: string
+          actor:
+            type: object
+            properties:
+              type:
+                type: string
+              id:
+                type: string
+          context:
+            type: object
+            
+      policy_evaluation:
+        type: object
+        required:
+          - evaluationId
+          - policyId
+          - agentId
+          - action
+          - result
+          - timestamp
+        properties:
+          evaluationId:
+            type: string
+            format: uuid
+          policyId:
+            type: string
+            format: uuid
+          agentId:
+            type: string
+          action:
+            type: string
+          inputData:
+            type: object
+          result:
+            type: string
+            enum: ["allow", "deny", "review"]
+          reason:
+            type: string
+          confidenceScore:
+            type: number
+            minimum: 0
+            maximum: 1
+          evaluationTimeMs:
+            type: integer
+            minimum: 0
+          cacheHit:
+            type: boolean
+          timestamp:
+            type: string
+            format: date-time
+            
+      sandbox_violation:
+        type: object
+        required:
+          - violationId
+          - sandboxId
+          - agentId
+          - violationType
+          - severity
+          - timestamp
+        properties:
+          violationId:
+            type: string
+            format: uuid
+          sandboxId:
+            type: string
+          agentId:
+            type: string
+          violationType:
+            type: string
+            enum: ["resource_breach", "network_attempt", "privilege_escalation", "file_access", "process_injection"]
+          severity:
+            type: string
+            enum: ["low", "medium", "high", "critical"]
+          description:
+            type: string
+          detectionLayer:
+            type: string
+            enum: ["process", "filesystem", "network", "syscall"]
+          indicators:
+            type: object
+          containmentActions:
+            type: array
+            items:
+              type: string
+          forensicData:
+            type: object
+          timestamp:
+            type: string
+            format: date-time
+            
+      human_review_request:
+        type: object
+        required:
+          - requestId
+          - agentId
+          - action
+          - riskScore
+          - priority
+          - timestamp
+        properties:
+          requestId:
+            type: string
+            format: uuid
+          agentId:
+            type: string
+          action:
+            type: string
+          riskScore:
+            type: number
+            minimum: 0
+            maximum: 1
+          priority:
+            type: string
+            enum: ["low", "medium", "high", "critical"]
+          context:
+            type: object
+          policyViolations:
+            type: array
+            items:
+              type: object
+          autoTimeoutAt:
+            type: string
+            format: date-time
+          timestamp:
+            type: string
+            format: date-time
+
+---
+# Deployment for Audit Trail Archiver
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-trail-archiver
+  namespace: shared
+  labels:
+    app.kubernetes.io/name: acgs-lite
+    app.kubernetes.io/component: streaming
+    acgs-lite.io/service-type: audit-archiver
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: audit-trail-archiver
+  template:
+    metadata:
+      labels:
+        app: audit-trail-archiver
+        app.kubernetes.io/name: acgs-lite
+        app.kubernetes.io/component: streaming
+        acgs-lite.io/service-type: audit-archiver
+      annotations:
+        acgs-lite.io/constitutional-compliance: 'required'
+    spec:
+      serviceAccountName: acgs-lite-service
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: archiver
+          image: acgs-lite/audit-archiver:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: metrics
+          env:
+            - name: KAFKA_BROKERS
+              value: 'constitutional-events-kafka:9092'
+            - name: CONSUMER_GROUP
+              value: 'audit_archiver'
+            - name: TOPICS
+              value: 'audit.trail'
+            - name: S3_BUCKET
+              value: 'acgs-lite-audit-logs'
+            - name: BATCH_SIZE
+              value: '100'
+            - name: BATCH_TIMEOUT_MS
+              value: '300000' # 5 minutes
+            - name: AWS_REGION
+              value: 'us-east-1'
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: redpanda-consumer-config
+        - name: tmp
+          emptyDir: {}
+      nodeSelector:
+        acgs-lite.io/node-pool: governance
+      tolerations:
+        - key: governance
+          operator: Equal
+          value: 'true'
+          effect: NoSchedule
+
+---
+# Service for Audit Trail Archiver
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-trail-archiver
+  namespace: shared
+  labels:
+    app.kubernetes.io/name: acgs-lite
+    app.kubernetes.io/component: streaming
+    acgs-lite.io/service-type: audit-archiver
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: audit-trail-archiver
+
+---
+# ServiceMonitor for Audit Trail Archiver
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: audit-trail-archiver-monitor
+  namespace: shared
+  labels:
+    app.kubernetes.io/name: acgs-lite
+    app.kubernetes.io/component: streaming
+    acgs-lite.io/service-type: audit-archiver-monitoring
+spec:
+  selector:
+    matchLabels:
+      app: audit-trail-archiver
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+
+---
+# ConfigMap for Event Processing Rules
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: event-processing-rules
+  namespace: shared
+  labels:
+    app.kubernetes.io/name: acgs-lite
+    app.kubernetes.io/component: streaming
+    acgs-lite.io/service-type: event-processing-rules
+data:
+  processing-rules.yaml: |
+    # Event Processing Rules for ACGS-1 Lite
+    rules:
+      constitutional_violations:
+        trigger_conditions:
+          - event_type: "policy_evaluation"
+            result: "deny"
+            confidence_score: ">= 0.9"
+        actions:
+          - type: "alert"
+            severity: "high"
+            destination: "constitutional.violations"
+          - type: "human_review"
+            priority: "high"
+            timeout_hours: 2
+            
+      sandbox_escape_attempts:
+        trigger_conditions:
+          - event_type: "sandbox_violation"
+            violation_type: "privilege_escalation"
+          - event_type: "sandbox_violation"
+            violation_type: "network_attempt"
+          - event_type: "sandbox_violation"
+            violation_type: "file_access"
+            indicators.path: "/etc/*"
+        actions:
+          - type: "emergency_containment"
+            immediate: true
+          - type: "alert"
+            severity: "critical"
+            destination: "constitutional.violations"
+          - type: "forensic_capture"
+            include_memory_dump: true
+            
+      high_risk_evaluations:
+        trigger_conditions:
+          - event_type: "policy_evaluation"
+            result: "review"
+            risk_score: ">= 0.8"
+        actions:
+          - type: "human_review"
+            priority: "high"
+            timeout_hours: 4
+          - type: "enhanced_monitoring"
+            duration_hours: 24
+            
+      system_anomalies:
+        trigger_conditions:
+          - metric_name: "policy_evaluation_latency"
+            value: "> 10000"  # > 10 seconds
+          - metric_name: "constitutional_compliance_rate"
+            value: "< 0.95"   # < 95%
+        actions:
+          - type: "alert"
+            severity: "medium"
+            destination: "system.alerts"
+          - type: "auto_scaling"
+            component: "policy_engine"
+            scale_factor: 1.5
+
+---
+# HorizontalPodAutoscaler for Audit Trail Archiver
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: audit-trail-archiver-hpa
+  namespace: shared
+  labels:
+    app.kubernetes.io/name: acgs-lite
+    app.kubernetes.io/component: streaming
+    acgs-lite.io/service-type: audit-archiver-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: audit-trail-archiver
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Pods
+      pods:
+        metric:
+          name: kafka_consumer_lag
+        target:
+          type: AverageValue
+          averageValue: '1000'
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60

@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        imagePullPolicy: IfNotPresent
+        image: cloudcomputing/backend
+        resources:
+          requests:
+           memory: "150Mi"
+           cpu: "100m"
+          limits:
+            memory: "285Mi"
+            cpu: "285m"
+        livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            timeoutSeconds: 18
+            periodSeconds: 10
+            initialDelaySeconds: 120
+        readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            timeoutSeconds: 18
+            periodSeconds: 10
+            initialDelaySeconds: 50
+        env:                     # Environment variables passed to the container
+        - name: PORT
+          value: "80"
+        - name: MONGO_DB_CONNECTION_STRING
+          value: mongodb://mongodb:27017
+        - name: MONGO_DB_NAME
+          value: CloudComputing
+        - name: REDIS_URI
+          value: redis://redis-master:6379
+      nodeSelector:
+        disktype: ssd
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  labels:
+    app: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: backend
+  ports:
+  - name: 80-80
+    port: 90
+    protocol: TCP     
+    targetPort: 80
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-backend
+spec:
+  maxReplicas: 7
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60

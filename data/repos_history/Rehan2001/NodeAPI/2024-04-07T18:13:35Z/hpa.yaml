@@ -1,0 +1,18 @@
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hello-node-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hello-node-app  # Matches the deployment name
+  minReplicas: 1  # Minimum number of replicas allowed
+  maxReplicas: 5  # Maximum number of replicas allowed
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu  # Can be changed to 'memory' for memory-based scaling
+      target:
+        type: Utilization
+        averageUtilization: 80  # Scale up when CPU usage reaches 80%

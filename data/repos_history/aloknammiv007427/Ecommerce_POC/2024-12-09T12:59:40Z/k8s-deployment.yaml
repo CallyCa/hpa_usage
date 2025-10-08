@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecommerce-app
+  namespace: ecommerce-namespace
+  labels:
+    app: ecommerce-app
+spec:
+  replicas: $(replicaCount)             # Number of replicas (dynamic with HPA)
+  selector:
+    matchLabels:
+      app: ecommerce-app
+  template:
+    metadata:
+      labels:
+        app: ecommerce-app
+    spec:
+      containers:
+      - name: ecommerce-app
+        image: $(acrName).azurecr.io/$(imageName):$(Build.BuildId) # Pull image from ACR
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 20
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: ecommerce-service
+  namespace: ecommerce-namespace
+spec:
+  selector:
+    app: ecommerce-app
+  ports:
+  - protocol: TCP
+    port: 80                         # Expose the service on port 80
+    targetPort: 80
+  type: LoadBalancer                 # Publicly accessible via Load Balancer
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ecommerce-app-hpa
+  namespace: ecommerce-namespace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ecommerce-app
+  minReplicas: 3                     # Minimum number of replicas
+  maxReplicas: 10                    # Maximum number of replicas
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        averageUtilization: 80       # Scale pods if average CPU usage exceeds 80%

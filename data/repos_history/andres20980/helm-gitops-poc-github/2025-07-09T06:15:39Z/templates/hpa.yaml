@@ -1,0 +1,39 @@
+# msw-cic-helm-chart-base/templates/hpa.yaml v1.1.0
+# Horizontal Pod Autoscaler for the application.
+# Dynamically targets either a Kubernetes Deployment or an Argo Rollout resource.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Values.name }}
+  labels:
+    meta.helm.sh/release-name: {{ .Values.name }}
+spec:
+  scaleTargetRef:
+    {{- if .Values.rollout.enabled }}
+    apiVersion: argoproj.io/v1alpha1 # API Version for Argo Rollout
+    kind: Rollout                 # Kind for Argo Rollout
+    {{- else }}
+    apiVersion: apps/v1           # Default API Version for Deployment
+    kind: Deployment              # Default Kind for Deployment
+    {{- end }}
+    name: {{ .Values.name }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.autoscaling.stabilizationSeconds }}
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.autoscaling.stabilizationSeconds }}

@@ -1,0 +1,154 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: 'archie-{{ .Values.service }}'
+  labels:
+    app: 'archie-{{ .Values.service }}'
+    tags.datadoghq.com/env: '{{ .Values.environment }}'
+    tags.datadoghq.com/service: 'archie-{{ .Values.service }}'
+    tags.datadoghq.com/version: '{{ .Values.tag }}'
+spec:
+  selector:
+    matchLabels:
+      app: 'archie-{{ .Values.service }}'
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: 'archie-{{ .Values.service }}'
+        tags.datadoghq.com/env: '{{ .Values.environment }}'
+        tags.datadoghq.com/service: 'archie-{{ .Values.service }}'
+        tags.datadoghq.com/version: '{{ .Values.tag }}'
+        helm-revision: '{{ .Release.Revision }}'
+    spec:
+      containers:
+        - name: 'archie-{{ .Values.service }}'
+          image: '{{ .Values.image }}:{{ .Values.tag }}'
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          livenessProbe:
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            httpGet:
+              path: /health
+              port: 80
+          resources:
+            requests:
+              memory: '256Mi'
+              cpu: '300m'
+            limits:
+              memory: '292Mi'
+          env:
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_ENV
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/env']
+            - name: DD_VERSION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/version']
+            - name: DD_SERVICE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/service']
+            - name: DD_LOGS_INJECTION
+              value: 'true'
+            - name: AUTH0_DOMAIN
+              value: 'http://archie-utils-test-api-service'
+            - name: AUTH0_AUDIENCE
+              value: 'https://api.dev.archie.finance'
+            - name: QUEUE_URL
+              value: 'amqp://guest:guest@rabbitmq.default.svc.cluster.local:5672/'
+            - name: TYPEORM_HOST
+              value: 'postgresql.default.svc.cluster.local'
+            - name: TYPEORM_USERNAME
+              value: 'postgres'
+            - name: TYPEORM_PASSWORD
+              value: 'postgres'
+            - name: TYPEORM_DATABASE
+              value: 'postgres'
+            - name: TYPEORM_PORT
+              value: '5432'
+      imagePullSecrets:
+        - name: regcred
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: 'archie-{{ .Values.service }}-service'
+  labels:
+    app: 'archie-{{ .Values.service }}-service'
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: 'archie-{{ .Values.service }}'
+---
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: 'archie-{{ .Values.service }}-queue-messages-ready'
+spec:
+  query: 'sum:rabbitmq.queue.messages_ready{rabbitmq_queue:{{ .Values.service }}-*}.rollup(30)'
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: 'archie-{{ .Values.service }}-hpa'
+spec:
+  minReplicas: 1
+  maxReplicas: 3
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: 'archie-{{ .Values.service }}'
+  # behavior: # Default
+  #   scaleDown:
+  #     stabilizationWindowSeconds: 300
+  #     policies:
+  #     - type: Percent
+  #       value: 100
+  #       periodSeconds: 15
+  #   scaleUp:
+  #     stabilizationWindowSeconds: 0
+  #     policies:
+  #     - type: Percent
+  #       value: 100
+  #       periodSeconds: 15
+  #     - type: Pods
+  #       value: 4
+  #       periodSeconds: 15
+  #     selectPolicy: Max
+  metrics:
+    - type: External
+      external:
+        metric: 
+          name: 'datadogmetric@default:archie-{{ .Values.service }}-queue-messages-ready'
+        target: 
+          type: Value
+          value: 50
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+

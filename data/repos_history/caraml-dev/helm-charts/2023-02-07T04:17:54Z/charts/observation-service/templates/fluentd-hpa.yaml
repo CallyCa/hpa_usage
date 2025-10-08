@@ -1,0 +1,19 @@
+{{- if .Values.fluentd.autoscaling.enabled }}
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "observation-service.fullname" . }}-fluentd
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "observation-service.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: {{ include "observation-service.fullname" . }}-fluentd
+  minReplicas: {{ .Values.fluentd.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.fluentd.autoscaling.maxReplicas }}
+  {{- if .Values.fluentd.autoscaling.targetCPUUtilizationPercentage }}
+  targetCPUUtilizationPercentage: {{ .Values.fluentd.autoscaling.targetCPUUtilizationPercentage }}
+  {{- end }}
+{{- end }}

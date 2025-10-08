@@ -1,0 +1,35 @@
+{{- range $key, $tenant := .Values.tenants }}
+{{- if $tenant.enabled }}
+{{- $hpaEnabled := false }}
+{{- if hasKey $tenant "hpa" }}
+{{- $hpaEnabled = $tenant.hpa.enabled | default $.Values.tenantDefaults.hpa.enabled }}
+{{- end }}
+{{- if $hpaEnabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $tenant.name }}-hpa
+  namespace: {{ $.Values.global.namespacePrefix }}{{ $tenant.name }}
+  labels:
+    app: {{ $tenant.name }}-service
+    chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+    release: {{ $.Release.Name }}
+    tenant: {{ $tenant.name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $tenant.name }}-service
+  minReplicas: {{ $tenant.hpa.minReplicas | default $.Values.tenantDefaults.hpa.minReplicas }}
+  maxReplicas: {{ $tenant.hpa.maxReplicas | default $.Values.tenantDefaults.hpa.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ $tenant.hpa.targetCPUUtilizationPercentage | default $.Values.tenantDefaults.hpa.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- end }}
+{{- end }}

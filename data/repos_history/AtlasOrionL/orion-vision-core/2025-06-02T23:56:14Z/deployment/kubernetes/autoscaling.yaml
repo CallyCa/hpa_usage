@@ -1,0 +1,307 @@
+# Orion Vision Core - Kubernetes Autoscaling
+# Sprint 4.3 - Production Deployment & Advanced Monitoring
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: orion-core-hpa
+  namespace: orion-system
+  labels:
+    app.kubernetes.io/name: orion-vision-core
+    app.kubernetes.io/component: autoscaler
+    app.kubernetes.io/part-of: orion-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: orion-core
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: orion_active_tasks
+      target:
+        type: AverageValue
+        averageValue: "50"
+  - type: Pods
+    pods:
+      metric:
+        name: orion_request_rate
+      target:
+        type: AverageValue
+        averageValue: "100"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 4
+        periodSeconds: 60
+      selectPolicy: Max
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: orion-redis-hpa
+  namespace: orion-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cache-autoscaler
+    app.kubernetes.io/part-of: orion-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: orion-redis
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 85
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 120
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: orion-core-pdb
+  namespace: orion-system
+  labels:
+    app.kubernetes.io/name: orion-vision-core
+    app.kubernetes.io/component: disruption-budget
+    app.kubernetes.io/part-of: orion-platform
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orion-vision-core
+      app.kubernetes.io/component: core
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: orion-redis-pdb
+  namespace: orion-system
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cache-disruption-budget
+    app.kubernetes.io/part-of: orion-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/component: cache
+
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: orion-limit-range
+  namespace: orion-system
+  labels:
+    app.kubernetes.io/name: orion-vision-core
+    app.kubernetes.io/component: resource-limits
+    app.kubernetes.io/part-of: orion-platform
+spec:
+  limits:
+  - type: Container
+    default:
+      memory: "512Mi"
+      cpu: "250m"
+    defaultRequest:
+      memory: "256Mi"
+      cpu: "100m"
+    max:
+      memory: "2Gi"
+      cpu: "1000m"
+    min:
+      memory: "64Mi"
+      cpu: "50m"
+  - type: PersistentVolumeClaim
+    max:
+      storage: "100Gi"
+    min:
+      storage: "1Gi"
+
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: orion-resource-quota
+  namespace: orion-system
+  labels:
+    app.kubernetes.io/name: orion-vision-core
+    app.kubernetes.io/component: resource-quota
+    app.kubernetes.io/part-of: orion-platform
+spec:
+  hard:
+    requests.cpu: "10"
+    requests.memory: "20Gi"
+    limits.cpu: "20"
+    limits.memory: "40Gi"
+    persistentvolumeclaims: "10"
+    requests.storage: "200Gi"
+    pods: "50"
+    services: "10"
+    secrets: "20"
+    configmaps: "20"
+
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: orion-core-keda-scaler
+  namespace: orion-system
+  labels:
+    app.kubernetes.io/name: orion-vision-core
+    app.kubernetes.io/component: keda-scaler
+    app.kubernetes.io/part-of: orion-platform
+spec:
+  scaleTargetRef:
+    name: orion-core
+  pollingInterval: 30
+  cooldownPeriod: 300
+  idleReplicaCount: 3
+  minReplicaCount: 3
+  maxReplicaCount: 50
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus:9090
+      metricName: orion_active_tasks_total
+      threshold: "100"
+      query: sum(orion_active_tasks_total{job="orion-core"})
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus:9090
+      metricName: orion_request_rate
+      threshold: "1000"
+      query: sum(rate(orion_http_requests_total{job="orion-core"}[5m]))
+  - type: redis
+    metadata:
+      address: orion-redis:6379
+      listName: orion_task_queue
+      listLength: "50"
+  - type: cpu
+    metadata:
+      type: Utilization
+      value: "70"
+  - type: memory
+    metadata:
+      type: Utilization
+      value: "80"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orion-scaling-config
+  namespace: orion-system
+  labels:
+    app.kubernetes.io/name: orion-vision-core
+    app.kubernetes.io/component: scaling-config
+    app.kubernetes.io/part-of: orion-platform
+data:
+  scaling.yaml: |
+    # Orion Vision Core - Scaling Configuration
+    
+    scaling:
+      # HPA Configuration
+      hpa:
+        enabled: true
+        min_replicas: 3
+        max_replicas: 20
+        target_cpu_utilization: 70
+        target_memory_utilization: 80
+        scale_up_stabilization: 60
+        scale_down_stabilization: 300
+      
+      # KEDA Configuration
+      keda:
+        enabled: true
+        polling_interval: 30
+        cooldown_period: 300
+        idle_replica_count: 3
+        max_replica_count: 50
+        
+        triggers:
+          - name: prometheus_tasks
+            type: prometheus
+            threshold: 100
+            query: "sum(orion_active_tasks_total{job=\"orion-core\"})"
+          
+          - name: prometheus_requests
+            type: prometheus
+            threshold: 1000
+            query: "sum(rate(orion_http_requests_total{job=\"orion-core\"}[5m]))"
+          
+          - name: redis_queue
+            type: redis
+            list_name: "orion_task_queue"
+            list_length: 50
+      
+      # Resource Limits
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "100m"
+        limits:
+          memory: "1Gi"
+          cpu: "500m"
+      
+      # Pod Disruption Budget
+      pdb:
+        min_available: 2
+        max_unavailable: "25%"

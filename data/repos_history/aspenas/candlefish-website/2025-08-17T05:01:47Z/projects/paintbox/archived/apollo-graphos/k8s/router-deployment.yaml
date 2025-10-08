@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apollo-router
+  namespace: paintbox
+  labels:
+    app: apollo-router
+    version: v1
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: apollo-router
+  template:
+    metadata:
+      labels:
+        app: apollo-router
+        version: v1
+    spec:
+      containers:
+      - name: apollo-router
+        image: paintbox/apollo-router:latest
+        ports:
+        - containerPort: 4100
+          name: http
+        env:
+        - name: APOLLO_KEY
+          valueFrom:
+            secretKeyRef:
+              name: paintbox-secrets
+              key: APOLLO_KEY
+        - name: APOLLO_GRAPH_REF
+          valueFrom:
+            configMapKeyRef:
+              name: paintbox-config
+              key: APOLLO_GRAPH_REF
+        - name: APOLLO_ROUTER_LOG
+          value: "info"
+        - name: APOLLO_ROUTER_LISTEN
+          value: "0.0.0.0:4100"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4100
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 4100
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+        securityContext:
+          runAsUser: 1001
+          runAsGroup: 1001
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      securityContext:
+        fsGroup: 1001
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apollo-router
+  namespace: paintbox
+  labels:
+    app: apollo-router
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4100
+    targetPort: 4100
+    protocol: TCP
+    name: http
+  selector:
+    app: apollo-router
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: apollo-router-hpa
+  namespace: paintbox
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: apollo-router
+  minReplicas: 3
+  maxReplicas: 15
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

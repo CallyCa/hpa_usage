@@ -1,0 +1,683 @@
+# =========================================================
+# 1️⃣ Namespaces
+# =========================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nginx-stack
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+
+# =========================================================
+# 2️⃣ Secrets & ConfigMaps
+# =========================================================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: nginx-stack
+type: Opaque
+stringData:
+  root-password: rootpass123
+  repl-password: replpass123
+  app-password: applogin123
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+  namespace: nginx-stack
+data:
+  mysql-url: mysql://mysql-0.mysql-headless.nginx-stack.svc.cluster.local:3306
+
+# =========================================================
+# Custom SC
+# =========================================================
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: custom-premium-disk
+provisioner: disk.csi.azure.com   # CSI driver for Azure Disks
+parameters:
+  skuName: Premium_LRS            # Options: StandardSSD_LRS, Premium_LRS, Standard_LRS
+  storageaccounttype: Premium_LRS # legacy param (some drivers still require)
+  kind: Managed
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+
+# =========================================================
+# 4️⃣ MySQL StatefulSet (Worker Node Pool)
+# =========================================================
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: nginx-stack
+spec:
+  serviceName: mysql-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  # Must be Linux
+                  - key: kubernetes.io/os
+                    operator: In
+                    values: ["linux"]
+                  # Must be in the new worker node pool
+                  - key: agentpool
+                    operator: In
+                    values: ["workernp"]    ######Pool Name
+          preferredDuringSchedulingIgnoredDuringExecution:
+            # Soft preference: spread across zones (optional)
+            - weight: 50
+              preference:
+                matchExpressions:
+                  - key: topology.kubernetes.io/zone
+                    operator: In
+                    values: ["1","2","3"]
+            # Soft preference: nodes labeled role=db (optional)
+            - weight: 30
+              preference:
+                matchExpressions:
+                  - key: role
+                    operator: In
+                    values: ["db"]
+      # If you TAINTED the pool, add this toleration
+      # tolerations:
+      #   - key: "db"
+      #     operator: "Equal"
+      #     value: "true"
+      #     effect: "NoSchedule"
+
+      containers:
+        - name: mysql
+          image: bitnami/mysql:8.0
+          ports:
+            - containerPort: 3306
+              name: mysql
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: root-password
+            - name: MYSQL_REPLICATION_MODE
+              value: "master"
+            - name: MYSQL_REPLICATION_USER
+              value: repl_user
+            - name: MYSQL_REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: repl-password
+            - name: MYSQL_DATABASE
+              value: appdb
+            - name: MYSQL_USER
+              value: appuser
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: app-password
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /bitnami/mysql
+
+
+
+  volumeClaimTemplates:   #######PVC request embedded inside the StatefulSet
+  - metadata:
+      name: mysql-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: custom-premium-disk   # <-- your custom SC
+      resources:
+        requests:
+          storage: 20Gi
+
+ ## volumeClaimTemplates:
+ ##   - metadata:
+  ##      name: mysql-data
+  ##    spec:
+ ##       accessModes: ["ReadWriteOnce"]
+       # Reference cluster-provided StorageClass (e.g., managed-csi in AKS)
+  ##      storageClassName: managed-csi  ####Container Storage Interface using  <-- AKS default disk SC or instead of managed-csi storageClassName: managed-premium  
+  ##      resources:
+ ##         requests:
+  ##          storage: 20Gi   # adjust size as per prod needs
+
+# =========================================================
+# 5️⃣ MySQL Services
+# =========================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-headless
+  namespace: nginx-stack
+spec:
+  clusterIP: None
+  selector:
+    app: mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: nginx-stack
+spec:
+  type: ClusterIP
+  selector:
+    app: mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+
+# =========================================================
+# 6️⃣ NetworkPolicy
+# =========================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-nginx-to-mysql
+  namespace: nginx-stack
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: nginx-web
+      ports:
+        - protocol: TCP
+          port: 3306
+  policyTypes:
+    - Ingress
+
+# =========================================================
+# 7️⃣ MySQL Init Job (Fixed)
+# =========================================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: init-mysql
+  namespace: nginx-stack
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure  ###When  Failure then restart
+      containers:
+        - name: mysql
+          image: bitnami/mysql:8.0
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          ports:
+            - containerPort: 3306
+              name: mysql
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: root-password
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for MySQL cluster to be ready..."
+              /opt/bitnami/scripts/mysql/wait-for-mysql.sh
+              echo "MySQL is ready. Creating database..."
+              mysql -h mysql-headless.nginx-stack.svc.cluster.local \
+                    -u root -p"$MYSQL_ROOT_PASSWORD" \
+                    -e "CREATE DATABASE IF NOT EXISTS appdb;"
+
+     
+
+# =========================================================
+# 8️⃣ Nginx Deployment & Service (Virtual Node Pool) and  HPA for Nginx Frontend
+# =========================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-web
+  namespace: nginx-stack
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-web
+  template:
+    metadata:
+      labels:
+        app: nginx-web
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+        type: virtual-kubelet
+      tolerations:
+      - key: virtual-kubelet.io/provider
+        operator: Exists
+      - key: azure.com/aci
+        effect: NoSchedule
+      initContainers:
+        - name: wait-for-mysql
+          image: bitnami/mysql:8.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: root-password
+          command:
+            - sh
+            - -c
+            - /opt/bitnami/scripts/mysql/wait-for-mysql.sh
+      containers:
+        - name: nginx
+          image: acrforaksdemo2.azurecr.io/app1/kube-nginx-acr:v1   #Use ACR image references in Deployments  or  use  nginx:latest  from nginx  repository
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-web
+  namespace: nginx-stack
+spec:
+  selector:
+    app: nginx-web
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nginx-web-hpa
+  namespace: nginx-stack
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nginx-web
+  minReplicas: 2
+  maxReplicas: 50
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+  
+
+# =========================================================
+# 9️⃣ App1 Deployment, Service & HPA (Virtual Node Pool)
+# =========================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app1
+  namespace: nginx-stack
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: app1
+  template:
+    metadata:
+      labels:
+        app: app1
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+        type: virtual-kubelet
+      tolerations:
+      - key: virtual-kubelet.io/provider
+        operator: Exists
+      - key: azure.com/aci
+        effect: NoSchedule
+      containers:
+        - name: app1
+          image: acrforaksdemo2.azurecr.io/app1/http-echo:v1  #####Use ACR image references in Deployments or  from hashicorp/http-echo
+          args: ["-text=Hello from App1"]
+          ports:
+            - containerPort: 5678
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app1
+  namespace: nginx-stack
+spec:
+  selector:
+    app: app1
+  ports:
+    - port: 80
+      targetPort: 5678
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: app1-hpa
+  namespace: nginx-stack
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: app1
+  minReplicas: 2
+  maxReplicas: 50
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+
+# =========================================================
+# 🔟 App2 Deployment, Service & HPA (Virtual Node Pool)
+# =========================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app2
+  namespace: nginx-stack
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: app2
+  template:
+    metadata:
+      labels:
+        app: app2
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+        type: virtual-kubelet
+      tolerations:
+      - key: virtual-kubelet.io/provider
+        operator: Exists
+      - key: azure.com/aci
+        effect: NoSchedule
+      containers:
+        - name: app2
+          image: acrforaksdemo2.azurecr.io/app1/http-echo:v1          ######Use ACR image references in Deployments  or   hashicorp/http-echo
+          args: ["-text=Hello from App2"]
+          ports:
+            - containerPort: 5678
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app2
+  namespace: nginx-stack
+spec:
+  selector:
+    app: app2
+  ports:
+    - port: 80
+      targetPort: 5678
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: app2-hpa
+  namespace: nginx-stack
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: app2
+  minReplicas: 2
+  maxReplicas: 50
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+
+
+
+
+
+# =========================================================
+# 9️⃣ Ingress Controller
+# =========================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ingress-nginx
+        app.kubernetes.io/component: controller
+    spec:
+      containers:
+        - name: controller
+          image: registry.k8s.io/ingress-nginx/controller:v1.10.0
+          args:
+            - --controller-class=k8s.io/ingress-nginx
+            - --publish-service=$(POD_NAMESPACE)/ingress-nginx-controller
+            - --election-id=ingress-controller-leader
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: http
+              containerPort: 80
+            - name: https
+              containerPort: 443
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+spec:
+  type: LoadBalancer
+  loadBalancerIP: <STATIC_IP>
+  selector:
+    app.kubernetes.io/component: controller
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+    - name: https
+      port: 443
+      targetPort: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx
+
+# =========================================================
+# 🔟 Ingress Resource
+# =========================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nginx-stack-ingress
+  namespace: nginx-stack
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - web.yourdomain.com
+        - app1.yourdomain.com
+        - app2.yourdomain.com
+      secretName: nginx-tls-secret   # your TLS cert must include all 3 hostnames
+  rules:
+    - host: web.yourdomain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx-web
+                port:
+                  number: 80
+    - host: app1.yourdomain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app1
+                port:
+                  number: 80
+    - host: app2.yourdomain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app2
+                port:
+                  number: 80
+
+
+# =========================================================
+# 1️⃣1️⃣ ExternalDNS with Workload Identity (OIDC)
+# =========================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: external-dns
+  namespace: nginx-stack
+  annotations:
+    azure.workload.identity/client-id: <UAMI_CLIENT_ID>
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: external-dns
+rules:
+  - apiGroups: [""]
+    resources: ["services", "endpoints", "pods", "nodes"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: external-dns-viewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: external-dns
+subjects:
+  - kind: ServiceAccount
+    name: external-dns
+    namespace: nginx-stack
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: external-dns
+  namespace: nginx-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: external-dns
+  template:
+    metadata:
+      labels:
+        app: external-dns
+    spec:
+      serviceAccountName: external-dns
+      containers:
+        - name: external-dns
+          image: registry.k8s.io/external-dns/external-dns:v0.14.1
+          args:
+            - --source=service
+            - --source=ingress
+            - --domain-filter=yourdomain.com
+            - --provider=azure
+            - --azure-resource-group=<DNS_RG_NAME>
+            - --azure-subscription-id=<SUBSCRIPTION_ID>
+            - --azure-user-assigned-identity-client-id=<UAMI_CLIENT_ID>
+            - --log-level=debug
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

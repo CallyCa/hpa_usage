@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: producao
+spec:
+  selector:
+    matchLabels:
+      app: producao
+  template:
+    metadata:
+      labels:
+        app: producao
+    spec:
+      imagePullSecrets:
+      - name: ecr
+      containers:
+      - name: producao
+        image: $awsEcrRegistry/$repositoryName:$imgTag
+        resources:
+          requests:
+            memory: 256Mi
+            cpu: 500m
+          limits:
+            memory: 256Mi
+            cpu: 500m
+        env:
+          - name: ASPNETCORE_URLS
+            value: http://*:$appPort
+          - name: ConnectionStrings__ConnectionString
+            value: $connectionString
+          - name: Aws__PoolId
+            value: $poolId
+          - name: Aws__PoolClientId
+            value: $poolClientId
+        ports:
+        - containerPort: $appPort
+          name: producao
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: producao-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: producao
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 40
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: producao-svs
+spec:
+  type: LoadBalancer
+  ports:
+  - port: $appPort
+    targetPort: $appPort
+  selector:
+    app: producao

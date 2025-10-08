@@ -1,0 +1,83 @@
+
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: 'hello-python'
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: 'hello-python'
+  labels:
+    app: 'hello-python'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: 'hello-python'
+  template:
+    metadata:
+      labels:
+        app: 'hello-python'
+    spec:
+      containers:
+      - name: 'hello-python'
+        image: tftest/hello-python
+        ports:
+        - containerPort: 5000
+        resources:
+          limits:
+            cpu: 500m
+          requests:
+            cpu: 200m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: 'hello-python'
+
+
+spec:
+  selector:
+    app: 'hello-python'
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hello-python
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hello-python
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+
+---
+kind: Ingress
+apiVersion: extensions/v1beta1
+metadata:
+  name: ingress-hello-python
+  namespace: hello-python
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/use-regex: 'true'
+spec:
+  tls:
+    - hosts:
+        - maya.test.com
+  rules:
+    - host: maya.test.com
+      http:
+        paths:
+          - path: /(.*)
+            backend:
+              serviceName: hello-python
+              servicePort: 5000

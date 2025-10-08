@@ -1,0 +1,13 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+   name: tor-backend-hpa
+   namespace: tor
+spec:
+   scaleTargetRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: tor-backend-deploy
+   targetCPUUtilizationPercentage: 50
+   maxReplicas: 4
+   minReplicas: 1

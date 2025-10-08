@@ -1,0 +1,59 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: crm-staging
+
+resources:
+- ../../base
+- ../../rollouts
+
+namePrefix: staging-
+nameSuffix: -canary
+
+commonLabels:
+  environment: staging
+  team: engineering
+  deployment-strategy: canary
+
+patches:
+- patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 3
+  target:
+    kind: Rollout
+    name: crm-app-rollout
+
+- patch: |-
+    - op: replace
+      path: /spec/minReplicas
+      value: 2
+    - op: replace
+      path: /spec/maxReplicas
+      value: 10
+  target:
+    kind: HorizontalPodAutoscaler
+    name: crm-app-hpa
+
+- patch: |-
+    - op: replace
+      path: /spec/resources/requests/storage
+      value: 20Gi
+  target:
+    kind: PersistentVolumeClaim
+    name: postgres-pvc
+
+configMapGenerator:
+- name: staging-env-config
+  literals:
+  - NODE_ENV=staging
+  - LOG_LEVEL=info
+  - DEBUG_MODE=false
+  - METRICS_ENABLED=true
+  - CANARY_ENABLED=true
+
+images:
+- name: crm-app
+  newName: ghcr.io/yourorg/crm-app
+  newTag: staging-latest

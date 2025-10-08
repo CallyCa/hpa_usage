@@ -1,0 +1,24 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: front-end-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: front-end-deployment
+    name: front-end-deployment
+  minReplicas: 1  # Minimum number of replicas
+  maxReplicas: 1  # Maximum number of replicas
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # Scale when CPU utilization exceeds 50%
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70

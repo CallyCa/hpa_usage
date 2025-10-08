@@ -1,0 +1,359 @@
+# ==============================================================================
+# CONFIGURATION AUTO-SCALING DATA_BOT v4
+# ==============================================================================
+
+# HorizontalPodAutoscaler pour l'API principale
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: databot-api-hpa
+  namespace: databot-v4
+  labels:
+    app.kubernetes.io/name: databot
+    app.kubernetes.io/component: autoscaling
+    app.kubernetes.io/version: v4
+  annotations:
+    app.kubernetes.io/description: "Auto-scaling horizontal pour l'API DATA_BOT"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: databot-api
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  # Scaling basé sur le CPU
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  # Scaling basé sur la mémoire
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # Scaling basé sur les métriques personnalisées (requêtes par seconde)
+  - type: Pods
+    pods:
+      metric:
+        name: requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "50"
+  # Scaling basé sur les métriques externes (longueur des queues Redis)
+  - type: External
+    external:
+      metric:
+        name: redis_queue_length
+        selector:
+          matchLabels:
+            queue: databot-processing
+      target:
+        type: AverageValue
+        averageValue: "10"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 4
+        periodSeconds: 60
+      selectPolicy: Max
+
+---
+# HorizontalPodAutoscaler pour les nœuds blockchain
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: databot-blockchain-hpa
+  namespace: databot-v4
+  labels:
+    app.kubernetes.io/name: databot
+    app.kubernetes.io/component: blockchain-autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: databot-blockchain
+  minReplicas: 3
+  maxReplicas: 7
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: blockchain_transaction_rate
+      target:
+        type: AverageValue
+        averageValue: "100"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600  # Scaling down plus lent pour blockchain
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 180
+
+---
+# VerticalPodAutoscaler pour optimisation des ressources API
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: databot-api-vpa
+  namespace: databot-v4
+  labels:
+    app.kubernetes.io/name: databot
+    app.kubernetes.io/component: vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: databot-api
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: databot-api
+      minAllowed:
+        cpu: 100m
+        memory: 128Mi
+      maxAllowed:
+        cpu: 4
+        memory: 8Gi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+    - containerName: filebeat-sidecar
+      mode: "Off"  # Ne pas ajuster les sidecars
+
+---
+# VerticalPodAutoscaler pour PostgreSQL
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: postgres-vpa
+  namespace: databot-v4
+  labels:
+    app.kubernetes.io/name: databot
+    app.kubernetes.io/component: database-vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: postgres
+  updatePolicy:
+    updateMode: "Initial"  # Recommandations seulement
+  resourcePolicy:
+    containerPolicies:
+    - containerName: postgres
+      minAllowed:
+        cpu: 200m
+        memory: 512Mi
+      maxAllowed:
+        cpu: 2
+        memory: 4Gi
+
+---
+# VerticalPodAutoscaler pour Redis
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: redis-vpa
+  namespace: databot-v4
+  labels:
+    app.kubernetes.io/name: databot
+    app.kubernetes.io/component: cache-vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: redis
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: redis
+      minAllowed:
+        cpu: 50m
+        memory: 64Mi
+      maxAllowed:
+        cpu: 1
+        memory: 2Gi
+
+---
+# ServiceMonitor pour exposer les métriques custom au HPA
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: databot-hpa-metrics
+  namespace: databot-v4
+  labels:
+    app.kubernetes.io/name: databot
+    app.kubernetes.io/component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    honorLabels: true
+
+---
+# PrometheusRule pour les alertes d'auto-scaling
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: databot-autoscaling-alerts
+  namespace: databot-v4
+  labels:
+    app.kubernetes.io/name: databot
+    app.kubernetes.io/component: alerting
+spec:
+  groups:
+  - name: databot.autoscaling
+    rules:
+    - alert: HPAMaxReplicasReached
+      expr: kube_horizontalpodautoscaler_status_current_replicas{namespace="databot-v4"} >= kube_horizontalpodautoscaler_spec_max_replicas{namespace="databot-v4"}
+      for: 5m
+      labels:
+        severity: warning
+        component: autoscaling
+      annotations:
+        summary: "HPA a atteint le nombre maximum de replicas"
+        description: "Le HPA {{ $labels.horizontalpodautoscaler }} dans le namespace {{ $labels.namespace }} a atteint son maximum de {{ $value }} replicas"
+    
+    - alert: HPAMinReplicasReached
+      expr: kube_horizontalpodautoscaler_status_current_replicas{namespace="databot-v4"} <= kube_horizontalpodautoscaler_spec_min_replicas{namespace="databot-v4"}
+      for: 10m
+      labels:
+        severity: warning
+        component: autoscaling
+      annotations:
+        summary: "HPA est au minimum de replicas depuis longtemps"
+        description: "Le HPA {{ $labels.horizontalpodautoscaler }} est resté au minimum de {{ $value }} replicas pendant plus de 10 minutes"
+    
+    - alert: HPAUnableToScale
+      expr: kube_horizontalpodautoscaler_status_condition{condition="AbleToScale",status="false",namespace="databot-v4"} == 1
+      for: 5m
+      labels:
+        severity: critical
+        component: autoscaling
+      annotations:
+        summary: "HPA incapable de scaler"
+        description: "Le HPA {{ $labels.horizontalpodautoscaler }} ne peut pas scaler"
+    
+    - alert: VPARecommendationTooHigh
+      expr: kube_vpa_status_recommendation{resource="memory",namespace="databot-v4"} > 4 * 1024 * 1024 * 1024
+      for: 5m
+      labels:
+        severity: warning
+        component: vpa
+      annotations:
+        summary: "Recommandation VPA trop élevée"
+        description: "VPA recommande plus de 4Gi de mémoire pour {{ $labels.target_name }}"
+
+---
+# PodMonitor pour collecter les métriques des pods individuels
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: databot-pods-metrics
+  namespace: databot-v4
+  labels:
+    app.kubernetes.io/name: databot
+    app.kubernetes.io/component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: databot
+  podMetricsEndpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    honorLabels: true
+  - port: metrics
+    interval: 60s
+    path: /custom-metrics
+    honorLabels: true
+
+---
+# ConfigMap pour la configuration des métriques personnalisées
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-metrics-config
+  namespace: databot-v4
+  labels:
+    app.kubernetes.io/name: databot
+    app.kubernetes.io/component: metrics-config
+data:
+  prometheus-adapter-config.yaml: |
+    rules:
+    - seriesQuery: 'databot_api_requests_per_second{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace: {resource: "namespace"}
+          pod: {resource: "pod"}
+      name:
+        matches: "^databot_api_(.*)_per_second"
+        as: "requests_per_second"
+      metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[2m])'
+    
+    - seriesQuery: 'databot_blockchain_transactions_rate{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace: {resource: "namespace"}
+          pod: {resource: "pod"}
+      name:
+        matches: "^databot_blockchain_(.*)_rate"
+        as: "blockchain_transaction_rate"
+      metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[5m])'
+    
+    - seriesQuery: 'redis_connected_clients{namespace!="",service!=""}'
+      resources:
+        overrides:
+          namespace: {resource: "namespace"}
+          service: {resource: "service"}
+      name:
+        matches: "^redis_(.*)_clients"
+        as: "redis_queue_length"
+      metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[1m])'
+    
+    externalRules:
+    - seriesQuery: 'redis_list_length{namespace!="",list!=""}'
+      resources:
+        overrides:
+          namespace: {resource: "namespace"}
+      name:
+        matches: "^redis_list_length"
+        as: "redis_queue_length"
+      metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[1m])'

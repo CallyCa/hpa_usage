@@ -1,0 +1,86 @@
+---
+# Source: flask-helm/templates/service.yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: prod-dep-flask-helm
+  labels:
+    app: flask
+    env: prod
+    chart: flask-helm-0.1.0
+    release: prod-dep
+spec:
+  type: NodePort
+  selector:
+    app: flask
+    env: prod
+    release: prod-dep
+  ports:
+    - port: 5000
+      targetPort: 5000
+      nodePort: 30007
+---
+# Source: flask-helm/templates/Deployment.yml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prod-dep-flask-helm
+  labels:
+    app: flask
+    env: prod
+    chart: flask-helm-0.1.0
+    release: prod-dep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flask
+      env: prod
+      release: prod-dep
+  template:
+    metadata:
+      labels:
+        app: flask
+        env: prod
+        release: prod-dep
+    spec:
+      containers:
+        - name: flask-cpu
+          image: aviralsingh2609/flask-helm:dev
+          ports:
+            - containerPort: 5000
+          resources:
+            limits:
+              cpu: "4"
+              memory: 16Gi
+            requests:
+              cpu: "4"
+              memory: 16Gi
+          env:
+            - name: ENV
+              value: "prod"
+---
+# Source: flask-helm/templates/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: prod-dep-flask-helm
+  labels:
+    app: flask
+    env: prod
+    chart: flask-helm-0.1.0
+    release: prod-dep
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: prod-dep-flask-helm
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

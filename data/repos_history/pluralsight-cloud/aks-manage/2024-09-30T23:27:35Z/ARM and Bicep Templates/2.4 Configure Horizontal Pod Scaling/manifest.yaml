@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaling-deployment
+  labels:
+    app: scaling-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scaling-app
+  template:
+    metadata:
+      labels:
+        app: scaling-app
+    spec:
+      containers:
+      - name: scaling-app-con
+        image: ubuntu:24.04
+        command: ["/bin/bash", "-c", "--"]
+        args: 
+        - |
+          while true; do 
+            apt-get update && \
+            apt-get install -y stress && \
+            stress --cpu 1 --timeout 120; 
+            sleep 600; 
+          done
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "128Mi"
+          limits:
+            cpu: "1000m"
+            memory: "256Mi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: scaling-hpa
+spec:
+  minReplicas: 1
+  maxReplicas: 10
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 30
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: scaling-deployment
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80

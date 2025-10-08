@@ -1,0 +1,781 @@
+checks:
+  - ID: "WRK001"
+    Name: "DaemonSets Not Fully Running"
+    Category: "Workloads"
+    Section: "Workloads"
+    ResourceKind: "DaemonSet"
+    Severity: "warning"
+    Weight: 2
+    Description: "Detects DaemonSets that have fewer running pods than desired."
+    FailMessage: "DaemonSet is not running on all desired nodes."
+    URL: "https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/"
+    Recommendation:
+      text: "Investigate DaemonSets not fully running. Common causes include taints, node issues, or resource constraints."
+      html: |
+        <div class="recommendation-content">
+          <ul>
+            <li>Run <code>kubectl describe ds <name> -n <namespace></code> to check for scheduling issues.</li>
+            <li>Check node taints and conditions.</li>
+            <li>Ensure resource requests are not too high for nodes.</li>
+          </ul>
+        </div>
+    SpeechBubble:
+      - "🤖 Some DaemonSets aren’t running on all expected nodes."
+      - ""
+      - "📌 This may be due to taints, resource pressure, or scheduling rules."
+      - ""
+      - "⚠️ Investigate why the pods aren’t placed as expected."
+    Script: |
+      param([object]$KubeData, $Namespace, [switch]$ExcludeNamespaces)
+      
+      $daemonsets = if ($KubeData?.DaemonSets) {
+        $KubeData.DaemonSets.items
+      } else {
+        (kubectl get daemonsets -A -o json | ConvertFrom-Json).items
+      }
+      
+      if ($ExcludeNamespaces) {
+        $daemonsets = Exclude-Namespaces -items $daemonsets
+      }
+      
+      if ($Namespace) {
+        $daemonsets = $daemonsets | Where-Object { $_.metadata.namespace -eq $Namespace }
+      }
+      
+      $daemonsets | Where-Object {
+        $_.status.desiredNumberScheduled -ne $_.status.numberReady
+      } | ForEach-Object {
+        $desired = if ($_.status.desiredNumberScheduled -ne $null) { $_.status.desiredNumberScheduled } else { 0 }
+        $ready   = if ($_.status.numberReady -ne $null) { $_.status.numberReady } else { 0 }
+        [pscustomobject]@{
+          Namespace     = $_.metadata.namespace
+          DaemonSet     = $_.metadata.name
+          Availability  = "$ready/$desired"
+          Message       = "DaemonSet is not running on all desired nodes."
+        }
+      } | Sort-Object Namespace, DaemonSet | Format-Table -AutoSize
+  - ID: "WRK002"
+    Name: "Deployment Missing Replicas"
+    Category: "Workloads"
+    Section: "Workloads"
+    ResourceKind: "Deployment"
+    Severity: "warning"
+    Weight: 3
+    Description: "Detects Deployments where the number of available replicas is less than desired."
+    FailMessage: "Deployment has fewer available replicas than desired."
+    URL: "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/"
+    Recommendation:
+      text: "Check Deployments that are not meeting their replica count. This may indicate rollout issues or failed pods."
+      html: |
+        <div class="recommendation-content">
+          <ul>
+            <li>Run <code>kubectl describe deployment <name> -n <namespace></code> to view status.</li>
+            <li>Check for failed pods using <code>kubectl get pods -n <namespace></code>.</li>
+            <li>Review rollout and events for delays or crashes.</li>
+          </ul>
+        </div>
+    SpeechBubble:
+      - "🤖 Some Deployments aren’t meeting their desired replica count."
+      - ""
+      - "📌 This could mean pods are failing, pending, or being slow to start."
+      - ""
+      - "⚠️ Check pod logs and rollout status."
+    Script: |
+      param([object]$KubeData, $Namespace, [switch]$ExcludeNamespaces)
+
+      $deployments = if ($KubeData?.Deployments) {
+        $KubeData.Deployments
+      } else {
+        (kubectl get deployments -A -o json | ConvertFrom-Json).items
+      }
+      if ($ExcludeNamespaces) {
+        $deployments = Exclude-Namespaces -items $deployments
+      }
+      if ($Namespace) {
+        $deployments = $deployments | Where-Object { $_.metadata.namespace -eq $Namespace }
+      }
+
+      $deployments | Where-Object {
+        $_.status.availableReplicas -eq $null -or $_.status.availableReplicas -lt $_.spec.replicas
+      } | ForEach-Object {
+        $available = if ($_.status.availableReplicas -ne $null) { $_.status.availableReplicas } else { 0 }
+        [pscustomobject]@{
+          Namespace    = $_.metadata.namespace
+          Deployment   = $_.metadata.name
+          Availability = "$available/$($_.spec.replicas)"
+          Message      = "Deployment has fewer available replicas than desired."
+        }
+      }
+  - ID: "WRK003"
+    Name: "StatefulSet Incomplete Rollout"
+    Category: "Workloads"
+    Section: "Workloads"
+    ResourceKind: "StatefulSet"
+    Severity: "warning"
+    Weight: 3
+    Description: "Detects StatefulSets where the number of ready replicas is less than the desired count."
+    FailMessage: "StatefulSet has fewer ready replicas than desired."
+    URL: "https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/"
+    Recommendation:
+      text: "Investigate StatefulSets with missing ready replicas. This may indicate issues with pod readiness or volume binding."
+      html: |
+        <div class="recommendation-content">
+          <ul>
+            <li>Run <code>kubectl describe sts name -n namespace</code> to view rollout and events.</li>
+            <li>Check pod logs and PersistentVolumeClaim bindings.</li>
+            <li>Confirm storage class availability and node scheduling constraints.</li>
+          </ul>
+        </div>
+    SpeechBubble:
+      - "🤖 Some StatefulSets have fewer ready replicas than desired."
+      - ""
+      - "📌 This could point to pod readiness issues or PVC problems."
+      - ""
+      - "⚠️ Review logs, events, and volume bindings."
+    Script: |
+      param(
+          [object]$KubeData,
+          [string]$Namespace,
+          [switch]$ExcludeNamespaces
+      )
+      
+      # ------------------------------------------------------------------
+      # Pull StatefulSets
+      # ------------------------------------------------------------------
+      $statefulsets = if ($KubeData?.StatefulSets) {
+          $KubeData.StatefulSets
+      } else {
+          (kubectl get statefulsets -A -o json | ConvertFrom-Json).items
+      }
+      
+      if ($ExcludeNamespaces) {
+          $statefulsets = Exclude-Namespaces -items $statefulsets
+      }
+      if ($Namespace) {
+          $statefulsets = $statefulsets |
+              Where-Object { $_.metadata.namespace -eq $Namespace }
+      }
+      
+      # Early-exit if nothing to check
+      if (-not $statefulsets -or $statefulsets.Count -eq 0) {
+          return
+      }
+      
+      # ------------------------------------------------------------------
+      # Emit findings only when readyReplicas < replicas
+      # ------------------------------------------------------------------
+      $statefulsets |
+      Where-Object {
+          # Treat missing status.readyReplicas as 0
+          $ready   = $_.status.readyReplicas
+          $desired = $_.spec.replicas
+      
+          # If replicas not set, Kubernetes defaults to 1
+          if (-not $desired) { $desired = 1 }
+      
+          ($ready -eq $null) -or ([int]$ready -lt [int]$desired)
+      } |
+      ForEach-Object {
+          $ready   = $_.status.readyReplicas
+          $desired = $_.spec.replicas
+          if (-not $desired) { $desired = 1 }
+          if (-not $ready)   { $ready   = 0 }
+      
+          [pscustomobject]@{
+              Namespace    = $_.metadata.namespace
+              StatefulSet  = $_.metadata.name
+              Availability = \"$ready/$desired\"
+              Message      = \"StatefulSet has fewer ready replicas than desired.\"
+          }
+      }
+
+  - ID: "WRK004"
+    Name: "HPA Misconfiguration or Inactivity"
+    Category: "Workloads"
+    Section: "Workloads"
+    ResourceKind: "HorizontalPodAutoscaler"
+    Severity: "warning"
+    Weight: 1
+    Description: "Checks for HPAs that have missing targets, no metrics, or inactive scaling."
+    FailMessage: "HPA is misconfigured, inactive, or not scaling correctly."
+    URL: "https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/"
+    Recommendation:
+      text: "Review HorizontalPodAutoscalers with missing targets, no metrics, or disabled scaling."
+      html: |
+        <div class="recommendation-content">
+          <ul>
+            <li>Check if the target workload exists using <code>kubectl get deploy|sts -n <namespace></code>.</li>
+            <li>Use <code>kubectl describe hpa <name> -n <namespace></code> to inspect HPA status and events.</li>
+            <li>Ensure metrics-server is running and the target exposes the required metrics.</li>
+          </ul>
+        </div>
+    SpeechBubble:
+      - "🤖 Some HorizontalPodAutoscalers are inactive or misconfigured."
+      - ""
+      - "📌 Issues include missing metrics, invalid targets, or scaling disabled."
+      - ""
+      - "⚠️ Check the target object and HPA events."
+    Script: |
+      param([object]$KubeData, $Namespace, [switch]$ExcludeNamespaces)
+      
+      # Get HPAs
+      $hpas = if ($KubeData?.HorizontalPodAutoscalers) {
+        $KubeData.HorizontalPodAutoscalers
+      } else {
+        (kubectl get hpa -A -o json | ConvertFrom-Json).items
+      }
+      if ($ExcludeNamespaces) {
+        $hpas = Exclude-Namespaces -items $hpas
+      }
+      if ($Namespace) {
+        $hpas = $hpas | Where-Object { $_.metadata.namespace -eq $Namespace }
+      }
+      
+      # Get Deployments
+      $deployments = if ($KubeData?.Deployments) {
+        $KubeData.Deployments
+      } else {
+        (kubectl get deployments -A -o json | ConvertFrom-Json).items
+      }
+      if ($ExcludeNamespaces) {
+        $deployments = Exclude-Namespaces -items $deployments
+      }
+      if ($Namespace) {
+        $deployments = $deployments | Where-Object { $_.metadata.namespace -eq $Namespace }
+      }
+      
+      # Get StatefulSets
+      $statefulsets = if ($KubeData?.StatefulSets) {
+        $KubeData.StatefulSets
+      } else {
+        (kubectl get statefulsets -A -o json | ConvertFrom-Json).items
+      }
+      if ($ExcludeNamespaces) {
+        $statefulsets = Exclude-Namespaces -items $statefulsets
+      }
+      if ($Namespace) {
+        $statefulsets = $statefulsets | Where-Object { $_.metadata.namespace -eq $Namespace }
+      }
+      
+      # Collect results
+      $results = @()
+      
+      foreach ($hpa in $hpas) {
+        $ns = $hpa.metadata.namespace
+        $name = $hpa.metadata.name
+        $targetKind = $hpa.spec.scaleTargetRef.kind
+        $targetName = $hpa.spec.scaleTargetRef.name
+        $targetRef = "$targetKind/$targetName"
+        $status = $hpa.status
+        $current = $status.currentReplicas
+        $desired = $status.desiredReplicas
+      
+        $conditions = @{}
+        if ($status.conditions) {
+          foreach ($c in $status.conditions) {
+            $conditions[$c.type] = $c
+          }
+        }
+      
+        $targetFound = switch ($targetKind) {
+          "Deployment"  { ($deployments | Where-Object { $_.metadata.namespace -eq $ns -and $_.metadata.name -eq $targetName }).Count }
+          "StatefulSet" { ($statefulsets | Where-Object { $_.metadata.namespace -eq $ns -and $_.metadata.name -eq $targetName }).Count }
+          default       { 0 }
+        }
+      
+        if ($targetFound -eq 0) {
+          $results += [pscustomobject]@{
+            Namespace = $ns
+            HPA       = $name
+            Target    = $targetRef
+            Replicas  = ""
+            Message   = "❌ Target not found"
+          }
+          continue
+        }
+      
+        if (-not $status.currentMetrics -or $status.currentMetrics.Count -eq 0) {
+          $results += [pscustomobject]@{
+            Namespace = $ns
+            HPA       = $name
+            Target    = $targetRef
+            Replicas  = ""
+            Message   = "❌ No metrics available"
+          }
+        }
+      
+        if ($conditions["AbleToScale"]?.status -eq "False") {
+          $msg = $conditions["AbleToScale"].reason
+          $results += [pscustomobject]@{
+            Namespace = $ns
+            HPA       = $name
+            Target    = $targetRef
+            Replicas  = ""
+            Message   = "⚠️ Scaling disabled: $msg"
+          }
+        }
+      
+        if ($conditions["ScalingActive"]?.status -eq "False") {
+          $msg = $conditions["ScalingActive"].reason
+          $results += [pscustomobject]@{
+            Namespace = $ns
+            HPA       = $name
+            Target    = $targetRef
+            Replicas  = ""
+            Message   = "⚠️ Scaling not active: $msg"
+          }
+        }
+      
+        if ($desired -eq 0 -and $current -eq 0) {
+          $results += [pscustomobject]@{
+            Namespace = $ns
+            HPA       = $name
+            Target    = $targetRef
+            Replicas  = ""
+            Message   = "⚠️ HPA inactive (0 replicas)"
+          }
+        }
+      
+        if ($desired -ne $null -and $current -ne $null -and $desired -ne $current) {
+          $results += [pscustomobject]@{
+            Namespace = $ns
+            HPA       = $name
+            Target    = $targetRef
+            Replicas  = "$current → $desired"
+            Message   = "⚠️ Scaling mismatch"
+          }
+        }
+      }
+
+      $results
+  - ID: "WRK005"
+    Name: "Missing Resource Requests or Limits"
+    Category: "Workloads"
+    Section: "Workloads"
+    ResourceKind: "Pod"
+    Severity: "warning"
+    Weight: 3
+    Description: "Checks that every container has CPU and memory requests and a memory limit."
+    FailMessage: "One or more containers are missing a resource request or a memory limit."
+    URL: "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/"
+    Recommendation:
+      text: "Define cpu/memory requests and a memory limit on all containers."
+      html: |
+        <div class="recommendation-content">
+          <ul>
+            <li>Add <code>resources.requests.cpu</code> and <code>resources.requests.memory</code> to <strong>every</strong> container.</li>
+            <li>Set a <code>resources.limits.memory</code> value to protect nodes from OOM events.</li>
+            <li><em>CPU limits are optional</em>; include <code>resources.limits.cpu</code> only when you need strict throttling.</li>
+            <li>Review both workload and <code>initContainers</code> with <code>kubectl get deploy,statefulset,daemonset -A -o yaml</code>.</li>
+            <li>Apply any missing fields, then rerun KubeBuddy to confirm.</li>
+          </ul>
+        </div>
+    SpeechBubble:
+      - "🤖 Some containers are still missing resource requests or a memory limit."
+      - ""
+      - "⚠️ Without requests the scheduler can’t make good placement decisions."
+      - "💡 Memory limits help prevent node OOMs; CPU limits are optional by design."
+    Script: |
+      param(
+          [object]$KubeData,
+          [string]$Namespace,
+          [switch]$ExcludeNamespaces
+      )
+      
+      # ------------------------------------------------------------------
+      # Helper: evaluate a single container for missing resource settings
+      # ------------------------------------------------------------------
+      function Test-ContainerResources {
+          param(
+              [object]$Container,
+              [string]$ContainerType,
+              [string]$Namespace,
+              [string]$Workload
+          )
+      
+          $limits   = $Container.resources
+          $requests = $Container.resources
+      
+          $missing = @()
+      
+          # Robust presence checks ---------------------------------------
+          $cpuReq    = if ($requests) { $requests.requests?.cpu } else { $null }
+          $memReq    = if ($requests) { $requests.requests?.memory } else { $null }
+          $memLimit  = if ($limits)   { $limits.limits?.memory    } else { $null }
+      
+          if ([string]::IsNullOrWhiteSpace($cpuReq))   { $missing += 'CPU request' }
+          if ([string]::IsNullOrWhiteSpace($memReq))   { $missing += 'Memory request' }
+          if ([string]::IsNullOrWhiteSpace($memLimit)) { $missing += 'Memory limit' }
+      
+          if ($missing) {
+              [pscustomobject]@{
+                  Namespace     = $Namespace
+                  Workload      = $Workload
+                  Container     = $Container.name
+                  ContainerType = $ContainerType
+                  Message       = ($missing -join ', ') + ' missing'
+              }
+          }
+      }
+      
+      # ------------------------------------------------------------------
+      # Gather workloads (deployments, statefulsets, daemonsets)
+      # ------------------------------------------------------------------
+      $kinds = @('deployments','statefulsets','daemonsets')
+      $workloads = foreach ($plural in $kinds) {
+      
+          # Create a singular Kind name with an initial capital letter
+          $kind = ($plural -replace 's$') -creplace '^.', { $_.Value.ToUpper() }
+      
+          $items = if ($KubeData -and $KubeData[$plural]) {
+              $KubeData[$plural]
+          } else {
+              (kubectl get $plural -A -o json | ConvertFrom-Json).items
+          }
+      
+          if ($ExcludeNamespaces) { $items = Exclude-Namespaces -items $items }
+          if ($Namespace)        { $items = $items | Where-Object { $_.metadata.namespace -eq $Namespace } }
+      
+          foreach ($w in $items) {
+              if (-not $w.PSObject.Properties['kind']) {
+                  $w | Add-Member kind $kind
+              }
+              $w
+          }
+      }
+      
+      # ------------------------------------------------------------------
+      # Evaluate each container / initContainer in the workloads
+      # ------------------------------------------------------------------
+      $results = @()
+      
+      foreach ($w in $workloads) {
+          $spec = $w.spec?.template?.spec
+          if (-not $spec) { continue }
+      
+          # Regular containers
+          foreach ($c in ($spec.containers | Where-Object { $_ })) {
+              $results += Test-ContainerResources `
+                  -Container $c `
+                  -ContainerType 'Container' `
+                  -Namespace $w.metadata.namespace `
+                  -Workload "$("$($w.kind)/$($w.metadata.name)")"
+          }
+      
+          # Init containers
+          foreach ($c in ($spec.initContainers | Where-Object { $_ })) {
+              $results += Test-ContainerResources `
+                  -Container $c `
+                  -ContainerType 'InitContainer' `
+                  -Namespace $w.metadata.namespace `
+                  -Workload "$("$($w.kind)/$($w.metadata.name)")"
+          }
+      }
+      
+      $results
+
+
+  - ID: "WRK006"
+    Name: "PDB Coverage and Effectiveness"
+    Section: "Workloads"
+    Category: "PDBs"
+    ResourceKind: "PodDisruptionBudget"
+    Severity: "critical"
+    Weight: 2
+    Description: "Detects missing or weak PDBs for workloads"
+    FailMessage: "Workload is unprotected or PDB is weak"
+    Recommendation:
+      text: "Workloads should have a valid PDB to prevent availability issues during disruptions."
+      html: |
+        <ul>
+          <li>Set <code>minAvailable</code> to a safe minimum (not 0).</li>
+          <li>Avoid setting <code>maxUnavailable</code> to <code>1</code> or <code>100%</code>.</li>
+          <li>Make sure PDBs match actual workloads via label selectors.</li>
+        </ul>
+    SpeechBubble:
+      - "🤖 Some workloads have missing or weak PodDisruptionBudgets."
+      - ""
+      - "📌 PDBs help ensure availability during voluntary disruptions."
+      - ""
+      - "⚠️ Add or adjust PDBs to protect critical workloads."
+    URL: "https://kubernetes.io/docs/tasks/run-application/configure-pdb/"
+    Script: |
+      param([object]$KubeData, $Namespace, [switch]$ExcludeNamespaces)
+
+      function IsWeakPDB($pdb) {
+        if ($pdb.spec.minAvailable -eq 0) { return "⚠️ minAvailable = 0" }
+        if ($pdb.spec.maxUnavailable -eq 1 -or $pdb.spec.maxUnavailable -eq "100%" -or $pdb.spec.maxUnavailable -eq "1") {
+          return "⚠️ maxUnavailable = 100%"
+        }
+        return $null
+      }
+
+      function MatchesSelector($labels, $selector) {
+        foreach ($key in $selector.matchLabels.Keys) {
+          if (-not $labels.ContainsKey($key) -or $labels[$key] -ne $selector.matchLabels[$key]) {
+            return $false
+          }
+        }
+        return $true
+      }
+
+      $results = @()
+      $pdbs = if ($KubeData?.PodDisruptionBudgets) {
+        $KubeData.PodDisruptionBudgets
+      } else {
+        (kubectl get pdb -A -o json | ConvertFrom-Json).items
+      }
+      if ($ExcludeNamespaces) {
+        $pdbs = Exclude-Namespaces -items $pdbs
+      }
+      if ($Namespace) {
+        $pdbs = $pdbs | Where-Object { $_.metadata.namespace -eq $Namespace }
+      }
+
+      $pods = if ($KubeData?.Pods) {
+        $KubeData.Pods.items
+      } else {
+        (kubectl get pods -A -o json | ConvertFrom-Json).items
+      }
+      if ($ExcludeNamespaces) {
+        $pods = Exclude-Namespaces -items $pods
+      }
+      if ($Namespace) {
+        $pods = $pods | Where-Object { $_.metadata.namespace -eq $Namespace }
+      }
+
+      $deployments = if ($KubeData?.Deployments) {
+        $KubeData.Deployments
+      } else {
+        (kubectl get deployments -A -o json | ConvertFrom-Json).items
+      }
+      if ($ExcludeNamespaces) {
+        $deployments = Exclude-Namespaces -items $deployments
+      }
+      if ($Namespace) {
+        $deployments = $deployments | Where-Object { $_.metadata.namespace -eq $Namespace }
+      }
+
+      $statefulsets = if ($KubeData?.StatefulSets) {
+        $KubeData.StatefulSets
+      } else {
+        (kubectl get statefulsets -A -o json | ConvertFrom-Json).items
+      }
+      if ($ExcludeNamespaces) {
+        $statefulsets = Exclude-Namespaces -items $statefulsets
+      }
+      if ($Namespace) {
+        $statefulsets = $statefulsets | Where-Object { $_.metadata.namespace -eq $Namespace }
+      }
+
+      foreach ($pdb in $pdbs) {
+        $weak = IsWeakPDB $pdb
+        if ($weak) {
+          $results += [PSCustomObject]@{
+            Namespace = $pdb.metadata.namespace
+            Name      = $pdb.metadata.name
+            Kind      = "PDB"
+            Issue     = $weak
+          }
+        }
+        if ($pdb.status.expectedPods -eq 0) {
+          $results += [PSCustomObject]@{
+            Namespace = $pdb.metadata.namespace
+            Name      = $pdb.metadata.name
+            Kind      = "PDB"
+            Issue     = "⚠️ Matches 0 pods"
+          }
+        }
+      }
+
+      $allWorkloads = @()
+      $allWorkloads += $deployments | Where-Object { $_ -ne $null } | ForEach-Object {
+        $_ | Add-Member -NotePropertyName kind -NotePropertyValue "Deployment" -Force -PassThru
+      }
+      $allWorkloads += $statefulsets | Where-Object { $_ -ne $null } | ForEach-Object {
+        $_ | Add-Member -NotePropertyName kind -NotePropertyValue "StatefulSet" -Force -PassThru
+      }
+
+      foreach ($workload in $allWorkloads) {
+        $ns = $workload.metadata.namespace
+        $name = $workload.metadata.name
+        $kind = $workload.kind
+        $labels = $workload.spec.template.metadata.labels
+
+        $matched = $false
+        foreach ($pdb in $pdbs | Where-Object { $_.metadata.namespace -eq $ns }) {
+          if ($pdb.spec.selector -and $pdb.spec.selector.matchLabels) {
+            if (MatchesSelector $labels $pdb.spec.selector) {
+              $matched = $true
+              break
+            }
+          }
+        }
+
+        if (-not $matched) {
+          $results += [PSCustomObject]@{
+            Namespace = $ns
+            Name      = $name
+            Kind      = $kind
+            Issue     = "❌ No matching PDB"
+          }
+        }
+      }
+
+      return $results
+  - ID: "WRK007"
+    Name: "Missing Readiness and Liveness Probes"
+    Section: "Workloads"
+    Category: "Probes"
+    ResourceKind: "Deployment"
+    Severity: "warning"
+    Weight: 4
+    Description: "Detects containers without health probes (readiness/liveness)."
+    FailMessage: "Missing readiness or liveness probes."
+    Recommendation:
+      text: "Add readiness and liveness probes to all containers to improve availability and fault detection."
+      html: |
+        <ul>
+          <li><strong>Readiness probes</strong> indicate when a container is ready to receive traffic.</li>
+          <li><strong>Liveness probes</strong> detect if a container is stuck or dead.</li>
+          <li>Use <code>httpGet</code>, <code>tcpSocket</code>, or <code>exec</code> probes for most apps.</li>
+          <li>Docs: <a href="https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/">Health probes in Kubernetes</a></li>
+        </ul>
+    SpeechBubble:
+      - "🤖 Some containers are missing readiness or liveness probes."
+      - ""
+      - "📌 These help Kubernetes detect unresponsive apps early."
+      - ""
+      - "⚠️ Add probes to improve fault tolerance and traffic routing."
+    URL: "https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/"
+    Script: |
+      param([object]$KubeData, $Namespace, [switch]$ExcludeNamespaces)
+      
+      $results = @()
+      $workloadTypes = @("deployments", "statefulsets", "daemonsets")
+      
+      $items = @()
+      foreach ($type in $workloadTypes) {
+          # ——— BEGIN PATCH ———
+          # Grab the list of property names on the PSCustomObject
+          $propNames = if ($KubeData) { $KubeData.PSObject.Properties.Name } else { @() }
+      
+          if ($propNames -contains $type) {
+              # Use the in-memory data
+              $blob = $KubeData.$type
+              $raw = if ($blob.PSObject.Properties.Name -contains 'items') { $blob.items } else { $blob }
+          }
+          else {
+              # Fall back to kubectl
+              $raw = (kubectl get $type --all-namespaces -o json | ConvertFrom-Json).items
+          }
+          # ——— END PATCH ———
+      
+          if ($ExcludeNamespaces) {
+              $raw = Exclude-Namespaces -items $raw
+          }
+          if ($Namespace) {
+              $raw = $raw | Where-Object { $_.metadata.namespace -eq $Namespace }
+          }
+      
+          $kind = ($type -replace "s$")
+          $kind = $kind.Substring(0, 1).ToUpper() + $kind.Substring(1)
+          $items += $raw | ForEach-Object {
+              if (-not $_.PSObject.Properties['kind']) {
+                  $_ | Add-Member -NotePropertyName kind -NotePropertyValue $kind -PassThru
+              } else {
+                  $_
+              }
+          }
+      }
+      
+      foreach ($w in $items) {
+          $ns = $w.metadata.namespace
+          $name = $w.metadata.name
+          $kind = $w.kind
+          if (-not $w.spec -or -not $w.spec.template -or -not $w.spec.template.spec -or -not $w.spec.template.spec.containers) {
+              continue
+          }
+          $containers = $w.spec.template.spec.containers
+      
+          foreach ($c in $containers) {
+              $missing = @()
+              if (-not $c.readinessProbe) { $missing += "readiness" }
+              if (-not $c.livenessProbe)  { $missing += "liveness"  }
+      
+              if ($missing.Count -gt 0) {
+                  $results += [PSCustomObject]@{
+                      Namespace = $ns
+                      Workload  = $name
+                      Kind      = $kind
+                      Container = $c.name
+                      Missing   = $missing -join ", "
+                  }
+              }
+          }
+      }
+      
+      return $results
+
+  - ID: "WRK008"
+    Name: "Deployment Selector Without Matching Pods"
+    Category: "Workloads"
+    Section: "Workloads"
+    ResourceKind: "Deployment"
+    Severity: "warning"
+    Weight: 2
+    Description: "Detects Deployments whose spec.selector does not match any existing Pods. This results in 0 replicas running."
+    FailMessage: "Deployment selector does not match any Pods"
+    Recommendation:
+      text: "Ensure that pod labels match the Deployment selector."
+      html: |
+        <ul>
+          <li>Check that Deployment's <code>spec.selector.matchLabels</code> matches the pod template's labels.</li>
+          <li>Fix any label mismatches to allow pods to be created.</li>
+        </ul>
+    URL: "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/"
+    Script: |
+      param([object]$KubeData, $Namespace, [switch]$ExcludeNamespaces)
+
+      $deployments = $KubeData?.deployments ?? (kubectl get deployments -A -o json | ConvertFrom-Json).items
+      $pods = $KubeData?.Pods?.items ?? (kubectl get pods -A -o json | ConvertFrom-Json).items
+  
+      if ($ExcludeNamespaces) {
+        $deployments = Exclude-Namespaces -items $deployments
+        $pods = Exclude-Namespaces -items $pods
+      }
+      if ($Namespace) {
+        $deployments = $deployments | Where-Object { $_.metadata.namespace -eq $Namespace }
+        $pods = $pods | Where-Object { $_.metadata.namespace -eq $Namespace }
+      }
+  
+      function Matches-Selector {
+        param($pod, $selector)
+        foreach ($key in $selector.Keys) {
+          if (-not $pod.metadata.labels.ContainsKey($key)) { return $false }
+          if ($pod.metadata.labels[$key] -ne $selector[$key]) { return $false }
+        }
+        return $true
+      }
+  
+      $results = @()
+      foreach ($dep in $deployments) {
+        $selector = $dep.spec?.selector?.matchLabels
+        if (-not $selector) { continue }
+        $ns = $dep.metadata.namespace
+  
+        $matchingPods = $pods | Where-Object {
+          $_.metadata.namespace -eq $ns -and (Matches-Selector $_ $selector)
+        }
+  
+        if (-not $matchingPods -or $matchingPods.Count -eq 0) {
+          $results += [pscustomobject]@{
+            "Namespace"       = $ns
+            "Deployment"        = "$($dep.metadata.name)"
+            "Matched Pod"           = "0 matching pods"
+            "Issue Summary"         = "Deployment selector does not match any pods"
+          }
+        }
+      }
+  
+      return $results

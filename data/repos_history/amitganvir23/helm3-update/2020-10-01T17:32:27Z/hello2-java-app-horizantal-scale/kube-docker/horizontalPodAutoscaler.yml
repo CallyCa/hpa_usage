@@ -1,0 +1,71 @@
+# kind: HorizontalPodAutoscaler
+# apiVersion: autoscaling/v1
+# metadata:
+#   name: hello-app
+# spec:
+#   scaleTargetRef:
+#     kind: Deployment
+#     name: hello-app
+#     apiVersion: apps/v1
+#   minReplicas: 1
+#   maxReplicas: 4
+#   targetCPUUtilizationPercentage: 1
+
+
+# kind: HorizontalPodAutoscaler
+# apiVersion: autoscaling/v2beta2
+# metadata:
+#   name: hello-app
+# spec:
+#   scaleTargetRef:
+#     kind: Deployment
+#     name: hello-app
+#     apiVersion: apps/v1
+#   minReplicas: 1
+#   maxReplicas: 10
+#   behavior:
+#     scaleDown:
+#       stabilizationWindowSeconds: 300
+#       policies:
+#       - type: Percent
+#         value: 1
+#         periodSeconds: 2
+#     scaleUp:
+#       stabilizationWindowSeconds: 0
+#       policies:
+#       - type: Percent
+#         value: 1
+#         periodSeconds: 2
+#       - type: Pods
+#         value: 4
+#         periodSeconds: 2
+#       selectPolicy: Max
+  
+
+# kind: HorizontalPodAutoscaler
+# apiVersion: autoscaling/v1
+# metadata:
+#   name: hello-app
+#   namespace: default
+#   selfLink: /apis/autoscaling/v1/namespaces/default/horizontalpodautoscalers/hello-app
+#   uid: 61601302-08a0-4271-9756-bbea21516328
+#   resourceVersion: '202841'
+#   creationTimestamp: '2020-09-28T12:27:20Z'
+#   annotations:
+#     autoscaling.alpha.kubernetes.io/behavior: >-
+#       {"ScaleUp":{"StabilizationWindowSeconds":0,"SelectPolicy":"Max","Policies":[{"Type":"Percent","Value":1,"PeriodSeconds":2},{"Type":"Pods","Value":4,"PeriodSeconds":2}]},"ScaleDown":{"StabilizationWindowSeconds":300,"SelectPolicy":"Max","Policies":[{"Type":"Percent","Value":1,"PeriodSeconds":2}]}}
+#     autoscaling.alpha.kubernetes.io/conditions: >-
+#       [{"type":"AbleToScale","status":"True","lastTransitionTime":"2020-09-28T12:27:35Z","reason":"SucceededGetScale","message":"the
+#       HPA controller was able to get the target's current
+#       scale"},{"type":"ScalingActive","status":"False","lastTransitionTime":"2020-09-28T12:27:35Z","reason":"FailedGetResourceMetric","message":"the
+#       HPA was unable to compute the replica count: unable to get metrics for
+#       resource cpu: unable to fetch metrics from resource metrics API: the
+#       server could not find the requested resource (get pods.metrics.k8s.io)"}]
+# spec:
+#   scaleTargetRef:
+#     kind: Deployment
+#     name: hello-app
+#     apiVersion: apps/v1
+#   minReplicas: 1
+#   maxReplicas: 10
+#   targetCPUUtilizationPercentage: 50

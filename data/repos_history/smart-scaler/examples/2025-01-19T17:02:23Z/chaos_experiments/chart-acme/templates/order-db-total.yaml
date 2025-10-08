@@ -1,0 +1,140 @@
+{{- if or (has "all" $.Values.provision) (has "order-db-total" $.Values.provision)}}
+{{- range $namespace := $.Values.namespace }}
+   {{- range $copy := untilStep 0 ($.Values.copies | int) 1 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-postgres-{{$copy}}
+  namespace: {{ $namespace.config.name }}
+  labels:
+    app: acmefit
+    service: order-db-{{$copy}}
+spec:
+  ports:
+    - port: 5432
+      name: postgres-order
+      protocol: TCP
+  selector:
+    app: acmefit
+    service: order-db-{{$copy}}
+---
+{{- if $.Values.stateful}}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-order
+  namespace: {{ $namespace.config.name }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+{{- end }}
+---
+apiVersion: apps/v1
+{{- if $.Values.stateful}}
+kind: StatefulSet
+  {{- else }}
+kind: Deployment
+  {{- end }}
+metadata:
+  name: order-postgres-{{ $namespace.config.name }}-{{$copy}}
+  namespace: {{ $namespace.config.name }}
+  labels:
+    app: acmefit
+    service: order-db-{{$copy}}
+spec:
+  {{- if $.Values.stateful}}
+  serviceName: order-postgres-{{$copy}}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: acmefit
+      service: order-db-{{$copy}}
+  {{- if not $.Values.stateful}}
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  {{- end }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: acmefit
+        service: order-db-{{$copy}}
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:9.5
+        imagePullPolicy: "Always"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "100Mi"  
+        ports:
+        - containerPort: 5432
+          name: order-postgres
+          protocol: "TCP"
+        env:
+        - name: POSTGRES_USER
+          value: pgbench
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: order-postgres-pass
+              key: password
+        - name: PGBENCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: order-postgres-pass
+              key: password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - mountPath: /var/lib/postgresql/data
+          name: postgresdb
+      volumes:
+      {{- if $.Values.stateful}}
+      - name: postgresdb
+        persistentVolumeClaim:
+          claimName: postgres-order
+      {{- else }}
+      - name: postgresdb
+        emptyDir: {}
+      {{- end }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: order-postgres-{{$copy}}
+  namespace: {{ $namespace.config.name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: order-postgres-{{ $namespace.config.name }}-{{$copy}}
+  minReplicas: 1
+  maxReplicas: 50
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 85
+---
+{{- end }}
+{{- end }}
+{{- end }}

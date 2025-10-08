@@ -1,0 +1,290 @@
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8sazurev2disallowedbadpoddisruptionbudgets
+  annotations:
+    metadata.gatekeeper.sh/title: "Pod Disruption Budget"
+    metadata.gatekeeper.sh/version: 1.0.3
+    metadata.gatekeeper.sh/requires-sync-data: |
+      "[
+        [
+          {
+            "groups": ["policy"],
+            "versions": ["v1"],
+            "kinds": ["PodDisruptionBudget"]
+          }
+        ],
+        [
+          {
+            "groups": ["apps"],
+            "versions": ["v1"],
+            "kinds": ["Deployment"]
+          }
+        ],
+        [
+          {
+            "groups": ["apps"],
+            "versions": ["v1"],
+            "kinds": ["Statefulset"]
+          }
+        ]
+      ]
+      "
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sAzureV2DisallowedBadPodDisruptionBudgets
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sazurev2disallowedbadpoddisruptionbudgets
+        import future.keywords
+
+        # This will return true if there are no matching deployments/statefulsets to the PDB
+        violation[{"msg":msg}] {
+          pdb := input.review.object
+          pdbMatch := {[label, value] | some label; value := pdb.spec.selector.matchLabels[label]}
+          filtered := object.filter(data.inventory.namespace[pdb.metadata.namespace]["apps/v1"], ["Deployment", "StatefulSet"])
+          labels := {[label, value] | some label; value := filtered[_][_].spec.selector.matchLabels[label]}
+          count(pdbMatch - labels) != 0
+
+          msg := sprintf(
+            "There are currently no workloads in the <%v> namespace that match the selector %v. Please create the underlying deployment/statefulset before creating the <%v> disruption budget.",
+            [pdb.metadata.namespace, pdb.spec.selector.matchLabels, pdb.metadata.name],
+          )
+        }
+
+         # This will return true if there are no healthy pods for the deployment
+        violation[{"msg":msg}] {
+          pdb := input.review.object
+
+          healthyAndMatchedPods := healthyPodsForPDB(pdb)
+          numHealthyPods := healthyAndMatchedPods[0]
+
+          numHealthyPods == 0
+
+          msg := sprintf(
+            "There are currently no underlying healthy pods for the PodDisruptionBudget <%v>. Please create or fix the underlying resources before making a disruption budget.",
+            [pdb.metadata.name],
+          )
+        }
+
+        # This will return true if minAvailable(expressed as a percentage) > # of healthy pods
+        violation[{"msg":msg}] {
+          pdb := input.review.object
+          object.get(pdb.spec, "minAvailable", -1) != -1
+          minAvailable := sprintf("%v", [pdb.spec.minAvailable])
+          endswith(minAvailable, "%")
+
+          healthyAndMatchedPods := healthyPodsForPDB(pdb)
+          numHealthyPods := healthyAndMatchedPods[0]
+          totalMatchedPods := healthyAndMatchedPods[1]
+          filtered := healthyAndMatchedPods[2]
+
+          fraction := to_number(substring(minAvailable, 0, count(minAvailable) - 1)) / 100
+          ceil(fraction * totalMatchedPods) >= numHealthyPods
+
+          key := [key | filtered[key]][_]
+
+          # this filters out old replicasets
+          validWorkloads := {x | x.spec.replicas > 0; x = filtered[key][_]}
+
+          msg := sprintf(
+            "PodDisruptionBudget <%v> has a minAvailable value of <%v> that will result in 0 allowed disruptions for matched %v <%v> which currently has <%v> healthy pods. Please update the value used and/or fix the matched unhealthy pods if they exist. This error will also be observed if no pods matching the pdb currently exist.",
+            [pdb.metadata.name, minAvailable, key, validWorkloads[_].metadata.name, numHealthyPods],
+          )
+        }
+
+        # This will return true if minAvailable(expressed as a number) > # of healthy pods
+        violation[{"msg":msg}] {
+          pdb := input.review.object
+          object.get(pdb.spec, "minAvailable", -1) != -1
+          minAvailable := sprintf("%v", [pdb.spec.minAvailable])
+          not endswith(minAvailable, "%")
+
+          healthyAndMatchedPods := healthyPodsForPDB(pdb)
+          numHealthyPods := healthyAndMatchedPods[0]
+          filtered := healthyAndMatchedPods[2]
+
+          num := to_number(minAvailable)
+          num >= numHealthyPods
+
+          key := [key | filtered[key]][_]
+
+          # this filters out old replicasets
+          validWorkloads := {x | x.spec.replicas > 0; x = filtered[key][_]}
+
+          msg := sprintf(
+            "PodDisruptionBudget <%v> has a minAvailable value of <%v> that will result in 0 allowed disruptions for matched %v <%v> which currently has <%v> healthy pods. Please update the value used and/or fix the matched unhealthy pods if they exist. This error will also be observed if no pods matching the pdb currently exist.",
+            [pdb.metadata.name, minAvailable, key, validWorkloads[_].metadata.name, numHealthyPods],
+          )
+        }
+
+         # This will return true if maxUnavailable(expressed as a percentage) < # of total pods - # of healthy pods
+        violation[{"msg":msg}] {
+          pdb := input.review.object
+          object.get(pdb.spec, "maxUnavailable", -1) != -1
+          maxUnavailable := sprintf("%v", [pdb.spec.maxUnavailable])
+          endswith(maxUnavailable, "%")
+
+          healthyAndMatchedPods := healthyPodsForPDB(pdb)
+          numHealthyPods := healthyAndMatchedPods[0]
+          totalMatchedPods := healthyAndMatchedPods[1]
+          filtered := healthyAndMatchedPods[2]
+
+          fraction := to_number(substring(maxUnavailable, 0, count(maxUnavailable) - 1)) / 100
+          ceil(fraction * totalMatchedPods) <= totalMatchedPods - numHealthyPods
+
+          key := [key | filtered[key]][_]
+
+          # this filters out old replicasets
+          validWorkloads := {x | x.spec.replicas > 0; x = filtered[key][_]}
+
+          msg := sprintf(
+            "PodDisruptionBudget <%v> has a maxUnavailable value <%v> that will result in 0 allowed disruptions for matched %v <%v> which currently has <%v> healthy pods . Please update the value used and/or fix the matched unhealthy pods if they exist. This error will also be observed if no pods matching the pdb currently exist.",
+            [pdb.metadata.name, pdb.spec.maxUnavailable, key, validWorkloads[_].metadata.name, numHealthyPods],
+          )
+        }
+
+        # This will return true if maxUnavailable(expressed as a number) < # of total pods - # of healthy pods
+        violation[{"msg":msg}] {
+          pdb := input.review.object
+          object.get(pdb.spec, "maxUnavailable", -1) != -1
+          maxUnavailable := sprintf("%v", [pdb.spec.maxUnavailable])
+          not endswith(maxUnavailable, "%")
+
+          healthyAndMatchedPods := healthyPodsForPDB(pdb)
+          numHealthyPods := healthyAndMatchedPods[0]
+          totalMatchedPods := healthyAndMatchedPods[1]
+          filtered := healthyAndMatchedPods[2]
+
+          num := to_number(maxUnavailable)
+          num <= totalMatchedPods - numHealthyPods
+
+          key := [key | filtered[key]][_]
+
+          # this filters out old replicasets
+          validWorkloads := {x | x.spec.replicas > 0; x = filtered[key][_]}
+
+          msg := sprintf(
+            "PodDisruptionBudget <%v> has a maxUnavailable value <%v> that will result in 0 allowed disruptions for matched %v <%v> which currently has <%v> healthy pods . Please update the value used and/or fix the matched unhealthy pods if they exist. This error will also be observed if no pods matching the pdb currently exist.",
+            [pdb.metadata.name, pdb.spec.maxUnavailable, key, validWorkloads[_].metadata.name, numHealthyPods],
+          )
+        }
+
+        # # This checks to make sure that a minimally scaled HPA can still satisfy a pdb's minAvailable(expressed as a percentage)
+        # violation[{"msg":msg}] {
+        #   pdb := input.review.object
+        #   object.get(pdb.spec, "minAvailable", -1) != -1
+        #   minAvailable := sprintf("%v", [pdb.spec.minAvailable])
+        #   endswith(minAvailable, "%")
+
+        #   hpas := data.inventory.namespace[pdb.metadata.namespace]["autoscaling/v2"].HorizontalPodAutoscaler
+
+        #   pdbMatch := {[label, value] | some label; value := pdb.spec.selector.matchLabels[label]}
+
+        #   scaledReferenceReplicas := [[minReplicas, currReplicas] |
+        #     hpa := hpas[_]
+        #     hpa.status.currentMetrics != "null"
+        #     hpa.status.desiredReplicas != 0 # it is comprehensive to check that the underlying
+        #     target := hpa.spec.scaleTargetRef
+        #     scaledResource := data.inventory.namespace[pdb.metadata.namespace][target.apiVersion][target.kind][_]
+        #     scaledResource.metadata.name == target.name
+
+        #     labels := {[label, value] | some label; value := scaledResource.spec.selector.matchLabels[label]}
+        #     count(pdbMatch - labels) == 0
+        #     minReplicas := hpa.spec.minReplicas
+        #     currReplicas := hpa.status.currentReplicas
+        #   ]
+
+        #   totalHPAMinReps := sum([minRep | minRep := scaledReferenceReplicas[_][0]])
+        #   totalHPACurrReps := sum([currRep | currRep := scaledReferenceReplicas[_][1]])
+
+        #   healthyAndMatchedPods := healthyPodsForPDB(pdb)
+        #   totalMatchedPods := healthyAndMatchedPods[1]
+        #   minScaleCount := (totalMatchedPods - totalHPACurrReps) + totalHPAMinReps
+
+        #   fraction := to_number(substring(minAvailable, 0, count(minAvailable) - 1)) / 100
+        #   ceil(fraction * minScaleCount) >= minScaleCount
+
+        #   msg := sprintf(
+        #     "PodDisruptionBudget <%v> has a minAvailable value of <%v> that will result in 0 allowed disruptions if corresponding HPA <%v> scales down to the minimum value of <%v>. Please update the minAvailable value used and/or update the hpa resource.",
+        #     [pdb.metadata.name, minAvailable, hpas[_].metadata.name, minScaleCount],
+        #   )
+        # }
+
+        # # This checks to make sure that a minimally scaled HPA can still satisfy a pdb's minAvailable(expressed as a number)
+        # violation[{"msg":msg}] {
+        #   pdb := input.review.object
+        #   object.get(pdb.spec, "minAvailable", -1) != -1
+        #   minAvailable := sprintf("%v", [pdb.spec.minAvailable])
+        #   not endswith(minAvailable, "%")
+
+        #   hpas := data.inventory.namespace[pdb.metadata.namespace]["autoscaling/v2"].HorizontalPodAutoscaler
+
+        #   pdbMatch := {[label, value] | some label; value := pdb.spec.selector.matchLabels[label]}
+
+        #   scaledReferenceReplicas := [[minReplicas, currReplicas] |
+        #     hpa := hpas[_]
+        #     hpa.status.currentMetrics != "null"
+        #     hpa.status.desiredReplicas != 0 # it is comprehensive to check that the underlying
+        #     target := hpa.spec.scaleTargetRef
+        #     scaledResource := data.inventory.namespace[pdb.metadata.namespace][target.apiVersion][target.kind][_]
+        #     scaledResource.metadata.name == target.name
+
+        #     labels := {[label, value] | some label; value := scaledResource.spec.selector.matchLabels[label]}
+        #     count(pdbMatch - labels) == 0
+        #     minReplicas := hpa.spec.minReplicas
+        #     currReplicas := hpa.status.currentReplicas
+        #   ]
+
+        #   totalHPAMinReps := sum([minRep | minRep := scaledReferenceReplicas[_][0]])
+        #   totalHPACurrReps := sum([currRep | currRep := scaledReferenceReplicas[_][1]])
+
+        #   healthyAndMatchedPods := healthyPodsForPDB(pdb)
+        #   totalMatchedPods := healthyAndMatchedPods[1]
+
+        #   minScaleCount := (totalMatchedPods - totalHPACurrReps) + totalHPAMinReps
+
+        #   num := to_number(minAvailable)
+        #   num >= minScaleCount
+
+        #   msg := sprintf(
+        #     "PodDisruptionBudget <%v> has a minAvailable value of <%v> that will result in 0 allowed disruptions if corresponding HPA <%v> scales down to the minimum value of <%v>. Please update the minAvailable value used and/or update the hpa resource.",
+        #     [pdb.metadata.name, minAvailable, hpas[_].metadata.name, minScaleCount],
+        #   )
+        # }
+
+        healthyPodsForPDB(pdb) = [numHealthyPods, totalMatchedPods, filtered] {
+          pdbMatch := {[label, value] | some label; value := pdb.spec.selector.matchLabels[label]}
+          filtered := object.filter(data.inventory.namespace[pdb.metadata.namespace]["apps/v1"], ["Deployment", "StatefulSet"])
+
+          podCountsViaReadyReplicas := [[readyCount, totalReplicas] |
+            obj := filtered[_][_]
+            object.get(obj.metadata, "ownerReferences", -1) == -1
+            object.get(obj.status, "readyReplicas", -1) != -1
+            labels := {[label, value] | some label; value := obj.spec.selector.matchLabels[label]}
+            count(pdbMatch - labels) == 0
+            readyCount := obj.status.readyReplicas
+            totalReplicas := obj.spec.replicas
+          ]
+
+          podCountsViaUnavailableReplicas := [[readyCount, totalReplicas] |
+            obj := filtered[_][_]
+            object.get(obj.metadata, "ownerReferences", -1) == -1
+            object.get(obj.status, "readyReplicas", -1) == -1
+            object.get(obj.status, "unavailableReplicas", -1) != -1
+            labels := {[label, value] | some label; value := obj.spec.selector.matchLabels[label]}
+            count(pdbMatch - labels) == 0
+            readyCount := obj.spec.replicas - obj.status.unavailableReplicas
+            totalReplicas := obj.spec.replicas
+          ]
+
+          numHealthyPods := sum([readyCount | readyCount := podCountsViaReadyReplicas[_][0]]) + sum([readyCount | readyCount := podCountsViaUnavailableReplicas[_][0]])
+          totalMatchedPods := sum([readyCount | readyCount := podCountsViaReadyReplicas[_][1]]) + sum([readyCount | readyCount := podCountsViaUnavailableReplicas[_][1]])
+        }
+
+
+
+

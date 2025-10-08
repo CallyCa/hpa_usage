@@ -1,0 +1,113 @@
+applicationName: search-service
+
+containerImage:
+  repository: harbor.simonjamesrowe.com/simonjamesrowe/search-service
+  tag: 0.0.148
+  pullPolicy: IfNotPresent
+
+containerPorts:
+  http:
+    port: 8080
+    protocol: TCP
+
+livenessProbe:
+  httpGet:
+    path: /actuator/health
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  successThreshold: 1
+  timeoutSeconds: 1
+
+readinessProbe:
+  httpGet:
+    path: /actuator/health
+    port: http
+  failureThreshold: 1
+  periodSeconds: 10
+  successThreshold: 1
+  timeoutSeconds: 1
+
+shutdownDelay: 5
+replicaCount: 1
+
+deploymentStrategy:
+  enabled: true
+  type: RollingUpdate
+  rollingUpdate: { }
+
+deploymentAnnotations: { }
+
+podAnnotations: { }
+
+additionalPodLabels: { }
+
+minPodsAvailable: 1
+
+service:
+  enabled: true
+  ports:
+    app:
+      port: 80
+      targetPort: http
+      protocol: TCP
+
+serviceMonitor:
+  enabled: false
+  namespace: monitoring
+  labels: { }
+  endpoints: { }
+
+ingress:
+  enabled: false
+
+envVars:
+  SERVER_PORT: 8080
+  CMS_URL: http://cms/
+  SPRING_KAFKA_BOOTSTRAP-SERVERS: cp-helm-charts-cp-kafka.kafka:9092
+  SPRING_DATA_ELASTICSEARCH_CLIENT_REACTIVE_ENDPOINTS: elasticsearch-master.elastic:9200
+  SPRING_ELASTICSEARCH_REST_URIS: http://elasticsearch-master.elastic:9200
+  SPRING_PROFILES_ACTIVE: cloud
+  NAMESPACE: prod
+
+additionalContainerEnv: { }
+
+configMaps: { }
+
+scratchPaths: { }
+
+emptyDirs: { }
+
+containerResources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: { }
+affinity: { }
+
+tolerations: [ ]
+
+imagePullSecrets: [ ]
+
+terminationGracePeriodSeconds: { }
+
+serviceAccount:
+  name: ""
+  create: false
+  annotations: { }
+  labels: { }
+
+horizontalPodAutoscaler:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+
+fullnameOverride: ""
+
+google:
+  managedCertificate:
+    enabled: false

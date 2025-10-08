@@ -1,0 +1,23 @@
+
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vllm-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vllm-deployment
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: External
+    external:
+      metric:
+        name: nvidia.com/gpu_memory_free
+        selector:
+          matchLabels:
+            resource: memory
+      target:
+        type: Value
+        value: 500Mi

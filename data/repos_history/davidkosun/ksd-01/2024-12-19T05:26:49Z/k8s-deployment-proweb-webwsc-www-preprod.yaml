@@ -1,0 +1,234 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: proweb-webwsc-uat-www-oss-pv
+  labels:
+    alicloud-pvname: proweb-webwsc-uat-www-oss-pv
+spec:
+  storageClassName: oss
+  capacity:
+    storage: 100Gi
+  accessModes:
+    - ReadWriteMany
+  flexVolume:
+    driver: "alicloud/oss"
+    options:
+      bucket: "proweb-webwsc-uat-www-pv"
+      path: "/"
+      url: "oss-cn-hongkong-internal.aliyuncs.com"
+      otherOpts: "-o max_stat_cache_size=0 -o allow_other"
+      ramRole: "proweb-uat-webwsc-www-k8s-oss-access-role"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: proweb-webwsc-uat-www-oss-pvc
+  namespace: proweb-webwsc-uat-www-ns
+spec:
+  storageClassName: oss
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  selector:
+    matchLabels:
+      alicloud-pvname: proweb-webwsc-uat-www-oss-pv
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: proweb-webwsc-uat-www-nas
+  labels:
+    alicloud-pvname: proweb-webwsc-uat-www-nas
+spec:
+  storageClassName: nas
+  capacity:
+    storage: 100Gi
+  accessModes:
+    - ReadWriteMany
+  flexVolume:
+    driver: "alicloud/nas"
+    options:
+      server: "12b2a948141-nkt43.cn-hongkong.nas.aliyuncs.com"
+      path: "/"
+      vers: "4.0"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: proweb-webwsc-uat-www-nas-pvc
+  namespace: proweb-webwsc-uat-www-ns
+spec:
+  storageClassName: nas
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  selector:
+    matchLabels:
+      alicloud-pvname: proweb-webwsc-uat-www-nas
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proweb-webwsc-uat-www
+  namespace: proweb-webwsc-uat-www-ns
+  labels:
+    app: proweb-webwsc-uat-www
+    Environment: UAT
+    Owner: DigitalChannels
+    ProjectName: whitesandcove
+spec:
+  replicas: 1
+  strategy:
+   type: RollingUpdate
+   rollingUpdate:
+     maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: proweb-webwsc-uat-www
+  template:
+    metadata:
+      annotations:
+        k8s.aliyun.com/eci-sls-enable: "true"
+        k8s.aliyun.com/acr-service-arns: "acs:ram::5725926127090411:role/k8s-uat-acr-access"
+      labels:
+        app: proweb-webwsc-uat-www
+    spec:
+      containers:
+      - name: proweb-webwsc-uat-www
+        # image: registry.cn-hangzhou.aliyuncs.com/acs-sample/nginxdemos:latest
+        image: proweb-acr-registry-vpc.cn-hongkong.cr.aliyuncs.com/proweb-uat/proweb-webwsc-uat-www-acr-repo:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: VARNAME
+          value: VARVAL
+        - name: aliyun_logs_proweb-webwsc-uat-www-log
+          value: stdout
+        - name: aliyun_logs_proweb-webwsc-uat-www-log_project
+          value: proweb-webwsc-uat-www-log-project
+        - name: aliyun_logs_proweb-webwsc-uat-www-log_logstore
+          value: proweb-webwsc-uat-www-log
+        - name: aliyun_logs_proweb-webwsc-uat-www_machinegroup
+          value: proweb-uat-k8s-cluster
+        resources:
+          requests:
+            memory: "1024Mi"  # Initial memory request
+            cpu: "256m"       # Initial CPU request
+          limits:
+            memory: "1024Mi"  # Maximum memory allowed
+            cpu: "256m"       # Maximum CPU allowed
+        volumeMounts:
+        - name: proweb-webwsc-uat-www-oss-pvc
+          mountPath: "/mnt/oss"
+        # - name: proweb-webwsc-uat-nas-pvc
+        #   mountPath: "/mnt/oss"
+      volumes:
+      - name: proweb-webwsc-uat-www-oss-pvc
+        persistentVolumeClaim:
+          claimName: proweb-webwsc-uat-www-oss-pvc
+      # - name: proweb-webwsc-uat-nas-pvc
+      #   persistentVolumeClaim:
+      #     claimName: proweb-webwsc-uat-nas-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: proweb-webwsc-uat-www-service
+  namespace: proweb-webwsc-uat-www-ns
+  labels:
+    app: proweb-webwsc-uat-www-service
+spec:
+  selector:
+    app: proweb-webwsc-uat-www
+  sessionAffinity: None
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: proweb-webwsc-uat-www-ingress
+  namespace: proweb-webwsc-uat-www-ns
+  labels:
+    ingress: proweb-webwsc-uat-www-ingress
+  annotations:
+    alb.ingress.kubernetes.io/healthcheck-enabled: "true"
+    alb.ingress.kubernetes.io/healthcheck-path: "/"
+    alb.ingress.kubernetes.io/healthcheck-protocol: "HTTP"
+    alb.ingress.kubernetes.io/healthcheck-httpversion: "HTTP1.1"
+    alb.ingress.kubernetes.io/healthcheck-method: "HEAD"
+    alb.ingress.kubernetes.io/healthcheck-code: "http_2xx,http_3xx"
+    alb.ingress.kubernetes.io/healthcheck-httpcode: "http_2xx,http_3xx"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "3"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+    alb.ingress.kubernetes.io/healthcheck-connect-port: "80"
+spec:
+  ingressClassName: k8s-alb-https
+  rules:
+    - host: www-preprod.whitesandcove.com.hk
+      http:
+        paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: proweb-webwsc-uat-www-service
+              port:
+                number: 80
+  tls:
+  - hosts: 
+    - www-preprod.whitesandcove.com.hk
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-any-any
+  namespace: proweb-webwsc-uat-www-ns
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+    - {}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: proweb-webwsc-uat-www-hpa
+  namespace: proweb-webwsc-uat-www-ns
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: proweb-webwsc-uat-www
+  minReplicas: 1
+  maxReplicas: 2
+  # behavior:
+  #   scaleDown:
+  #     stabilizationWindowSeconds: 30 # 30 sec cooldown for scaling down
+  #     policies:
+  #     - type: Percent
+  #       value: 100
+  #       periodSeconds: 900 # <20% CPU for 15 minutes
+  #   scaleUp:
+  #   stabilizationWindowSeconds: 10 # 10 sec cooldown for scaling up
+  #     policies:
+  #     - type: Percent
+  #       value: 100
+  #       periodSeconds: 180 # >20% CPU for 3 minutes
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 20

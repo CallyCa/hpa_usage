@@ -1,0 +1,28 @@
+{{ $hpa := .Values.hpa }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $hpa.name }}
+  namespace: {{ $hpa.namespace }}
+  labels:
+  {{ toYaml $hpa.labels | nindent 4 }}    
+spec:  
+  scaleTargetRef:    
+  {{ toYaml $hpa.scaleTargetRef | nindent 4 }}
+  minReplicas: {{ $hpa.minReplicas }}
+  maxReplicas: {{ $hpa.maxReplicas }}
+  metrics:
+  {{ range $metric := $hpa.metrics }}
+  - type: {{ $metric.type }}
+  {{ if eq $metric.type "ContainerResource" }}
+    containerResource:
+      name: {{ $metric.name }}      
+      container: {{ $metric.container }}
+  {{ else if eq $metric.type "Resource"}}
+    resource:
+      name: {{ $metric.name }}
+  {{ end }}
+      target:
+        type: {{ $metric.targetType }}
+        averageUtilization: {{ $metric.targetAverageUtilization }}
+  {{ end }}

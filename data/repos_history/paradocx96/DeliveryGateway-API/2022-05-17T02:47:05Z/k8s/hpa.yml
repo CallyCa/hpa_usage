@@ -1,0 +1,16 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: delivery-gateway-api-hpa
+  namespace: easy-shopping
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: delivery-gateway-api-deployment
+    namespace: easy-shopping
+    labels:
+      app: delivery-gateway-api
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 60

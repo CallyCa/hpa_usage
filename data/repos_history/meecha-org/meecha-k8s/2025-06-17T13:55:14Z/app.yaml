@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meecha-app
+  namespace: meecha
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: meecha-app
+  template:
+    metadata:
+      labels:
+        app: meecha-app
+    spec:
+      containers:
+        - name: meecha-app
+          image: ghcr.io/meecha-org/meecha_back/meecha-app:latest
+          ports:
+            - containerPort: 8090
+          resources:
+            requests:
+              cpu: "100m"    # 例：100ミリコア
+              memory: "128Mi"
+            limits:
+              cpu: "500m"    # 例：500ミリコア
+              memory: "256Mi"
+          env:
+            - name: GRPC_ADDR
+              valueFrom:
+                secretKeyRef:
+                  name: meechasecret
+                  key: GrpcServer
+
+            - name: SessionSecret
+              valueFrom:
+                secretKeyRef:
+                  name: meechasecret
+                  key: SessionSecret
+
+            - name: DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: meechasecret
+                  key: AppdbDSN
+
+            - name: JWT_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: meechasecret
+                  key: JwtPublicKey
+
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: meechasecret
+                  key: RedisHost
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: meecha-app-svc
+  namespace: meecha
+spec:
+  type: LoadBalancer
+  selector:
+    app: meecha-app
+  ports:
+  - port: 8090
+    targetPort: 8090
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: meecha-scaling-app
+  namespace: meecha
+spec:
+  maxReplicas: 20
+  behavior:
+    scaleDown:
+      policies:
+      - type: Pods
+        value: 3
+        periodSeconds: 1
+      stabilizationWindowSeconds: 0
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Pods
+        value: 3
+        periodSeconds: 1
+      selectPolicy: Max
+  metrics:
+  - resource:
+      name: cpu
+      target:
+        averageUtilization: 50
+        type: Utilization
+    type: Resource
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: meecha-app

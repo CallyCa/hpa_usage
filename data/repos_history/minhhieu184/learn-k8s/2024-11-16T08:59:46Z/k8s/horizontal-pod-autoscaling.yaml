@@ -1,0 +1,34 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: micro-services-autoscale
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: be-deployment
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 200 # quan sát dữ liệu sử dụng tài nguyên trong 200 giây gần nhất để quyết định xem có nên scale-down hay không
+      policies:
+        - type: Pods
+          value: 3
+          periodSeconds: 60 # trong bất kỳ khoảng thời gian 60 giây nào, Kubernetes sẽ chỉ được phép scale-down tối đa 3 Pods
+        - type: Percent
+          value: 50
+          periodSeconds: 60

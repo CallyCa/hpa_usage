@@ -1,0 +1,694 @@
+# Performance Optimization and Caching Layers for MetaFunction
+# Comprehensive caching strategy with Redis, CDN, and application-level optimizations
+
+---
+# Redis Cluster for High-Performance Caching
+apiVersion: redis.redis.opstreelabs.in/v1beta1
+kind: RedisCluster
+metadata:
+  name: redis-cache-cluster
+  namespace: metafunction
+spec:
+  clusterSize: 6
+  clusterVersion: v7.0.5
+  
+  redisExporter:
+    enabled: true
+    image: quay.io/opstree/redis-exporter:1.44.0
+    
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 50Gi
+        storageClassName: fast-ssd
+        
+  globalConfig:
+    # Memory optimization
+    maxmemory: 2gb
+    maxmemory-policy: allkeys-lru
+    
+    # Persistence settings
+    save: "300 10 60 1000"
+    appendonly: yes
+    appendfsync: everysec
+    
+    # Performance tuning
+    tcp-keepalive: 300
+    timeout: 0
+    databases: 16
+    
+    # Memory-efficient data structures
+    hash-max-ziplist-entries: 512
+    hash-max-ziplist-value: 64
+    list-max-ziplist-size: -2
+    set-max-intset-entries: 512
+    zset-max-ziplist-entries: 128
+    zset-max-ziplist-value: 64
+    
+  redisConfig:
+    # Additional performance settings
+    additional-config: |
+      # Network optimizations
+      tcp-backlog 511
+      
+      # Memory management
+      activerehashing yes
+      client-output-buffer-limit normal 0 0 0
+      client-output-buffer-limit replica 256mb 64mb 60
+      client-output-buffer-limit pubsub 32mb 8mb 60
+      
+      # Lazy deletion for better performance
+      lazyfree-lazy-eviction yes
+      lazyfree-lazy-expire yes
+      lazyfree-lazy-server-del yes
+      
+      # Threading (Redis 6+)
+      io-threads 4
+      io-threads-do-reads yes
+---
+# Redis Sentinel for High Availability
+apiVersion: redis.redis.opstreelabs.in/v1beta1
+kind: RedisSentinel
+metadata:
+  name: redis-sentinel
+  namespace: metafunction
+spec:
+  size: 3
+  redisInstanceName: redis-cache-cluster
+  
+  redisSentinelConfig:
+    additional-config: |
+      # Sentinel configuration
+      sentinel down-after-milliseconds mymaster 5000
+      sentinel parallel-syncs mymaster 1
+      sentinel failover-timeout mymaster 10000
+      sentinel deny-scripts-reconfig yes
+---
+# Application-Level Cache Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cache-config
+  namespace: metafunction
+data:
+  cache-settings.yaml: |
+    cache_layers:
+      # L1: In-memory application cache
+      application:
+        enabled: true
+        max_size_mb: 256
+        ttl_seconds: 300
+        eviction_policy: "lru"
+        
+      # L2: Redis distributed cache
+      redis:
+        enabled: true
+        cluster_endpoint: "redis-cache-cluster:6379"
+        connection_pool_size: 20
+        socket_timeout: 5
+        socket_connect_timeout: 5
+        retry_on_timeout: true
+        health_check_interval: 30
+        
+      # L3: CDN edge cache
+      cdn:
+        enabled: true
+        provider: "cloudflare"
+        ttl_seconds: 3600
+        cache_everything_ttl: 86400
+        
+    cache_strategies:
+      # Paper content caching
+      paper_content:
+        cache_key_pattern: "paper:{doi}:{version}"
+        ttl_seconds: 86400  # 24 hours
+        compression: true
+        cache_layers: ["application", "redis"]
+        
+      # Search results caching
+      search_results:
+        cache_key_pattern: "search:{query_hash}:{page}"
+        ttl_seconds: 3600   # 1 hour
+        compression: true
+        cache_layers: ["redis"]
+        
+      # User sessions
+      user_sessions:
+        cache_key_pattern: "session:{session_id}"
+        ttl_seconds: 1800   # 30 minutes
+        cache_layers: ["redis"]
+        
+      # API responses
+      api_responses:
+        cache_key_pattern: "api:{endpoint}:{params_hash}"
+        ttl_seconds: 600    # 10 minutes
+        cache_layers: ["application", "redis", "cdn"]
+        
+    cache_warming:
+      enabled: true
+      strategies:
+        - name: "popular_papers"
+          schedule: "0 */2 * * *"  # Every 2 hours
+          prefetch_count: 100
+          
+        - name: "trending_searches"
+          schedule: "*/15 * * * *"  # Every 15 minutes
+          prefetch_count: 50
+---
+# Cache Warming CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cache-warmer
+  namespace: metafunction
+spec:
+  schedule: "*/30 * * * *"  # Every 30 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: cache-warmer
+            image: metafunction:latest
+            command:
+            - python
+            - -c
+            - |
+              import redis
+              import requests
+              import json
+              import hashlib
+              from datetime import datetime, timedelta
+              
+              # Connect to Redis
+              r = redis.Redis(host='redis-cache-cluster', port=6379, db=0)
+              
+              print(f"Starting cache warming at {datetime.now()}")
+              
+              # Get popular papers from analytics
+              popular_papers = [
+                  "10.1038/nature12373",
+                  "10.1126/science.aaf2654", 
+                  "10.1016/j.cell.2019.05.031"
+              ]
+              
+              # Warm paper content cache
+              for doi in popular_papers:
+                  cache_key = f"paper:{doi}:latest"
+                  if not r.exists(cache_key):
+                      print(f"Warming cache for paper: {doi}")
+                      # Simulate paper retrieval
+                      paper_data = {"doi": doi, "cached_at": datetime.now().isoformat()}
+                      r.setex(cache_key, 86400, json.dumps(paper_data))
+              
+              # Warm search results cache
+              popular_queries = [
+                  "machine learning",
+                  "artificial intelligence",
+                  "deep learning",
+                  "neural networks"
+              ]
+              
+              for query in popular_queries:
+                  query_hash = hashlib.sha256(query.encode()).hexdigest()[:16]
+                  cache_key = f"search:{query_hash}:1"
+                  if not r.exists(cache_key):
+                      print(f"Warming cache for query: {query}")
+                      # Simulate search results
+                      search_data = {"query": query, "results": [], "cached_at": datetime.now().isoformat()}
+                      r.setex(cache_key, 3600, json.dumps(search_data))
+              
+              print(f"Cache warming completed at {datetime.now()}")
+            env:
+            - name: REDIS_URL
+              value: "redis://redis-cache-cluster:6379"
+            resources:
+              limits:
+                cpu: 200m
+                memory: 256Mi
+              requests:
+                cpu: 100m
+                memory: 128Mi
+---
+# CDN Configuration for Static Assets
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cdn-optimization
+  namespace: metafunction
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    worker_cpu_affinity auto;
+    worker_rlimit_nofile 65535;
+    
+    events {
+        worker_connections 4096;
+        use epoll;
+        multi_accept on;
+    }
+    
+    http {
+        # Performance optimizations
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        keepalive_requests 1000;
+        
+        # Compression
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_comp_level 6;
+        gzip_types
+            text/plain
+            text/css
+            text/xml
+            text/javascript
+            application/json
+            application/javascript
+            application/xml+rss
+            application/atom+xml
+            image/svg+xml;
+        
+        # Brotli compression (if available)
+        brotli on;
+        brotli_comp_level 6;
+        brotli_types
+            text/plain
+            text/css
+            application/json
+            application/javascript
+            text/xml
+            application/xml
+            application/xml+rss
+            text/javascript;
+        
+        # Browser caching
+        location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            add_header Vary "Accept-Encoding";
+        }
+        
+        # API responses caching
+        location /api/ {
+            expires 10m;
+            add_header Cache-Control "public, must-revalidate";
+            add_header Vary "Accept-Encoding";
+        }
+        
+        # Security headers
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        
+        # Rate limiting
+        limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+        limit_req_zone $binary_remote_addr zone=search:10m rate=5r/s;
+        
+        upstream metafunction_backend {
+            least_conn;
+            server metafunction-1:8000 max_fails=3 fail_timeout=30s;
+            server metafunction-2:8000 max_fails=3 fail_timeout=30s;
+            server metafunction-3:8000 max_fails=3 fail_timeout=30s;
+        }
+        
+        server {
+            listen 80;
+            server_name metafunction.company.com;
+            
+            # API endpoints with rate limiting
+            location /api/ {
+                limit_req zone=api burst=20 nodelay;
+                proxy_pass http://metafunction_backend;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_cache_bypass $http_cache_control;
+            }
+            
+            # Search endpoints with stricter rate limiting
+            location /search {
+                limit_req zone=search burst=10 nodelay;
+                proxy_pass http://metafunction_backend;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            }
+            
+            # Static files served directly
+            location /static/ {
+                root /var/www;
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+            }
+        }
+    }
+---
+# Database Connection Pooling
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: metafunction
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: pgbouncer
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+    spec:
+      containers:
+      - name: pgbouncer
+        image: pgbouncer/pgbouncer:latest
+        ports:
+        - containerPort: 5432
+        env:
+        - name: DATABASES_HOST
+          value: "postgres"
+        - name: DATABASES_PORT
+          value: "5432"
+        - name: DATABASES_USER
+          value: "metafunction"
+        - name: DATABASES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        - name: DATABASES_DBNAME
+          value: "metafunction"
+        - name: POOL_MODE
+          value: "transaction"
+        - name: MAX_CLIENT_CONN
+          value: "200"
+        - name: DEFAULT_POOL_SIZE
+          value: "25"
+        - name: SERVER_LIFETIME
+          value: "3600"
+        - name: SERVER_IDLE_TIMEOUT
+          value: "600"
+        volumeMounts:
+        - name: pgbouncer-config
+          mountPath: /etc/pgbouncer
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 64Mi
+      volumes:
+      - name: pgbouncer-config
+        configMap:
+          name: pgbouncer-config
+---
+# PgBouncer Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbouncer-config
+  namespace: metafunction
+data:
+  pgbouncer.ini: |
+    [databases]
+    metafunction = host=postgres port=5432 dbname=metafunction user=metafunction
+    
+    [pgbouncer]
+    listen_port = 5432
+    listen_addr = *
+    auth_type = md5
+    auth_file = /etc/pgbouncer/userlist.txt
+    
+    # Pool settings
+    pool_mode = transaction
+    max_client_conn = 200
+    default_pool_size = 25
+    min_pool_size = 5
+    reserve_pool_size = 5
+    reserve_pool_timeout = 5
+    
+    # Performance settings
+    server_lifetime = 3600
+    server_idle_timeout = 600
+    server_connect_timeout = 15
+    server_login_retry = 15
+    client_login_timeout = 60
+    autodb_idle_timeout = 3600
+    
+    # Logging
+    log_connections = 1
+    log_disconnections = 1
+    log_pooler_errors = 1
+    
+  userlist.txt: |
+    "metafunction" "md5hash_of_password"
+---
+# Performance Monitoring Dashboard
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: performance-dashboard
+  namespace: metafunction
+data:
+  dashboard.json: |
+    {
+      "dashboard": {
+        "title": "MetaFunction Performance Optimization",
+        "panels": [
+          {
+            "title": "Cache Hit Rates",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) * 100",
+                "legendFormat": "Redis Hit Rate %"
+              },
+              {
+                "expr": "application_cache_hit_rate",
+                "legendFormat": "Application Cache Hit Rate %"
+              }
+            ]
+          },
+          {
+            "title": "Response Time Optimization",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "50th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "99th percentile"
+              }
+            ]
+          },
+          {
+            "title": "Database Performance",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(postgres_queries_total[5m])",
+                "legendFormat": "Queries/sec"
+              },
+              {
+                "expr": "postgres_active_connections",
+                "legendFormat": "Active Connections"
+              },
+              {
+                "expr": "pgbouncer_active_clients",
+                "legendFormat": "PgBouncer Active Clients"
+              }
+            ]
+          },
+          {
+            "title": "CDN Performance",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(nginx_requests_total[5m])",
+                "legendFormat": "Nginx Requests/sec"
+              },
+              {
+                "expr": "cloudflare_cache_hit_rate",
+                "legendFormat": "CDN Cache Hit Rate %"
+              }
+            ]
+          },
+          {
+            "title": "Memory Usage Optimization",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "redis_memory_used_bytes / redis_memory_max_bytes * 100",
+                "legendFormat": "Redis Memory Usage %"
+              },
+              {
+                "expr": "application_memory_usage_bytes",
+                "legendFormat": "Application Memory Usage"
+              }
+            ]
+          }
+        ]
+      }
+    }
+---
+# Performance Testing Job
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: performance-test
+  namespace: metafunction
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: performance-tester
+            image: grafana/k6:latest
+            command:
+            - k6
+            - run
+            - -
+            stdin: |
+              import http from 'k6/http';
+              import { check, sleep } from 'k6';
+              
+              export let options = {
+                stages: [
+                  { duration: '2m', target: 10 },  // Ramp up
+                  { duration: '5m', target: 100 }, // Stay at 100 users
+                  { duration: '2m', target: 0 },   // Ramp down
+                ],
+                thresholds: {
+                  http_req_duration: ['p(95)<500'], // 95% of requests under 500ms
+                  http_req_failed: ['rate<0.01'],   // Error rate under 1%
+                },
+              };
+              
+              export default function() {
+                // Test various endpoints
+                let endpoints = [
+                  '/health',
+                  '/api/search?q=machine+learning',
+                  '/api/paper/10.1038/nature12373',
+                ];
+                
+                for (let endpoint of endpoints) {
+                  let response = http.get(`http://metafunction.metafunction.svc.cluster.local:8000${endpoint}`);
+                  check(response, {
+                    'status is 200': (r) => r.status === 200,
+                    'response time < 500ms': (r) => r.timings.duration < 500,
+                  });
+                  sleep(1);
+                }
+              }
+            resources:
+              limits:
+                cpu: 500m
+                memory: 512Mi
+              requests:
+                cpu: 200m
+                memory: 256Mi
+---
+# Intelligent Cache Invalidation
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cache-invalidation-rules
+  namespace: metafunction
+data:
+  invalidation-rules.yaml: |
+    rules:
+      # Paper content invalidation
+      paper_update:
+        trigger: "paper_metadata_changed"
+        patterns:
+          - "paper:{doi}:*"
+          - "search:*"  # Invalidate search results that might contain this paper
+        
+      # Search index invalidation
+      search_index_update:
+        trigger: "search_index_refreshed"
+        patterns:
+          - "search:*"
+          - "trending_papers:*"
+          
+      # User preference invalidation
+      user_settings_change:
+        trigger: "user_preferences_updated"
+        patterns:
+          - "user_prefs:{user_id}:*"
+          - "personalized_results:{user_id}:*"
+    
+    invalidation_strategies:
+      immediate:
+        - "paper_update"
+        - "user_settings_change"
+      
+      delayed:
+        - "search_index_update"  # Can wait for next cache warming cycle
+      
+      cascading:
+        - pattern: "paper:*"
+          depends_on: ["search:*", "trending:*"]
+---
+# Auto-scaling based on Cache Performance
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: metafunction-cache-hpa
+  namespace: metafunction
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: metafunction
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Pods
+    pods:
+      metric:
+        name: redis_cache_hit_rate
+      target:
+        type: AverageValue
+        averageValue: "80"  # Scale up if cache hit rate drops below 80%
+  - type: Pods
+    pods:
+      metric:
+        name: average_response_time_ms
+      target:
+        type: AverageValue
+        averageValue: "200"  # Scale up if response time exceeds 200ms
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60

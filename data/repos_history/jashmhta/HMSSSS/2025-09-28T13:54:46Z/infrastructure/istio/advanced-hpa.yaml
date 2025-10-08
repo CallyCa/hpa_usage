@@ -1,0 +1,155 @@
+---
+# Advanced Horizontal Pod Autoscaler for HMS Backend
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hms-backend-advanced-hpa
+  namespace: ultimate-hms
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hms-backend
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: 100
+  - type: External
+    external:
+      metric:
+        name: nginx_ingress_controller_requests_per_second
+        selector:
+          matchLabels:
+            app: nginx-ingress
+      target:
+        type: Value
+        value: 1000
+  - type: External
+    external:
+      metric:
+        name: kafka_consumer_lag
+        selector:
+          matchLabels:
+            app: hms-backend
+      target:
+        type: Value
+        value: 50
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 3
+        periodSeconds: 60
+      selectPolicy: Max
+
+---
+# Vertical Pod Autoscaler for Resource Optimization
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: hms-backend-vpa
+  namespace: ultimate-hms
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hms-backend
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: hms-backend
+      minAllowed:
+        cpu: 500m
+        memory: 1Gi
+      maxAllowed:
+        cpu: 4
+        memory: 8Gi
+      controlledResources: ["cpu", "memory"]
+
+---
+# Cluster Autoscaler (if using cloud provider)
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: hms-worker-nodes
+  namespace: ultimate-hms
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: hms-cluster
+  template:
+    spec:
+      bootstrap:
+        dataSecretName: ""
+      clusterName: hms-cluster
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: AWSMachineTemplate
+        name: hms-machine-template
+      version: v1.27.0
+
+---
+# Custom Metrics for HPA
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hms-custom-metrics
+  namespace: ultimate-hms
+data:
+  custom-metrics.yaml: |
+    rules:
+    - seriesQuery: 'http_requests_total{namespace="ultimate-hms", app="hms-backend"}'
+      resources:
+        overrides:
+          namespace:
+            resource: namespace
+          app:
+            resource: app
+      name:
+        matches: "http_requests_per_second"
+        as: "http_requests_per_second"
+      metricsQuery: 'rate(http_requests_total{<<.LabelMatchers>>}[5m])'
+
+    - seriesQuery: 'kafka_consumer_lag{namespace="ultimate-hms"}'
+      resources:
+        overrides:
+          namespace:
+            resource: namespace
+      name:
+        matches: "kafka_consumer_lag"
+        as: "kafka_consumer_lag"
+      metricsQuery: 'kafka_consumer_lag{<<.LabelMatchers>>}'

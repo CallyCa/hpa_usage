@@ -1,0 +1,70 @@
+# check course kubernetes autoscaling
+
+# Autoscaling are used to automatically adjust the number of replicas of a service based on the load.
+# The autoscaling can be done using the Horizontal Pod Autoscaler (HPA) Vertical Pod Autoscaler (VPA) and the Cluster Autoscaler.
+# The HPA --- automatically scales the number of replicas of a service based on the CPU utilization or other metrics.
+# The VPA | automatically adjusts the resource requests and limits of a pod based on the resource utilization of the pod.
+# The Cluster Autoscaler [] automatically scales the number of nodes in a cluster based on the resource utilization of the nodes.
+
+# The HPA and Cluster Autoscaler can be used together to automatically scale the number of replicas of a service and the number of nodes in a cluster.
+
+# The HPA --- can be created using the following command:
+# kubectl autoscale deployment <deployment-name> --cpu-percent=<cpu-percentage> --min=<min-replicas> --max=<max-replicas>
+# The HPA can also be created using the following structure in the yaml file:
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nginx-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nginx-deployment
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+# To check the HPA, use the following command:
+# #### kubectl get hpa
+# # The HPA --- will automatically scale the number of replicas of the nginx-deployment based on the CPU utilization.
+# # The minReplicas and maxReplicas fields specify the minimum and maximum number of replicas, respectively.
+# # The metrics field specifies the metrics to be used for scaling.
+# # The type field specifies the type of metric to be used for scaling.
+# # The resource field specifies the resource to be used for scaling.
+# # The target field specifies the target value for the metric.
+# # The averageUtilization field specifies the target average CPU utilization for the replicas.
+
+
+--- 
+# The VPA | automatically adjusts the resource requests and limits of a pod based on the resource utilization of the pod.
+# The VPA can be created using the following command:
+# kubectl apply -f vpa.yaml
+# The VPA can also be created using the following structure in the yaml file:
+#apiVersion: autoscaling.k8s.io/v1
+#kind: VerticalPodAutoscaler
+#metadata:
+#  name: nginx-vpa
+#  namespace: default
+#spec:
+#  targetRef:
+#    apiVersion: apps/v1
+#    kind: Deployment
+#    name: nginx-deployment
+  updatePolicy:
+    updateMode: Auto
+  resourcePolicy:
+    containerPolicies:
+      - containerName: nginx
+        minAllowed:
+          cpu: 100m
+          memory: 128Mi
+        maxAllowed:
+          cpu: 1
+          memory: 1Gi
+---

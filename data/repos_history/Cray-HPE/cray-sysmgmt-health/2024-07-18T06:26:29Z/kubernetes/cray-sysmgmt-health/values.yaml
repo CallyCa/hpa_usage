@@ -1,0 +1,1201 @@
+#
+# MIT License
+#
+# (C) Copyright 2022-2023 Hewlett Packard Enterprise Development LP
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+# OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+# ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
+#
+
+global:
+  authGateways:
+  - services/services-gateway
+  - services/customer-admin-gateway
+  rbac:
+    create: true
+    pspEnabled: true
+
+alertmanagerSecret:
+  configAlertmanager:
+    global:
+      resolve_timeout: 5m
+    receivers:
+    - name: "null"
+    route:
+      group_by:
+      - job
+      group_interval: 5m
+      group_wait: 30s
+      receiver: "null"
+      repeat_interval: 12h
+      routes:
+      - match:
+          alertname: Watchdog
+canuTest:
+  image:
+    repository: artifactory.algol60.net/csm-docker/stable/cray-canu/canu-test
+    tag: 1.6.36
+    pullPolicy: IfNotPresent
+
+grokExporter:
+  image:
+    repository: artifactory.algol60.net/csm-docker/stable/docker.io/grok-exporter/grok-exporter
+    tag: latest
+    pullPolicy: IfNotPresent
+
+kubectl:
+  image:
+    repository: artifactory.algol60.net/csm-docker/stable/docker-kubectl
+    tag: 1.24.17
+    pullPolicy: IfNotPresent
+
+logstash-exporter:
+  logstash:
+    url: http://sma-logstash-headless.sma.svc.cluster.local:9600
+  image:
+    repository: artifactory.algol60.net/csm-docker/stable/docker.io/kuskoman/logstash-exporter
+    tag: v1.5.6
+
+snmpExporter:
+  enabled: true
+  namespace: sysmgmt-health
+  honorabels: true
+  intervel: 30s
+  scrapeTimeout: 10s
+  path: /snmp
+  module:
+    - if_mib
+  additionalMetricsRelabels: {}
+  relabelings: []
+  selector:
+    prometheus: cray-sysmgmt-health-kube-p-prometheus
+    release: cray-sysmgmt-health
+  params:
+    - name: sw-spine-01
+      target: 10.254.0.2
+    - name: sw-spine-02
+      target: 10.254.0.3
+
+prometheus-snmp-exporter:
+  image:
+    repository: artifactory.algol60.net/csm-docker/stable/docker.io/prom/snmp-exporter
+    tag: v0.20.0
+    pullPolicy: IfNotPresent
+
+  serviceMonitor:
+    enabled: false
+    namespace: sysmgmt-health
+    selector:
+      prometheus: cray-sysmgmt-health-kube-p-prometheus
+      release: cray-sysmgmt-health
+
+victoria-metrics-k8s-stack:
+  nameOverride: "vms"
+  fullnameOverride: "vms"
+  namespace: sysmgmt-health
+  labels:
+    release: cray-sysmgmt-health
+  vmselect:
+    vmselectSpec:
+      externalAuthority: vmselect.local
+
+  victoria-metrics-operator:
+    enabled: true
+    image:
+      repository: artifactory.algol60.net/csm-docker/stable/docker.io/victoriametrics/operator
+      tag: v0.35.1
+      pullPolicy: IfNotPresent
+    env:
+      - name: VM_VMAGENTDEFAULT_CONFIGRELOADIMAGE
+        value: artifactory.algol60.net/csm-docker/stable/docker.io/prom/prometheus-config-reloader:v0.62.0
+      - name: VM_VMALERTDEFAULT_CONFIGRELOADIMAGE
+        value: artifactory.algol60.net/csm-docker/stable/docker.io/jimmidyson/configmap-reload:v0.3.0
+  # -- Tells helm to remove CRD after chart remove
+    cleanupCRD: true
+    cleanupImage:
+      repository: artifactory.algol60.net/csm-docker/stable/gcr.io/google_containers/hyperkube
+      tag: v1.18.0
+      pullPolicy: IfNotPresent
+    createCRD: false
+    operator:
+    # -- By default, operator converts prometheus-operator objects.
+      disable_prometheus_converter: true
+  vmsingle:
+    enabled: false
+  vmcluster:
+    enabled: true
+    spec:
+      retentionPeriod: "2d"
+      replicationFactor: 2
+      vmstorage:
+        image:
+          repository: artifactory.algol60.net/csm-docker/stable/docker.io/victoriametrics/vmstorage
+          tag: v1.93.1-cluster
+        replicaCount: 2
+        resources:
+          limits:
+            cpu: '2'
+            memory: 5Gi
+          requests:
+            cpu: '1'
+            memory: 2Gi
+        storage:
+          volumeClaimTemplate:
+            spec:
+              resources:
+                requests:
+                  storage: 200Gi
+
+      vmselect:
+        image:
+          repository: artifactory.algol60.net/csm-docker/stable/docker.io/victoriametrics/vmselect
+          tag: v1.93.1-cluster
+        replicaCount: 2
+        resources:
+          limits:
+            cpu: '2'
+            memory: 2Gi
+          requests:
+            cpu: '0.5m'
+            memory: 1Gi
+        storage:
+          volumeClaimTemplate:
+            spec:
+              resources:
+                requests:
+                  storage: 10Gi
+
+      vminsert:
+        image:
+          repository: artifactory.algol60.net/csm-docker/stable/docker.io/victoriametrics/vminsert
+          tag: v1.93.1-cluster
+        replicaCount: 2
+        resources:
+          limits:
+            cpu: '2'
+            memory: 2Gi
+          requests:
+            cpu: '0.5m'
+            memory: 1Gi
+
+  vmalert:
+    enabled: true
+    spec:
+      image:
+        repository: artifactory.algol60.net/csm-docker/stable/docker.io/victoriametrics/vmalert
+        tag: v1.93.1
+
+  vmagent:
+    enabled: true]
+    spec:
+      selectAllByDefault: true
+      image:
+        repository: artifactory.algol60.net/csm-docker/stable/docker.io/victoriametrics/vmagent
+        tag: v1.93.1
+      secrets:
+        - etcd-client-cert
+      resources:
+        limits:
+          cpu: '2'
+          memory: 5Gi
+        requests:
+          cpu: '1'
+          memory: 2Gi
+      scrapeInterval: 25s
+      externalLabels:
+        cluster: cluster-name
+      shardCount: 2
+      replicaCount: 2
+
+      inlineScrapeConfig: |
+        # Scrape containerd metrics
+        - job_name: 'containerd'
+          metrics_path: '/v1/metrics'
+          kubernetes_sd_configs:
+          - role: node
+          relabel_configs:
+          # Add node labels
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          # Set "node" label
+          - source_labels: [__meta_kubernetes_node_name]
+            action: replace
+            target_label: node
+          # Replace the default service port
+          - source_labels: [__address__]
+            action: replace
+            target_label: __address__
+            regex: ^(.+?)(?::\d+)?$
+            replacement: $1:1338
+
+        # Scrape weave metrics
+        - job_name: 'weave'
+          kubernetes_sd_configs:
+          - api_server:
+            role: pod
+          relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_label_name]
+            action: keep
+            regex: ^kube-system;weave-net$
+          - source_labels: [__meta_kubernetes_pod_container_name, __address__]
+            action: replace
+            target_label: __address__
+            regex: ^weave;(.+?)(?::\d+)?$
+            replacement: $1:6782
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            action: drop
+            regex: ^weave-init$
+          - source_labels: [__meta_kubernetes_pod_container_name, __address__]
+            action: replace
+            target_label: __address__
+            regex: ^weave-npc;(.+?)(?::\d+)?$
+            replacement: $1:6781
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            action: replace
+            target_label: job
+
+        # Scrape opensearch metrics
+        - job_name: 'opensearch'
+          scrape_timeout: 10s
+          scrape_interval: 1m
+          honor_labels: true
+          metrics_path: '/_prometheus/metrics'
+          scheme: https
+          basic_auth:
+            username: "admin"
+            password: "admin"
+          static_configs:
+            - targets:
+              - 'opensearch-masters-0.opensearch.sma.svc.cluster.local:9200'
+              - 'opensearch-masters-1.opensearch.sma.svc.cluster.local:9200'
+              - 'opensearch-masters-2.opensearch.sma.svc.cluster.local:9200'
+          tls_config:
+            insecure_skip_verify: true
+
+      extraArgs:
+        promscrape.cluster.replicationFactor: "2"
+        promscrape.streamParse: "true"
+        remoteWrite.forcePromProto: "true"
+
+  alertmanager:
+    enabled: true
+    monzoTemplate:
+      enabled: false
+    spec:
+      image:
+        repository: artifactory.algol60.net/csm-docker/stable/quay.io/prometheus/alertmanager
+        tag: v0.25.0
+      containers:
+      - name: config-reloader
+        image: artifactory.algol60.net/csm-docker/stable/docker.io/jimmidyson/configmap-reload:v0.3.0
+      retention: 48h
+      logLevel: debug
+      replicaCount: 2
+      configSecret: alertmanager-config
+      storage:
+        volumeClaimTemplate:
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: 50Gi
+      resources:
+        requests:
+          cpu: 100m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 128Mi
+      # Configure external hostname for Istio ingress
+      # Setup with Ansible
+      # externalAuthority: alertmanager-shs.local
+      # externalUrl: https://alertmanager-shs.local/
+  vmServiceScrape:
+    # wheter we should create a service scrape resource for grafana
+    enabled: true
+
+  grafana:
+    enabled: true
+    rbac:
+      create: true
+      pspEnabled: true
+    ingress:
+      enabled: false
+      hosts:
+        - grafana.domain.com
+    image:
+      repository: artifactory.algol60.net/csm-docker/stable/docker.io/grafana/grafana
+      tag: 11.0.0
+    downloadDashboards:
+      securityContext: {}
+    downloadDashboardsImage:
+      repository: artifactory.algol60.net/csm-docker/stable/docker.io/curlimages/curl
+      tag: 7.81.0
+      sha: ""
+      pullPolicy: IfNotPresent
+    env:
+      GF_PATHS_PLUGINS: /var/lib/grafana-plugins
+
+    # Configure external hostname for Istio ingress
+    # Setup with Ansible
+    # externalAuthority: grafana-shs.local
+
+    # Note: We are using our own templates while OPA-istio-plugin is fixed CASMPET-2788
+    defaultDashboardsEnabled: false
+    containerSecurityContext: {}
+
+    # persistence:
+    #  enabled: true
+    #  size: 100Gi
+
+    # Change default admin password to be consistent. Although with the
+    # auth.proxy configured below, this won't normally matter.
+    adminUser: admin
+    adminPassword: admin
+
+    # Grafana's primary configuration
+    grafana.ini:
+      paths:
+        plugins: /var/lib/grafana-plugins
+      analytics:
+        check_for_updates: false
+      # External authentication provided by Keycloak Gatekeeper and
+      # external authorization by OPA (enforced by Istio).
+      auth.proxy:
+        enabled: true
+        header_name: X-WEBAUTH-USER
+        header_property: username
+        auto_sign_up: true
+      plugins:
+        allow_loading_unsigned_plugins: hpe-clusterview-panel
+
+    sidecar:
+      image:
+        repository: artifactory.algol60.net/csm-docker/stable/docker.io/kiwigrid/k8s-sidecar
+        tag: 0.1.151
+      dashboards:
+        enabled: true
+        label: grafana_dashboard
+        labelValue: "1"
+      datasources:
+        enabled: true
+        defaultDatasourceEnabled: true
+        isDefaultDatasource: true
+        uid: prometheus
+        createPrometheusReplicasDatasources: false
+        label: grafana_datasource
+        labelValue: "1"
+      securityContext: {}
+
+    datasources:
+      datasource.yaml:
+        apiVersion: 1
+        deleteDatasources:
+        - name: thanos
+        datasources:
+        - name: victorismetrics
+          type: prometheus
+          url: http://vmselect-vms.sysmgmt-health.svc.cluster.local:8481/select/0/prometheus
+          access: proxy
+          isDefault: true
+
+    testFramework:
+      image: artifactory.algol60.net/csm-docker/stable/docker.io/bats/bats
+      tag: v1.4.1
+
+  # Exporters
+  kubelet:
+    enabled: true
+    serviceMonitor:
+      https: true
+      cAdvisor: true
+      probes: true
+      resource: true
+      resourcePath: "/metrics/resource"
+
+  kubeControllerManager:
+    enabled: true
+    spec:
+      jobLabel: jobLabel
+      endpoints:
+        - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+          # bearerTokenSecret:
+          #   key: ""
+          port: http-metrics
+          scheme: https
+          tlsConfig:
+            caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            serverName: kubernetes
+            insecureSkipVerify: true
+    service:
+      https: true
+      port: 10257
+      targetPort: 10257
+    serviceMonitor:
+      https: true
+      insecureSkipVerify: true
+
+  kubeScheduler:
+    enabled: true
+    spec:
+      jobLabel: jobLabel
+      endpoints:
+        - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+          # bearerTokenSecret:
+          #   key: ""
+          port: http-metrics
+          scheme: https
+          tlsConfig:
+            caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            insecureSkipVerify: true
+    service:
+      https: true
+      port: 10259
+      targetPort: 10259
+    serviceMonitor:
+      https: true
+      insecureSkipVerify: true
+
+  kubeEtcd:
+    # Configure secure access to the etcd cluster via the key and certs
+    # defined in the `etcd-client-cert` secret (see below).
+    enabled: true
+    spec:
+      jobLabel: jobLabel
+      endpoints:
+        - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+          port: http-metrics
+          scheme: https
+          tlsConfig:
+            caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            certFile: /etc/vm/secrets/etcd-client-cert/etcd-client
+            keyFile: /etc/vm/secrets/etcd-client-cert/etcd-client-key
+            insecureSkipVerify: true
+    service:
+      enabled: true
+      port: 2379
+      targetPort: 2379
+    serviceMonitor:
+      interval: ""
+      scheme: https
+      insecureSkipVerify: false
+      serverName: ""
+
+  prometheus-node-exporter:
+    enabled: true
+    rbac:
+      create: true
+      pspEnabled: true
+
+    podAnnotations:
+      container.apparmor.security.beta.kubernetes.io/node-exporter: "unconfined"
+
+    image:
+      repository: artifactory.algol60.net/csm-docker/stable/quay.io/prometheus/node-exporter
+      tag: v1.5.0
+    resources:
+      limits:
+        cpu: "6"
+        memory: 2Gi
+      requests:
+        cpu: "1"
+        memory: 1Gi
+    extraArgs:
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var\/lib\/containerd.+|run/.+)($|/)  # containerd puts container fs's in /run/containerd/
+      - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|cgroup|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|mqueue|proc|procfs|pstore|rpc_pipefs|securityfs|sysfs|tracefs)$
+      - --no-collector.netclass
+      - --collector.buddyinfo
+      - --collector.drbd
+      - --collector.interrupts
+      - --collector.ksmd
+      - --collector.logind
+      - --collector.meminfo_numa
+      - --collector.mountstats
+      - --collector.processes
+      - --collector.systemd
+      # tcpstat has potential performance impact
+      - --collector.tcpstat
+      - --collector.textfile.directory=/var/lib/node_exporter
+    extraHostVolumeMounts:
+      - mountPath: /var/run/dbus/system_bus_socket
+        name: system-dbus-socket
+        readOnly: true
+        hostPath: /var/run/dbus/system_bus_socket
+      - mountPath: /var/lib/containerd
+        name: containerd
+        readOnly: true
+        hostPath: /var/lib/containerd
+      - mountPath: /var/lib/kubelet
+        name: kubelet
+        readOnly: true
+        hostPath: /var/lib/kubelet
+      - name: text-file-collector
+        hostPath: /var/lib/node_exporter
+        mountPath: /var/lib/node_exporter
+        readOnly: true
+        mountPropagation: HostToContainer
+
+
+  # Compatibility with dashboards and rules templates
+  kube-state-metrics:
+    enabled: true
+    podSecurityPolicy:
+      enabled: true
+      annotations:
+        seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'docker/default,runtime/default'
+        seccomp.security.alpha.kubernetes.io/defaultProfileName: 'docker/default'
+      additionalVolumes:
+        - 'configMap'
+        - 'emptyDir'
+        - 'projected'
+        - 'csi'
+        - 'secret'
+        - 'downwardAPI'
+        - 'persistentVolumeClaim'
+    image:
+      repository: artifactory.algol60.net/csm-docker/stable/docker.io/bitnami/kube-state-metrics
+      tag: v2.8.0
+    collectors:
+      - certificatesigningrequests
+      - configmaps
+      - cronjobs
+      - daemonsets
+      - deployments
+      - endpoints
+      # - horizontalpodautoscalers
+      - ingresses
+      - jobs
+      - leases
+      - limitranges
+      - mutatingwebhookconfigurations
+      - namespaces
+      - networkpolicies
+      - nodes
+      - persistentvolumeclaims
+      - persistentvolumes
+      - poddisruptionbudgets
+      - pods
+      - replicasets
+      - replicationcontrollers
+      - resourcequotas
+      - secrets
+      - services
+      - statefulsets
+      - storageclasses
+      - validatingwebhookconfigurations
+      - volumeattachments
+      # - verticalpodautoscalers
+
+  kubeStateMetrics:
+    enabled: true
+  kubeProxy:
+    enabled: true
+    spec:
+      jobLabel: jobLabel
+      endpoints:
+        - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+          # bearerTokenSecret:
+          #   key: ""
+          port: http-metrics
+          scheme: http
+          tlsConfig:
+            caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            insecureSkipVerify: true
+
+customRules:
+  create: true
+  rules:
+    ceph: true
+    postgresql: true
+    mdraid: true
+    kea-dhcp-alerts: true
+    smartmon-alerts: true
+    switch-alerts: true
+    istio-alerts: true
+  labels:
+    release: cray-sysmgmt-health
+  ## Annotations for default rules
+  annotations: {}
+
+
+customDashboards:
+  ceph:
+    enabled: true
+  postgresql:
+    enabled: true
+  istio:
+    enabled: true
+    galley:
+      enabled: true
+    pilot:
+      enabled: true
+  nodeExporter:
+    enabled: true
+  dhcp_kea:
+    enabled: true
+  unbounddns:
+    enabled: true
+  # Note: We are using our own templates while OPA-istio-plugin is fixed CASMPET-2788
+  prometheusOperator:
+    enabled: true
+# coreDns:
+#   enabled: true
+# kubeApiServer:
+#   enabled: true
+# kubeControllerManager:
+#   enabled: true
+# kubeDns:
+#   enabled: true
+# kubeEtcd:
+#   enabled: true
+# kubeProxy:
+#   enabled: true
+# kubeScheduler:
+#   enabled: true
+# kubeStateMetrics:
+#   enabled: true
+# kubelet:
+#   enabled: true
+
+# prometheusOperator:
+#   enabled: true
+#   kubeletService:
+#     enabled: true
+
+cephExporter:
+  enabled: true
+  endpoints: []
+  service:
+    port: 9283
+    targetPort: 9283
+  serviceMonitor:
+    interval: 30s
+    scheme: http
+    # honor_labels: true
+    # serverName: ""
+    # caFile: ""
+    # certFile: ""
+    # keyFile: ""
+    insecureSkipVerify: false
+    metricsRelabelings: {}
+    relabelings: {}
+
+logstashExporter:
+  enabled: true
+  endpoints: []
+  service:
+    port: 9198
+    targetPort: 9198
+  serviceMonitor:
+    interval: 30s
+    scheme: http
+    # honor_labels: false
+    # serverName: ""
+    # caFile: ""
+    # certFile: ""
+    # keyFile: ""
+    insecureSkipVerify: false
+    metricsRelabelings: {}
+    relabelings: {}
+
+uanNodeExporter:
+  enabled: false
+  endpoints: []
+  service:
+    port: 9100
+    targetPort: 9100
+  serviceMonitor:
+    interval: 30s
+    scheme: http
+    # honor_labels: false
+    # serverName: ""
+    # caFile: ""
+    # certFile: ""
+    # keyFile: ""
+    insecureSkipVerify: false
+    metricsRelabelings: {}
+    relabelings: {}
+
+cephNodeExporter:
+  enabled: true
+  endpoints: []
+  service:
+    port: 9100
+    targetPort: 9100
+  serviceMonitor:
+    interval: 30s
+    scheme: http
+    # honor_labels: false
+    # serverName: ""
+    # caFile: ""
+    # certFile: ""
+    # keyFile: ""
+    insecureSkipVerify: false
+    metricsRelabelings: {}
+    relabelings: {}
+
+rmPalsPostgresExporter:
+  enabled: true
+  service:
+    namespace: services
+    port: 9187
+    targetPort: 9187
+    selector:
+      cluster-name: cray-rm-pals-postgres
+      application: spilo
+  serviceMonitor:
+    namespace: sysmgmt-health
+    matchNamespace:
+    - services
+    interval: 30s
+    scheme: http
+    port: exporter
+    metricsRelabelings: {}
+    relabelings: {}
+
+slsPostgresExporter:
+  enabled: true
+  service:
+    namespace: services
+    port: 9187
+    targetPort: 9187
+    selector:
+      cluster-name: cray-sls-postgres
+      application: spilo
+  serviceMonitor:
+    namespace: sysmgmt-health
+    matchNamespace:
+    - services
+    interval: 30s
+    scheme: http
+    port: exporter
+    metricsRelabelings: {}
+    relabelings: {}
+
+smdPostgresExporter:
+  enabled: true
+  service:
+    namespace: services
+    port: 9187
+    targetPort: 9187
+    selector:
+      cluster-name: cray-smd-postgres
+      application: spilo
+  serviceMonitor:
+    namespace: sysmgmt-health
+    matchNamespace:
+    - services
+    interval: 30s
+    scheme: http
+    port: exporter
+    metricsRelabelings: {}
+    relabelings: {}
+
+giteaVcsPostgresExporter:
+  enabled: true
+  service:
+    namespace: services
+    port: 9187
+    targetPort: 9187
+    selector:
+      cluster-name: gitea-vcs-postgres
+      application: spilo
+  serviceMonitor:
+    namespace: sysmgmt-health
+    matchNamespace:
+    - services
+    interval: 30s
+    scheme: http
+    port: exporter
+    metricsRelabelings: {}
+    relabelings: {}
+
+keycloakPostgresExporter:
+  enabled: true
+  service:
+    namespace: services
+    port: 9187
+    targetPort: 9187
+    selector:
+      cluster-name: keycloak-postgres
+      application: spilo
+  serviceMonitor:
+    namespace: sysmgmt-health
+    matchNamespace:
+    - services
+    interval: 30s
+    scheme: http
+    port: exporter
+    metricsRelabelings: {}
+    relabelings: {}
+
+smaPostgresExporter:
+  enabled: true
+  service:
+    namespace: sma
+    port: 9187
+    targetPort: 9187
+    selector:
+      cluster-name: sma-postgres-cluster
+      application: spilo
+  serviceMonitor:
+    namespace: sysmgmt-health
+    matchNamespace:
+    - sma
+    interval: 30s
+    scheme: http
+    port: exporter
+    metricsRelabelings: {}
+    relabelings: {}
+
+spirePostgresExporter:
+  enabled: true
+  service:
+    namespace: spire
+    port: 9187
+    targetPort: 9187
+    selector:
+      cluster-name: spire-postgres
+      application: spilo
+  serviceMonitor:
+    namespace: sysmgmt-health
+    matchNamespace:
+    - spire
+    interval: 30s
+    scheme: http
+    port: exporter
+    metricsRelabelings: {}
+    relabelings: {}
+
+dhcpKeaExporter:
+  enabled: true
+  service:
+    namespace: services
+    port: 8080
+    targetPort: 8080
+    selector:
+      app.kubernetes.io/name: cray-dhcp-kea
+  serviceMonitor:
+    namespace: sysmgmt-health
+    matchNamespace:
+    - services
+    interval: 30s
+    scheme: http
+    port: exporter
+    metricsRelabelings: {}
+    relabelings: {}
+
+servicemonitors:
+  bosEtcdExporter:
+    enabled: true
+    servicename: bos
+    cluster: etcd
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: http-client
+      matchNamespace:
+      - services
+      matchLabels:
+        etcd_cluster: cray-bos-etcd
+      interval: 30s
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+
+  bssEtcdExporter:
+    enabled: true
+    servicename: bss
+    cluster: etcd
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: http-client
+      matchNamespace:
+      - services
+      matchLabels:
+        etcd_cluster: cray-bss-etcd
+      interval: 30s
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+
+  cpsEtcdExporter:
+    enabled: true
+    servicename: cps
+    cluster: etcd
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: http-client
+      matchNamespace:
+      - services
+      matchLabels:
+        etcd_cluster: cray-cps-etcd
+      interval: 30s
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+
+  crusEtcdExporter:
+    enabled: true
+    servicename: crus
+    cluster: etcd
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: http-client
+      matchNamespace:
+      - services
+      matchLabels:
+        etcd_cluster: cray-crus-etcd
+      interval: 30s
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+
+  externaldnsEtcdExporter:
+    enabled: true
+    servicename: externaldns
+    cluster: etcd
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: http-client
+      matchNamespace:
+      - services
+      matchLabels:
+        etcd_cluster: cray-externaldns-etcd
+      interval: 30s
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+
+  fasEtcdExporter:
+    enabled: true
+    servicename: fas
+    cluster: etcd
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: http-client
+      matchNamespace:
+      - services
+      matchLabels:
+        etcd_cluster: cray-fas-etcd
+      interval: 30s
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+
+  hbtdEtcdExporter:
+    enabled: true
+    servicename: hbtd
+    cluster: etcd
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: http-client
+      matchNamespace:
+      - services
+      matchLabels:
+        etcd_cluster: cray-hbtd-etcd
+      interval: 30s
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+
+  redsEtcdExporter:
+    enabled: true
+    servicename: reds
+    cluster: etcd
+    serviceMonitor:
+      namespace: sysmgmt-health
+      matchNamespace:
+      - services
+      matchLabels:
+        etcd_cluster: cray-reds-etcd
+      interval: 30s
+      scheme: http
+      port: http-client
+      metricsRelabelings: {}
+      relabelings: {}
+
+  hmnfdEtcdExporter:
+    enabled: true
+    servicename: hmnfd
+    cluster: etcd
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: http-client
+      matchNamespace:
+      - services
+      matchLabels:
+        etcd_cluster: cray-hmnfd-etcd
+      interval: 30s
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+
+  uasMgrEtcdExporter:
+    enabled: true
+    servicename: uas-mgr
+    cluster: etcd
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: http-client
+      matchNamespace:
+      - services
+      matchLabels:
+        etcd_cluster: cray-uas-mgr-etcd
+      interval: 30s
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+
+  kyvernoExporter:
+    enabled: true
+    servicename: cray-kyverno-svc-metrics
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: metrics-port
+      matchNamespace:
+      - kyverno
+      matchLabels:
+        app.kubernetes.io/instance: cray-kyverno
+      interval: 1m
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+  dnsUnbound:
+    enabled: true
+    servicename: cray-dns-unbound
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: exporter
+      matchNamespace:
+      - services
+      matchLabels:
+        service: cray-dns-unbound-dns-unbound-exporter
+      interval: 1m
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+  powerDns:
+    enabled: true
+    servicename: powerdns
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: dns-api
+      matchNamespace:
+      - services
+      matchLabels:
+        service: cray-dns-powerdns-api
+      interval: 1m
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+  cray-spire:
+    enabled: true
+    servicename: cray-spire
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: metrics
+      matchNamespace:
+      - cray-spire
+      matchLabels:
+        app.kubernetes.io/name: cray-spire-server
+      interval: 1m
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+  spire:
+    enabled: true
+    servicename: spire
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: metrics
+      matchNamespace:
+      - spire
+      matchLabels:
+        app.kubernetes.io/name: spire-server
+      interval: 1m
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+  iufExporter:
+    enabled: true
+    servicename: argo-only-argo-workflows-workflow-controller
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: metrics
+      matchNamespace:
+      - argo
+      matchLabels:
+        app.kubernetes.io/name: argo-workflows-workflow-controller
+      interval: 1m
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+
+  grokExporter:
+    enabled: true
+    servicename: grok-exporter
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: http
+      matchNamespace:
+      - sysmgmt-health
+      matchLabels:
+        app: grok-exporter
+      interval: 1m
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+
+  canu-test:
+    enabled: true
+    servicename: canu-test
+    selector:
+      sidecar: grok
+    serviceMonitor:
+      namespace: sysmgmt-health
+      port: http
+      matchNamespace:
+      - sysmgmt-health
+      matchLabels:
+        app.selector: grok
+      interval: 30s
+      scheme: http
+      metricsRelabelings: {}
+      relabelings: {}
+
+grafterm:
+  image:
+    repository: artifactory.algol60.net/csm-docker/stable/cray-grafterm
+    tag: 1.0.3
+    pullPolicy: IfNotPresent
+  dashboards:
+    enabled: true
+
+smartmetrics:
+  enabled: true
+  image:
+    repository: artifactory.algol60.net/csm-docker/stable/quay.io/galexrt/node-exporter-smartmon
+    tag: v0.1.1
+    pullPolicy: IfNotPresent
+
+iscsimetrics:
+  enabled: true
+  image:
+    repository: artifactory.algol60.net/csm-docker/stable/iscsi-metrics
+    tag: v1.0.0
+    pullPolicy: IfNotPresent

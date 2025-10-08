@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tanpo
+spec:
+  selector:
+    matchLabels:
+      app: tanpo
+  template:
+    metadata:
+      labels:
+        app: tanpo
+    spec:
+      containers:
+      - image: ghcr.io/jobscale/tanpo
+        name: tanpo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tanpo
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 3000
+  selector:
+    app: tanpo
+  type: ClusterIP
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tanpo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tanpo
+  maxReplicas: 3
+  minReplicas: 1
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tanpo
+  labels:
+    name: tanpo
+spec:
+  ingressClassName: nginx
+  tls:
+  - secretName: jsxjp-tls
+    hosts: ["tanpo.jsx.jp"]
+  rules:
+  - host: tanpo.jsx.jp
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: tanpo
+            port:
+              number: 80

@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo-blog
+spec:
+  selector:
+    matchLabels:
+      app: mongo-blog
+  template:
+    metadata:
+      labels:
+        app: mongo-blog
+    spec:
+      containers:
+      - image: ghcr.io/jobscale/mongo-blog
+        name: mongo-blog
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-blog
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 3000
+  selector:
+    app: mongo-blog
+  type: ClusterIP
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mongo-blog
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mongo-blog
+  maxReplicas: 3
+  minReplicas: 1
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mongo-blog
+  labels:
+    name: mongo-blog
+spec:
+  ingressClassName: nginx
+  tls:
+  - secretName: jsxjp-tls
+    hosts: ["mongo-blog.jsx.jp"]
+  rules:
+  - host: mongo-blog.jsx.jp
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: mongo-blog
+            port:
+              number: 80

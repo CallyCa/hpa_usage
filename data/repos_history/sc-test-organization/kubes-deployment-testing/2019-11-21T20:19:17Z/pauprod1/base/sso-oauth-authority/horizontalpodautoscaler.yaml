@@ -1,0 +1,14 @@
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  creationTimestamp: null
+  name: sso-oauth-authority-auth.sharecare.com.au
+spec:
+  maxReplicas: 0
+  scaleTargetRef:
+    kind: ""
+    name: ""
+status:
+  currentReplicas: 0
+  desiredReplicas: 0

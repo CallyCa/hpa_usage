@@ -1,0 +1,103 @@
+# values.yaml для GitLab Helm-чарта
+
+global:
+  # Настройки общего вида и доступа
+  hosts:
+    domain: gitlab.k8s.djabjo.ru  # Замените на ваш домен
+    https: true
+    gitlab:
+      name: gitlab.k8s.djabjo.ru   # Замените на ваш домен GitLab
+    registry:
+      name: registry.k8s.djabjo.ru   # Замените на ваш домен Registry
+    minio:
+      name: minio.k8s.djabjo.ru   # Замените на ваш домен MinIO (если используется)
+    externalIP: 1.2.3.4  # Укажите внешний IP вашего кластера или LoadBalancer
+
+  # Настройки почты
+  email:
+    from: gitlab@example.com
+    display_name: GitLab
+    reply_to: noreply@example.com
+
+  # Настройки SMTP (пример для Gmail)
+  smtp:
+    enabled: true
+    address: smtp.gmail.com
+    port: 587
+    user_name: your_email@gmail.com
+    password: "your_password"
+    authentication: "plain"
+    starttls_auto: true
+
+  # Настройки PostgreSQL
+  psql:
+    host: postgresql
+    port: 5432
+    username: gitlab
+    password:
+      secret: gitlab-postgres
+      key: postgres-password
+    database: gitlabhq_production
+
+  # Настройки Redis
+  redis:
+    host: redis
+    port: 6379
+    password:
+      enabled: false
+
+  # Настройки MinIO (объектное хранилище)
+  minio:
+    enabled: true
+    accesskey: "minio"
+    secretkey: "minio123"
+    bucketNames:
+      backups: gitlab-backups
+      lfs: gitlab-lfs
+      artifacts: gitlab-artifacts
+      uploads: gitlab-uploads
+      packages: gitlab-packages
+      registry: gitlab-registry
+
+# Настройки GitLab Runner
+gitlab-runner:
+  install: true
+  runners:
+    config: |
+      [[runners]]
+        [runners.kubernetes]
+          namespace = "{{.Release.Namespace}}"
+          image = "ubuntu:20.04"
+
+# Настройки Registry
+registry:
+  enabled: true
+  httpSecret: "secret-for-registry"
+  storage:
+    secret: gitlab-registry-storage
+    key: config
+    extraKey: ""
+
+# Настройки Prometheus мониторинга
+prometheus:
+  install: true
+
+# Настройки NGINX Ingress
+nginx-ingress:
+  enabled: true
+
+# Настройки сертификатов (Let's Encrypt)
+certmanager:
+  install: false  # Установите true, если используете cert-manager
+  server: https://acme-v02.api.letsencrypt.org/directory
+
+# Настройки резервного копирования
+gitlab:
+  task-runner:
+    backups:
+      cron:
+        enabled: true
+        schedule: "0 1 * * *"  # Ежедневно в 1:00
+        persistence:
+          enabled: true
+          size: 10Gi

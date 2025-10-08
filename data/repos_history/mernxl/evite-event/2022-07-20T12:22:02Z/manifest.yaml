@@ -1,0 +1,123 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: evite-micro-event
+spec:
+  hosts:
+    - "evite.com"
+    - "www.evite.com"
+  gateways:
+    - evite-micro-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /events
+      route:
+        - destination:
+            host: evite-micro-event
+            port:
+              number: 4042
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: evite-micro-event
+  labels:
+    app: evite-micro-event
+    service: evite-micro-event
+spec:
+  ports:
+    - port: 4042
+      name: http
+  selector:
+    app: evite-micro-event
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: evite-micro-event
+  labels:
+    app: evite-micro-event
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: evite-micro-event
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: evite-micro-event
+        version: v1
+    spec:
+      containers:
+        - name: evite-micro-event
+          image: docker.io/mernxl/evite-micro-event:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: CRYPTO_GRPC_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: evite-config
+                  key: CRYPTO_GRPC_ADDRESS
+            - name: EVENT_IMAGER_GRPC_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: evite-config
+                  key: EVENT_IMAGER_GRPC_ADDRESS
+            - name: EVENT_BUCKET_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: evite-config
+                  key: EVENT_BUCKET_NAME
+            - name: MONGODB_USER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: evite-config
+                  key: MONGODB_USER_NAME
+            - name: MONGODB_USER_PASS
+              valueFrom:
+                configMapKeyRef:
+                  name: evite-config
+                  key: MONGODB_USER_PASS
+            - name: MONGODB_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: evite-config
+                  key: MONGODB_URL
+            - name: MINIO_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: evite-config
+                  key: MINIO_ENDPOINT
+            - name: MINIO_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: evite-config
+                  key: MINIO_REGION
+            - name: MINIO_USE_SSL
+              valueFrom:
+                configMapKeyRef:
+                  name: evite-config
+                  key: MINIO_USE_SSL
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: evite-config
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: evite-config
+                  key: MINIO_SECRET_KEY
+
+            - name: SERVER_HOST
+              value: 0.0.0.0
+            - name: SERVER_PORT
+              value: "4042"
+            - name: NODE_ENV
+              value: production
+          ports:
+            - containerPort: 4042
+---

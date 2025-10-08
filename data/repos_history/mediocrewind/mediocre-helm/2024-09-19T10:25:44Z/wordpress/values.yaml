@@ -1,0 +1,21 @@
+# ---------------------------------------------------------------------------------------------------------
+# base configuration
+nameOverride: "mediocre-app-wp"
+fullnameOverride: "mediocre-app-wp"
+role: "application"
+
+# ---------------------------------------------------------------------------------------------------------
+# serviceaccount
+ServiceAccount:
+  name: ""
+  create: true
+  annotations: {}
+  automount: true
+
+# ---------------------------------------------------------------------------------------------------------
+# serviceaccount
+Role:
+  rules:
+    - apiGroups: [""]
+      resources: ["configmaps","secrets"]
+      verbs: ["list","get"]

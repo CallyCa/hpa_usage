@@ -1,0 +1,28 @@
+{{- if .Values.uyuni.batch.autoscaling.enabled }}
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "uyuni-suite.fullname" . }}
+  labels:
+    {{- include "uyuni-suite.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "uyuni-suite.fullname" . }}
+  minReplicas: {{ .Values.uyuni.batch.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.uyuni.batch.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.uyuni.batch.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: {{ .Values.uyuni.batch.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.uyuni.batch.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        targetAverageUtilization: {{ .Values.uyuni.batch.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

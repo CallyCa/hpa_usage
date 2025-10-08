@@ -1,0 +1,88 @@
+# Contains a deployment, a service and a hpa for the announcement service
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pn-deployment-server
+  labels:
+    owner: pn
+    app: watchwise
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pn-watchwise-serv
+  template:
+    metadata:
+      labels:
+        app: pn-watchwise-serv
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: kubernetes-watchwise-server
+          image: papnorbert25/watchwise-server:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+          env:
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: DB_USERNAME
+            - name: DB_PASSWD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: DB_PASSWD
+            - name: ALLOWED_ORIGIN
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: ALLOWED_ORIGIN
+            - name: POOL_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: POOL_URL
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pn-service-server
+  labels:
+    owner: pn
+spec:
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+  selector:
+    app: pn-watchwise-serv
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: deployment-autoscaler-server
+  labels:
+    owner: pn
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pn-deployment-server
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60

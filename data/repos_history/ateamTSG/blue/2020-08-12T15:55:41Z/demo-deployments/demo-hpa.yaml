@@ -1,0 +1,18 @@
+---
+# This is a 
+apiVersion: v1
+items:
+- apiVersion: autoscaling/v1
+  kind: HorizontalPodAutoscaler
+  metadata:
+    annotations:
+    name: hellodemo
+    namespace: hello-demo
+  spec:
+    maxReplicas: 6
+    minReplicas: 1
+    scaleTargetRef:
+      apiVersion: apps.openshift.io/v1
+      kind: DeploymentConfig
+      name: hellodemo
+    targetCPUUtilizationPercentage: 80

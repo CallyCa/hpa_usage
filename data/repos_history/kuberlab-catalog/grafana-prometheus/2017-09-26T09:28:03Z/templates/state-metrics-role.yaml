@@ -1,0 +1,31 @@
+{{- if .Values.RBAC }}
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: kube-state-metrics
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - persistentvolumeclaims
+  - pods
+  - pods/status
+  - services
+  - resourcequotas
+  - replicationcontrollers
+  - limitranges
+  verbs: ["list", "watch"]
+- apiGroups: ["extensions", "apps"]
+  resources:
+  - daemonsets
+  - deployments
+  - replicasets
+  - statefulsets
+  verbs: ["list", "watch"]
+- apiGroups: ["batch"]
+  resources:
+  - cronjobs
+  - jobs
+  verbs: ["list", "watch"]
+{{- end }}

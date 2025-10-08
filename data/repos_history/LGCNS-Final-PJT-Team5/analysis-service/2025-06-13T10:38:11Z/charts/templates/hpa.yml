@@ -1,0 +1,49 @@
+{{-if .Values.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  # HPA 리소스의 이름 및 라벨 정의
+  # 이 메타데이터는 HPA 오브젝트의 식별에 사용됩니다.
+  name: {{ include "app.fullname"}}
+  labels:
+    {{- include "app.labels" . | nindent4 }}
+spec:
+  # 어떤 Deployment 리소스를 대상으로 HPA가 동작하는지 지정
+  scaleTargetRef:
+    kind: Deployment
+    name: {{ include "app.fullname" . }}
+    apiVersion: apps/v1
+
+  # 최소 및 최대 파드 개수는 values.yaml에서 동적으로 설정됩니다.
+  minReplicas: {{ .Values.hpa.minReplicas }}
+  maxReplicas: {{ .Values.hpa.maxReplicas }}
+
+  # HPA가 어떤 메트릭 기준으로 스케일링할지 정의합니다.
+  metrics:
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          # 메모리 사용률(%)을 기준으로 파드 수를 조절합니다.
+          # averageUtilization은 전체 파드의 평균 메모리 사용률 목표값입니다.
+          # 이 값이 values.yaml의 .Values.hpa.metric.utilization.memoryAverage로부터 동적으로 설정됩니다.
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.metric.utilization.memoryAverage }}  # target memory (resources.requests.memory) 사용률 (%)
+
+  # 임계 값을 초과하였을 때 즉시 스케일링합니다.
+  # 안정화는 이전 결정을 기억하는 것입니다.
+  # 사이클: 메트릭 수집 -> 필요 Pod 수 계산 -> 안정화 윈도우 조회 -> 최적값 선택 -> 즉시 실행
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60 # 1분 안정화
+      policies:
+        - periodSeconds: 90
+          type: Percent
+          value: 50   # 한 번에 50%씩 증가
+    scaleDown:
+      stabilizationWindowSeconds: 300 # 5분 안정화 (메모리는 신중하게)
+      policies:
+        - periodSeconds: 60
+          type: Percent
+          value: 25
+{{- end }}

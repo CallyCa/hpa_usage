@@ -1,0 +1,111 @@
+---
+apiVersion: v1
+kind: Template
+labels:
+  template: "${REPO_NAME}-deploy-template"
+metadata:
+  name: "${REPO_NAME}-deploy-template"
+objects:
+  - apiVersion: v1
+    kind: DeploymentConfig
+    metadata:
+      labels:
+        app: "${REPO_NAME}"
+        app.kubernetes.io/part-of: GRAD-Backend-API
+        app.openshift.io/runtime: spring-boot
+      name: "${REPO_NAME}-dc"
+    spec:
+      replicas: 2
+      selector:
+        app: "${REPO_NAME}"
+        deploymentConfig: "${REPO_NAME}-dc"
+      strategy:
+        resources: {}
+        type: Rolling
+      template:
+        metadata:
+          labels:
+            app: "${REPO_NAME}"
+            deploymentConfig: "${REPO_NAME}-dc"
+        spec:
+          containers:
+            - image: image-registry.openshift-image-registry.svc:5000/77c02f-tools/${REPO_NAME}:latest
+              imagePullPolicy: IfNotPresent
+              readinessProbe:
+                tcpSocket:
+                  port: 8080
+                initialDelaySeconds: 5
+                periodSeconds: 30
+                timeoutSeconds: 2
+                failureThreshold: 3
+                successThreshold: 1
+              livenessProbe:
+                exec:
+                  command:
+                    - cd
+                    - ..
+                initialDelaySeconds: 15
+                timeoutSeconds: 1
+              name: "${REPO_NAME}"
+              ports:
+                - containerPort: ${{CONTAINER_PORT}}
+                  protocol: TCP
+              envFrom:
+                - configMapRef:
+                    name: educ-grad-api-config-map
+                - configMapRef:
+                    name: educ-grad-algorithm-api-config-map
+                - secretRef:
+                    name: api-student-graduation-db-secret
+                - secretRef:
+                    name: grad-keycloak-pk-secret
+              resources: {}
+      test: false
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      labels:
+        app: "${REPO_NAME}"
+      name: "${REPO_NAME}"
+    spec:
+      ports:
+        - name: ${CONTAINER_PORT}-tcp
+          port: ${{CONTAINER_PORT}}
+          protocol: TCP
+      selector:
+        app: "${REPO_NAME}"
+        deploymentconfig: "${REPO_NAME}-dc"
+  - apiVersion: v1
+    kind: Route
+    metadata:
+      labels:
+        app: "${REPO_NAME}"
+      name: "${REPO_NAME}"
+    spec:
+      host: "${HOST_ROUTE}"
+      path: ${HOST_PATH}
+      port:
+        targetPort: ${CONTAINER_PORT}-tcp
+      tls:
+        insecureEdgeTerminationPolicy: Redirect
+        termination: edge
+      to:
+        kind: Service
+        name: "${REPO_NAME}"
+        weight: 100
+      wildcardPolicy: None
+parameters:
+  - name: REPO_NAME
+    description: Application repository name
+    required: true
+  - name: HOST_ROUTE
+    description: The host the route will use to expose service outside cluster
+    required: true
+  - name: CONTAINER_PORT
+    description: The port on which the application will be accessible
+    required: false
+    value: "8080"
+  - name: HOST_PATH
+    description: The path appended to the HOST_ROUTE where the root of this project will be served
+    required: false
+    value: "/"

@@ -1,0 +1,194 @@
+---
+# Source: temperature-monitor/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: temperature-monitor
+  labels:
+    helm.sh/chart: temperature-monitor-0.1.0
+    app.kubernetes.io/name: temperature-monitor
+    app.kubernetes.io/instance: temperature-monitor
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+---
+# Source: temperature-monitor/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: temperature-monitor
+  labels:
+    helm.sh/chart: temperature-monitor-0.1.0
+    app.kubernetes.io/name: temperature-monitor
+    app.kubernetes.io/instance: temperature-monitor
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: temperature-monitor
+    app.kubernetes.io/instance: temperature-monitor
+---
+# Source: temperature-monitor/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temperature-monitor
+  labels:
+    helm.sh/chart: temperature-monitor-0.1.0
+    app.kubernetes.io/name: temperature-monitor
+    app.kubernetes.io/instance: temperature-monitor
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: temperature-monitor
+      app.kubernetes.io/instance: temperature-monitor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: temperature-monitor
+        app.kubernetes.io/instance: temperature-monitor
+    spec:
+      serviceAccountName: temperature-monitor
+      securityContext:
+        fsGroup: 2000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: temperature-monitor
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          image: "gitea.zengarden.space/zengarden-space/temperature-monitor:main-df25d21"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: var-cache-nginx
+              mountPath: /var/cache/nginx
+            - name: var-run
+              mountPath: /var/run
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: var-cache-nginx
+          emptyDir: {}
+        - name: var-run
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - temperature-monitor
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+---
+# Source: temperature-monitor/templates/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: temperature-monitor
+  labels:
+    helm.sh/chart: temperature-monitor-0.1.0
+    app.kubernetes.io/name: temperature-monitor
+    app.kubernetes.io/instance: temperature-monitor
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: temperature-monitor
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+# Source: temperature-monitor/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: temperature-monitor
+  labels:
+    helm.sh/chart: temperature-monitor-0.1.0
+    app.kubernetes.io/name: temperature-monitor
+    app.kubernetes.io/instance: temperature-monitor
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: internal-ca
+spec:
+  ingressClassName: external
+  tls:
+    - hosts:
+        - "t.zengarden.space"
+      secretName: temperature-monitor-tls
+  rules:
+    - host: "t.zengarden.space"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: temperature-monitor
+                port:
+                  number: 80

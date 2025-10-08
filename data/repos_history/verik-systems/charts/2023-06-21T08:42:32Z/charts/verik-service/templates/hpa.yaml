@@ -1,0 +1,41 @@
+{{- if .Values.autoscaling.enabled }}
+{{- if eq .Values.autoscaling.mode "internal" }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Values.labels.app }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels: {{- include "common.labels.standard" . | nindent 4 }}
+    {{- if .Values.commonLabels }}
+    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
+    {{- end }}
+    {{- include "common.tplvalues.render" ( dict "value" .Values.labels "context" $ ) | nindent 4 }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  scaleTargetRef:
+    apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
+    kind: Deployment
+    name: {{ .Values.labels.app }}
+  minReplicas: {{ .Values.autoscaling.policy.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.policy.maxReplicas }}
+  metrics:
+    {{- if .Values.autoscaling.policy.targetCPU }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.policy.targetCPU }}
+    {{- end }}
+    {{- if .Values.autoscaling.policy.targetMemory }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.policy.targetMemory }}
+    {{- end }}
+{{- end }}
+{{- end }}

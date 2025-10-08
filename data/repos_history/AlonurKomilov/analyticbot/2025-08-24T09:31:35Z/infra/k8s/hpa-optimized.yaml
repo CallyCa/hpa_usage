@@ -1,0 +1,387 @@
+# High-Performance Horizontal Pod Autoscaler Configuration
+# Optimized for enterprise-grade scaling with advanced metrics
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: analyticbot-api-hpa-optimized
+  namespace: analyticbot
+  labels:
+    app: analyticbot-api
+    tier: autoscaling
+    performance-tier: optimized
+    version: v1.5
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analyticbot-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  # Resource-based metrics with optimized thresholds
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60  # Lower threshold for better responsiveness
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70  # Optimized memory threshold
+  # Custom performance metrics
+  - type: Pods
+    pods:
+      metric:
+        name: database_connection_usage_percent
+      target:
+        type: AverageValue
+        averageValue: "75"  # Scale when DB connections > 75%
+  - type: Pods
+    pods:
+      metric:
+        name: cache_hit_rate_percent
+      target:
+        type: AverageValue
+        averageValue: "70"  # Scale when cache hit rate < 70%
+  - type: Pods
+    pods:
+      metric:
+        name: api_response_time_ms
+      target:
+        type: AverageValue
+        averageValue: "500"  # Scale when response time > 500ms
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 min cooldown
+      policies:
+      - type: Percent
+        value: 25  # Scale down max 25% at once
+        periodSeconds: 60
+      - type: Pods
+        value: 2  # Or max 2 pods at once
+        periodSeconds: 60
+      selectPolicy: Min  # Use more conservative policy
+    scaleUp:
+      stabilizationWindowSeconds: 60   # 1 min warmup
+      policies:
+      - type: Percent
+        value: 100  # Can double pods quickly
+        periodSeconds: 30
+      - type: Pods
+        value: 4    # Or add max 4 pods at once
+        periodSeconds: 30
+      selectPolicy: Max  # Use more aggressive policy
+
+---
+# Bot Service HPA with Telegram API Rate Limiting
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: analyticbot-bot-hpa-optimized
+  namespace: analyticbot
+  labels:
+    app: analyticbot-bot
+    tier: autoscaling
+    performance-tier: optimized
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analyticbot-bot
+  minReplicas: 1
+  maxReplicas: 5  # Limited due to Telegram API limits
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 65
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 75
+  # Telegram-specific metrics
+  - type: Pods
+    pods:
+      metric:
+        name: telegram_api_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "20"  # Max 20 requests/sec per pod
+  - type: Pods
+    pods:
+      metric:
+        name: bot_update_processing_time_ms
+      target:
+        type: AverageValue
+        averageValue: "100"  # Process updates < 100ms
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600  # 10 min cooldown (longer for bot)
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 180  # Scale down 1 pod every 3 min
+    scaleUp:
+      stabilizationWindowSeconds: 120  # 2 min warmup
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 60   # Add 1 pod per minute max
+
+---
+# Celery Workers HPA with Queue-based Scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: analyticbot-celery-hpa-optimized
+  namespace: analyticbot
+  labels:
+    app: analyticbot-celery
+    tier: autoscaling
+    performance-tier: optimized
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analyticbot-celery
+  minReplicas: 2
+  maxReplicas: 12  # Higher limit for background tasks
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 75
+  # Queue-based metrics for optimal scaling
+  - type: Pods
+    pods:
+      metric:
+        name: celery_queue_length
+      target:
+        type: AverageValue
+        averageValue: "8"   # Scale when > 8 tasks queued per worker
+  - type: Pods
+    pods:
+      metric:
+        name: celery_active_tasks_per_worker
+      target:
+        type: AverageValue
+        averageValue: "4"   # Scale when > 4 active tasks per worker
+  - type: Pods
+    pods:
+      metric:
+        name: celery_task_processing_time_ms
+      target:
+        type: AverageValue
+        averageValue: "5000"  # Scale when tasks take > 5s
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 min cooldown
+      policies:
+      - type: Percent
+        value: 50  # Can scale down aggressively
+        periodSeconds: 120
+      - type: Pods
+        value: 2
+        periodSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 30   # Quick response to queue buildup
+      policies:
+      - type: Percent
+        value: 200  # Can scale up very aggressively
+        periodSeconds: 30
+      - type: Pods
+        value: 4
+        periodSeconds: 30
+      selectPolicy: Max
+
+---
+# Performance-based Pod Disruption Budgets
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: analyticbot-api-pdb-optimized
+  namespace: analyticbot
+  labels:
+    app: analyticbot-api
+    performance-tier: optimized
+spec:
+  minAvailable: 50%  # Always keep at least 50% of pods
+  selector:
+    matchLabels:
+      app: analyticbot-api
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: analyticbot-celery-pdb-optimized
+  namespace: analyticbot
+  labels:
+    app: analyticbot-celery
+    performance-tier: optimized
+spec:
+  minAvailable: 1  # Always keep at least 1 worker
+  selector:
+    matchLabels:
+      app: analyticbot-celery
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: analyticbot-bot-pdb-optimized
+  namespace: analyticbot
+  labels:
+    app: analyticbot-bot
+    performance-tier: optimized
+spec:
+  minAvailable: 1  # Keep bot always running
+  selector:
+    matchLabels:
+      app: analyticbot-bot
+
+---
+# Vertical Pod Autoscaler for Resource Optimization
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: analyticbot-api-vpa-optimized
+  namespace: analyticbot
+  labels:
+    app: analyticbot-api
+    performance-tier: optimized
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analyticbot-api
+  updatePolicy:
+    updateMode: "Auto"  # Automatically apply recommendations
+  resourcePolicy:
+    containerPolicies:
+    - containerName: api
+      maxAllowed:
+        cpu: 2
+        memory: 4Gi
+      minAllowed:
+        cpu: 200m
+        memory: 512Mi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: analyticbot-celery-vpa-optimized
+  namespace: analyticbot
+  labels:
+    app: analyticbot-celery
+    performance-tier: optimized
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analyticbot-celery
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: celery
+      maxAllowed:
+        cpu: 1.5
+        memory: 3Gi
+      minAllowed:
+        cpu: 100m
+        memory: 256Mi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+
+---
+# Network Policy for Performance Optimization
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: analyticbot-performance-network-policy
+  namespace: analyticbot
+  labels:
+    performance-tier: optimized
+spec:
+  podSelector:
+    matchLabels:
+      performance-tier: optimized
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: analyticbot-api
+    - podSelector:
+        matchLabels:
+          app: analyticbot-bot
+    - podSelector:
+        matchLabels:
+          app: analyticbot-celery
+    ports:
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+    - protocol: TCP
+      port: 6379  # Redis
+    - protocol: TCP
+      port: 8000  # HTTP API
+    - protocol: TCP
+      port: 8001  # Performance API
+  egress:
+  - {}  # Allow all egress (for external APIs)
+
+---
+# Priority Classes for Performance-Critical Workloads
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: analyticbot-performance-critical
+  labels:
+    performance-tier: critical
+value: 1000
+globalDefault: false
+description: "Priority class for performance-critical AnalyticBot components"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: analyticbot-performance-high
+  labels:
+    performance-tier: high
+value: 800
+globalDefault: false
+description: "Priority class for high-performance AnalyticBot components"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: analyticbot-performance-standard
+  labels:
+    performance-tier: standard
+value: 500
+globalDefault: false
+description: "Priority class for standard AnalyticBot components"

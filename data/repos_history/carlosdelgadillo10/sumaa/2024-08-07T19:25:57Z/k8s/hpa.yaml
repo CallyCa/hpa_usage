@@ -1,0 +1,13 @@
+apiVersion: autoscaling/v1  # Especifica la versión de la API utilizada para el HPA
+kind: HorizontalPodAutoscaler  # Define el tipo de recurso como HorizontalPodAutoscaler
+metadata:
+  name: suma-hpa  # Nombre del HPA
+  namespace: microservices-qa  # Namespace donde se desplegará el HPA
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1  # Versión de la API del recurso objetivo
+    kind: Deployment  # Tipo de recurso objetivo que será escalado
+    name: suma-deployment  # Nombre del Deployment que será escalado
+  minReplicas: 1  # Número mínimo de réplicas del Deployment
+  maxReplicas: 10  # Número máximo de réplicas del Deployment
+  targetCPUUtilizationPercentage: 50  # Porcentaje de utilización de CPU objetivo para escalar las réplicas

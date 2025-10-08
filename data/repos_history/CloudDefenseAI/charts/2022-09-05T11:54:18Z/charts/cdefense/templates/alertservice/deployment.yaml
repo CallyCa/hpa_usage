@@ -1,0 +1,126 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertservice
+  namespace: {{ .Release.Namespace | default "default"}}
+spec:
+  selector:
+    matchLabels:
+      app: alertservice
+  replicas: {{ .Values.alertservice.replicas }}
+  template:
+    metadata:
+      labels:
+        app: alertservice
+      annotations:
+        diun.enable: "true"
+    spec:
+      {{- if .Values.alertservice.nodeSelector }}
+      nodeSelector:
+        label: {{ .Values.alertservice.nodeSelector }}
+      {{- end }}
+      {{- if .Values.alertservice.tolerations }}
+      tolerations:
+{{ toYaml .Values.alertservice.tolerations | indent 8 }}
+      {{- end }}
+      imagePullSecrets:
+      - name: regcred
+      containers:
+      - name: alertservice
+        image: {{ .Values.alertservice.image }}:{{ .Values.alertservice.version }}
+        # image:  cdefense/alert-service:latest
+        env:
+        - name: KAFKA_SERVERS
+          value: "kafka:9092"
+        - name: DB_CONNECTION_STRING
+          valueFrom:
+            configMapKeyRef:
+                name: cdefense-config
+                key: DB_CONNECTION_STRING
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+                name: cdefense-config
+                key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: DB_PASSWORD
+              name: cdefense-secrets
+       #  resources:
+       #  requests:
+       #     memory: "0.5G"
+       #     cpu: "250m"
+       #   limits:
+       #     memory: "1G"
+       #    cpu: "500m"
+      initContainers:
+        - name: check-graphql
+          image: radial/busyboxplus:curl
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until $(curl --connect-timeout 2 --output /dev/null --silent --fail http://graphql/v1/version); do echo waiting for graphql; sleep 10; done; echo connection to graphql ok
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        - name: check-keycloak-pod
+          image: bitnami/kubectl:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - while [ "$(kubectl get pod -l app='keycloak' -o jsonpath='{.items[0].status.phase}')" != "Running" ]; do echo "waiting for keycloak to be ready."; sleep 10; done
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        - name: check-keycloak # WARNING checks logs of the keycloak pod for "Listening on" as such likelier to break as result if developer change the keycloak pod logs
+          image: bitnami/kubectl:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - POD=$(kubectl get pod -l app=keycloak -o jsonpath="{.items[0].metadata.name}") && until kubectl logs $POD|grep "Listening on"; do echo "waiting for keycloak server"; sleep 10; done; echo connection to keycloak ok 
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        - name: check-db
+          image: postgres:14
+          imagePullPolicy: IfNotPresent
+          command: 
+            - sh
+            - -c
+            - until pg_isready -h db -p 5432; do echo waiting for database; sleep 5; done;
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+# ---
+# {{ if .Values.alertservice.autoscaling.enabled }}
+# apiVersion: autoscaling/v1
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: alertservice
+#   labels:
+#     alertservice
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: alertservice
+#   minReplicas: {{ .Values.alertservice.autoscaling.minReplicas }}
+#   maxReplicas: {{ .Values.alertservice.autoscaling.maxReplicas }}
+#   metrics:
+#     {{ if .Values.alertservice.autoscaling.targetCPUUtilizationPercentage }}
+#     - type: Resource
+#       resource:
+#         name: cpu
+#         targetAverageUtilization: {{ .Values.alertservice.autoscaling.targetCPUUtilizationPercentage }}
+#     {{ end }}
+#     {{ if .Values.alertservice.autoscaling.targetMemoryUtilizationPercentage }}
+#     - type: Resource
+#       resource:
+#         name: memory
+#         targetAverageUtilization: {{ .Values.alertservice.autoscaling.targetMemoryUtilizationPercentage }}
+#     {{ end }}
+# {{ end }}

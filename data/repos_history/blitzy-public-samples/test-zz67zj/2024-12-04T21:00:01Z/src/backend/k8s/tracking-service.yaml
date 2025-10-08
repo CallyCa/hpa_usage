@@ -1,0 +1,175 @@
+# Kubernetes deployment configuration for the tracking-service
+# Addresses requirement: Real-time location tracking
+# Location: 1.2 System Overview/High-Level Description/Backend Services
+# Version: v0.26.0 (k8s.io/api)
+
+# Human Tasks:
+# 1. Set up MongoDB credentials in a Kubernetes secret
+# 2. Configure network policies for MongoDB access
+# 3. Set up monitoring for WebSocket connections
+# 4. Configure horizontal pod autoscaling based on load
+# 5. Review and adjust resource limits based on production metrics
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tracking-service-configmap
+  namespace: default
+  labels:
+    app: tracking-service
+data:
+  # MongoDB connection string (replace with actual values)
+  TRACKING_DB_URI: "mongodb://mongodb-service:27017/tracking"
+  # WebSocket server port
+  TRACKING_WS_PORT: "8080"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tracking-service-deployment
+  namespace: default
+  labels:
+    app: tracking-service
+spec:
+  # Addresses requirement: Scalable microservices architecture
+  # Location: 7.3 Technical Decisions/Architecture Patterns/Microservices
+  replicas: 3
+  selector:
+    matchLabels:
+      app: tracking-service
+  template:
+    metadata:
+      labels:
+        app: tracking-service
+    spec:
+      containers:
+      - name: tracking-service
+        image: tracking-service:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: websocket
+          containerPort: 8081
+          protocol: TCP
+        env:
+        - name: TRACKING_DB_URI
+          valueFrom:
+            configMapKeyRef:
+              name: tracking-service-configmap
+              key: TRACKING_DB_URI
+        - name: TRACKING_WS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: tracking-service-configmap
+              key: TRACKING_WS_PORT
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: tracking-service-configmap
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tracking-service-service
+  namespace: default
+  labels:
+    app: tracking-service
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  - name: websocket
+    port: 8081
+    targetPort: websocket
+    protocol: TCP
+  selector:
+    app: tracking-service
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tracking-service-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tracking-service-deployment
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tracking-service-network-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: tracking-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 8081
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mongodb
+    ports:
+    - protocol: TCP
+      port: 27017

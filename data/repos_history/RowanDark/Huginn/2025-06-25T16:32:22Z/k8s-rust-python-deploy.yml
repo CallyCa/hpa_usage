@@ -1,0 +1,327 @@
+# Kubernetes Deployment for Rust Security Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rust-security
+  namespace: osint-platform
+  labels:
+    app: rust-security
+    version: v1
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: rust-security
+  template:
+    metadata:
+      labels:
+        app: rust-security
+        version: v1
+    spec:
+      containers:
+      - name: rust-security
+        image: osint-platform/rust-security:latest
+        ports:
+        - containerPort: 8081
+          name: http
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: FINGERPRINT_ROTATION_INTERVAL
+          value: "300"
+        - name: TLS_PROFILE_COUNT
+          value: "20"
+        - name: PROXY_POOL_SIZE
+          value: "100"
+        - name: MAX_CONCURRENT_REQUESTS
+          value: "1000"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: fingerprint-cache
+          mountPath: /app/cache
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
+      - name: fingerprint-cache
+        emptyDir:
+          sizeLimit: 100Mi
+      serviceAccountName: osint-platform-sa
+      securityContext:
+        fsGroup: 1000
+
+---
+# Kubernetes Service for Rust Security
+apiVersion: v1
+kind: Service
+metadata:
+  name: rust-security-service
+  namespace: osint-platform
+  labels:
+    app: rust-security
+spec:
+  selector:
+    app: rust-security
+  ports:
+  - name: http
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+  type: ClusterIP
+
+---
+# HPA for Rust Security Service
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rust-security-hpa
+  namespace: osint-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rust-security
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+
+---
+# Deployment for Python AI/NLP Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-ai
+  namespace: osint-platform
+  labels:
+    app: python-ai
+    version: v1
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: python-ai
+  template:
+    metadata:
+      labels:
+        app: python-ai
+        version: v1
+    spec:
+      initContainers:
+      - name: model-downloader
+        image: osint-platform/python-ai:latest
+        command: ["python", "-m", "src.models.download"]
+        volumeMounts:
+        - name: ai-models
+          mountPath: /app/models
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+      containers:
+      - name: python-ai
+        image: osint-platform/python-ai:latest
+        ports:
+        - containerPort: 8082
+          name: http
+        env:
+        - name: REDIS_URL
+          value: "redis-service:6379"
+        - name: MODEL_CACHE_DIR
+          value: "/app/models"
+        - name: TRANSFORMERS_CACHE
+          value: "/app/models/transformers"
+        - name: THREAT_INTEL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: osint-secrets
+              key: threat-intel-api-key
+        - name: WORKERS
+          value: "4"
+        - name: MAX_WORKERS
+          value: "8"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8082
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 5
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: ai-models
+          mountPath: /app/models
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
+      - name: ai-models
+        persistentVolumeClaim:
+          claimName: ai-models-pvc
+      serviceAccountName: osint-platform-sa
+      securityContext:
+        fsGroup: 1000
+
+---
+# Kubernetes Service for Python AI
+apiVersion: v1
+kind: Service
+metadata:
+  name: python-ai-service
+  namespace: osint-platform
+  labels:
+    app: python-ai
+spec:
+  selector:
+    app: python-ai
+  ports:
+  - name: http
+    port: 8082
+    targetPort: 8082
+    protocol: TCP
+  type: ClusterIP
+
+---
+# HPA for Python AI Service
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: python-ai-hpa
+  namespace: osint-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: python-ai
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 75
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 120
+
+---
+# PVC for AI Models
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ai-models-pvc
+  namespace: osint-platform
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: fast-ssd

@@ -1,0 +1,218 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: reliquary-platform-hpa
+  namespace: reliquary
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: reliquary-platform
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Pods
+      pods:
+        metric:
+          name: consensus_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "10"
+    - type: Object
+      object:
+        metric:
+          name: incoming_requests_per_second
+        describedObject:
+          apiVersion: v1
+          kind: Service
+          name: reliquary-platform-service
+        target:
+          type: Value
+          value: "100"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 30
+        - type: Pods
+          value: 5
+          periodSeconds: 30
+      selectPolicy: Max
+
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: reliquary-platform-vpa
+  namespace: reliquary
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: reliquary-platform
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: reliquary-api
+        maxAllowed:
+          cpu: "4000m"
+          memory: "8Gi"
+        minAllowed:
+          cpu: "100m"
+          memory: "256Mi"
+        controlledResources:
+          - cpu
+          - memory
+      - containerName: agent-orchestrator
+        maxAllowed:
+          cpu: "8000m"
+          memory: "16Gi"
+        minAllowed:
+          cpu: "250m"
+          memory: "512Mi"
+        controlledResources:
+          - cpu
+          - memory
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: reliquary-orchestrator-hpa
+  namespace: reliquary
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: reliquary-agent-orchestrator
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Pods
+      pods:
+        metric:
+          name: active_agent_sessions
+        target:
+          type: AverageValue
+          averageValue: "50"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+
+---
+# Custom metrics for scaling
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: reliquary-metrics
+  namespace: reliquary
+  labels:
+    app: reliquary-platform
+spec:
+  selector:
+    matchLabels:
+      app: reliquary-platform
+  endpoints:
+    - port: metrics
+      path: /observability/metrics/export
+      interval: 30s
+      scrapeTimeout: 10s
+
+---
+# Prometheus rules for custom metrics
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: reliquary-scaling-rules
+  namespace: reliquary
+spec:
+  groups:
+    - name: reliquary.scaling
+      interval: 30s
+      rules:
+        - record: reliquary:consensus_requests_per_second
+          expr: rate(reliquary_consensus_requests_total[1m])
+        - record: reliquary:incoming_requests_per_second
+          expr: rate(reliquary_http_requests_total[1m])
+        - record: reliquary:active_agent_sessions
+          expr: reliquary_active_agent_sessions_total
+        - record: reliquary:avg_response_time
+          expr: rate(reliquary_request_duration_seconds_sum[5m]) / rate(reliquary_request_duration_seconds_count[5m])
+
+        # Alerting rules for scaling issues
+        - alert: HighCPUUsage
+          expr: reliquary:cpu_usage_percent > 85
+          for: 2m
+          labels:
+            severity: warning
+            component: scaling
+          annotations:
+            summary: "High CPU usage detected"
+            description: "CPU usage has been above 85% for more than 2 minutes"
+
+        - alert: HighMemoryUsage
+          expr: reliquary:memory_usage_percent > 90
+          for: 1m
+          labels:
+            severity: critical
+            component: scaling
+          annotations:
+            summary: "High memory usage detected"
+            description: "Memory usage has been above 90% for more than 1 minute"
+
+        - alert: ScalingMaxReached
+          expr: kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler="reliquary-platform-hpa"} >= kube_horizontalpodautoscaler_spec_max_replicas{horizontalpodautoscaler="reliquary-platform-hpa"}
+          for: 5m
+          labels:
+            severity: warning
+            component: scaling
+          annotations:
+            summary: "Maximum scaling reached"
+            description: "The HPA has reached maximum replicas and may need adjustment"

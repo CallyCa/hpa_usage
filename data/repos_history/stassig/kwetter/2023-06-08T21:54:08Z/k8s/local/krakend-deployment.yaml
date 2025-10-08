@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: krakend-deployment
+spec:
+  selector:
+    matchLabels:
+      app: krakend
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: krakend
+    spec:
+      imagePullSecrets:
+        - name: acr-credentials
+      containers:
+        - name: krakend
+          image: krakend
+          ports:
+            - containerPort: 8080
+          command: ["/usr/bin/krakend"]
+          args: ["run", "-d", "-c", "/etc/krakend/krakend.json", "-p", "8080"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          env:
+            - name: KRAKEND_PORT
+              value: "8080"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: krakend-service
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: krakend

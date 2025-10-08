@@ -1,0 +1,93 @@
+global:
+  hosts:
+    domain: k8s.djabjo.ru
+    registry: registry.k8s.djabjo.ru
+    https: true
+    externalIP: ""  # Автоматическое определение
+
+  ingress:
+    configureCertmanager: true
+    enabled: false
+    tls:
+      enabled: true
+      secretName: gitlab-tls
+
+certmanager:
+  install: false  # Предполагаем, что cert-manager уже установлен
+certmanager-issuer:
+  email: vovakotov97@mail.ru # Замените на реальный email
+  server: https://acme-v02.api.letsencrypt.org/directory
+
+nginx-ingress:
+  enabled: false  # Используем ваш ingress-nginx
+
+gitlab:
+  webservice:
+    ingress:
+      enabled: true
+      ingressClassName: nginx
+      hosts:
+        - gitlab.k8s.djabjo.ru
+      tls:
+        enabled: true
+        secretName: gitlab-tls
+      annotations:
+        kubernetes.io/ingress.class: nginx
+        nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+        nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
+
+    replicas: 1
+    minReplicas: 1
+    maxReplicas: 2
+
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "500m"
+
+  toolbox:  # Заменяет старый task-runner
+    enabled: true
+    persistence:
+      enabled: false
+
+  sidekiq:
+    replicas: 1
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "300m"
+
+  gitlab-shell:
+    replicas: 1
+
+redis:
+  install: true 
+  master:
+    persistence:
+      size: 5Gi
+
+postgresql:
+  enabled: true
+  persistence:
+    size: 10Gi
+
+
+registry:
+  enabled: true
+  host: registry.gitlab.example.com
+  port: 443
+  api:
+  storage:
+    backend: filesystem
+    filesystem:
+      rootdirectory: /var/lib/registry
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClass: standard
+mattermost:
+  enabled: false
+pages:
+  enabled: false
+gitlab-runner:
+  install: false

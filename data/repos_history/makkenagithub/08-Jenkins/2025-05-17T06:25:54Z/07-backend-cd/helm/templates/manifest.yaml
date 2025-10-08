@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend
+  namespace: expense
+data:
+  DB_HOST: {{ .Values.configMap.db_host }}
+# we can use above config map to provide app config variables
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  namespace: expense
+  labels:
+    app: backend
+    tier: api
+    project: expense
+spec:
+  replicas: 2
+  selector:
+    matchLabels:    # databases we usually do using statefull sets.
+      app: backend
+      tier: api
+      project: expense
+  template:
+    metadata:
+      labels:
+        app: backend
+        tier: api
+        project: expense
+    spec:
+      containers:
+      - name: backend
+        image:  "{{ .Values.deployment.imageURL }}:{{ .Values.deployment.imageVersion }}"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          # limits should >= requests  
+          limits:
+            cpu: 100m
+            memory: 128Mi     
+        envFrom:
+        - configMapRef:
+            name: backend
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: expense
+spec:
+  selector:
+    app: backend
+    tier: api
+    project: expense
+  ports:
+  - name: backend-port
+    port: 8080  # this is service port
+    protocol: TCP
+    targetPort: 8080  # this is container port. We can give name also here, but that name to be defined in pod container ports
+
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-backend
+  namespace: expense
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend-deployment
+  minReplicas: 1     # eventhough we mentioned 2 replicas in deployemnt, if the traffic is less, then it maintaines 1 replica
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: {{ .Values.hpa.cpuUtiliZation}}  # usually 75% used in realtime
+# Notice that the targetCPUUtilizationPercentage field has been replaced with an array called metrics

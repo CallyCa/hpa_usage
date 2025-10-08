@@ -1,0 +1,412 @@
+# Stripe Payment Plugin Microservice Deployment
+# 迁移后的Stripe插件作为独立微服务部署到Kubernetes
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jiffoo-plugins
+  labels:
+    name: jiffoo-plugins
+    app.kubernetes.io/name: jiffoo-plugins
+    app.kubernetes.io/part-of: jiffoo-mall
+
+---
+# ConfigMap for Stripe Plugin Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stripe-plugin-config
+  namespace: jiffoo-plugins
+  labels:
+    app: stripe-payment-plugin
+    component: config
+data:
+  # Plugin Configuration
+  PLUGIN_NAME: "stripe-payment-provider"
+  PLUGIN_VERSION: "1.0.0"
+  PLUGIN_TYPE: "payment"
+  
+  # Service Configuration
+  PORT: "3001"
+  HOST: "0.0.0.0"
+  NODE_ENV: "production"
+  
+  # Database Configuration
+  DATABASE_SCHEMA: "plugin_stripe_payment_provider"
+  DATABASE_POOL_MIN: "2"
+  DATABASE_POOL_MAX: "10"
+  
+  # Cache Configuration
+  CACHE_TTL: "3600"
+  CACHE_KEY_PREFIX: "plugin:stripe-payment-provider:"
+  
+  # Monitoring Configuration
+  METRICS_PORT: "4001"
+  HEALTH_CHECK_PATH: "/health"
+  METRICS_PATH: "/metrics"
+  
+  # Stripe Configuration
+  STRIPE_ENVIRONMENT: "production"
+  STRIPE_CURRENCY: "USD"
+  
+  # Logging Configuration
+  LOG_LEVEL: "info"
+
+---
+# Secret for Stripe API Keys
+apiVersion: v1
+kind: Secret
+metadata:
+  name: stripe-plugin-secrets
+  namespace: jiffoo-plugins
+  labels:
+    app: stripe-payment-plugin
+    component: secrets
+type: Opaque
+data:
+  # Base64 encoded secrets (replace with actual values)
+  STRIPE_SECRET_KEY: c2tfdGVzdF9leGFtcGxlX2tleQ== # sk_test_example_key
+  STRIPE_WEBHOOK_SECRET: d2hzZWNfZXhhbXBsZV9zZWNyZXQ= # whsec_example_secret
+  DATABASE_URL: cG9zdGdyZXNxbDovL2ppZmZvbzpqaWZmb28xMjNAbG9jYWxob3N0OjU0MzIvampmZm9vX2Rldg== # postgresql://jiffoo:jiffoo123@localhost:5432/jiffoo_dev
+  REDIS_URL: cmVkaXM6Ly9sb2NhbGhvc3Q6NjM3OS8w # redis://localhost:6379/0
+  JWT_SECRET: amlmZm9vLWp3dC1zZWNyZXQ= # jiffoo-jwt-secret
+
+---
+# Deployment for Stripe Payment Plugin
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stripe-payment-plugin
+  namespace: jiffoo-plugins
+  labels:
+    app: stripe-payment-plugin
+    component: microservice
+    version: v1.0.0
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: stripe-payment-plugin
+  template:
+    metadata:
+      labels:
+        app: stripe-payment-plugin
+        component: microservice
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4001"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: stripe-plugin
+        image: jiffoo/stripe-payment-plugin:1.0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 3001
+          protocol: TCP
+        - name: metrics
+          containerPort: 4001
+          protocol: TCP
+        env:
+        # Configuration from ConfigMap
+        - name: PLUGIN_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: stripe-plugin-config
+              key: PLUGIN_NAME
+        - name: PLUGIN_VERSION
+          valueFrom:
+            configMapKeyRef:
+              name: stripe-plugin-config
+              key: PLUGIN_VERSION
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: stripe-plugin-config
+              key: PORT
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: stripe-plugin-config
+              key: NODE_ENV
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: stripe-plugin-config
+              key: LOG_LEVEL
+        
+        # Secrets
+        - name: STRIPE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stripe-plugin-secrets
+              key: STRIPE_SECRET_KEY
+        - name: STRIPE_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: stripe-plugin-secrets
+              key: STRIPE_WEBHOOK_SECRET
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: stripe-plugin-secrets
+              key: DATABASE_URL
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: stripe-plugin-secrets
+              key: REDIS_URL
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: stripe-plugin-secrets
+              key: JWT_SECRET
+        
+        # Health Checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 3001
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        
+        # Resource Limits
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        
+        # Security Context
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        
+        # Volume Mounts
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: logs
+          mountPath: /app/logs
+      
+      # Volumes
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      
+      # Pod Security
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsUser: 1000
+      
+      # Restart Policy
+      restartPolicy: Always
+      
+      # DNS Policy
+      dnsPolicy: ClusterFirst
+
+---
+# Service for Stripe Payment Plugin
+apiVersion: v1
+kind: Service
+metadata:
+  name: stripe-payment-plugin-service
+  namespace: jiffoo-plugins
+  labels:
+    app: stripe-payment-plugin
+    component: service
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 3001
+    protocol: TCP
+  - name: metrics
+    port: 4001
+    targetPort: 4001
+    protocol: TCP
+  selector:
+    app: stripe-payment-plugin
+
+---
+# ServiceMonitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: stripe-payment-plugin-monitor
+  namespace: jiffoo-plugins
+  labels:
+    app: stripe-payment-plugin
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: stripe-payment-plugin
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+
+---
+# HorizontalPodAutoscaler for Auto Scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: stripe-payment-plugin-hpa
+  namespace: jiffoo-plugins
+  labels:
+    app: stripe-payment-plugin
+    component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: stripe-payment-plugin
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+
+---
+# PodDisruptionBudget for High Availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: stripe-payment-plugin-pdb
+  namespace: jiffoo-plugins
+  labels:
+    app: stripe-payment-plugin
+    component: availability
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: stripe-payment-plugin
+
+---
+# NetworkPolicy for Security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: stripe-payment-plugin-netpol
+  namespace: jiffoo-plugins
+  labels:
+    app: stripe-payment-plugin
+    component: security
+spec:
+  podSelector:
+    matchLabels:
+      app: stripe-payment-plugin
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from Kong API Gateway
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: jiffoo-infrastructure
+    - podSelector:
+        matchLabels:
+          app: kong
+    ports:
+    - protocol: TCP
+      port: 3001
+  # Allow traffic from Prometheus
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: jiffoo-monitoring
+    - podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: 4001
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow database access
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: jiffoo-infrastructure
+    - podSelector:
+        matchLabels:
+          app: postgresql
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow Redis access
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: jiffoo-infrastructure
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow Stripe API access
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443

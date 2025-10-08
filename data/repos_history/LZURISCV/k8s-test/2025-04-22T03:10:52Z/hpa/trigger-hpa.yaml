@@ -1,0 +1,25 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: trigger-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: trigger-service
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 50
+  behavior:  # 新增缩容加速配置
+    scaleDown:
+      stabilizationWindowSeconds: 60  # 缩容稳定窗口改为 1 分钟
+      policies:
+      - type: Percent
+        value: 50       # 单次最多缩减 50% 的 Pod
+        periodSeconds: 30  # 每 30 秒检测一次

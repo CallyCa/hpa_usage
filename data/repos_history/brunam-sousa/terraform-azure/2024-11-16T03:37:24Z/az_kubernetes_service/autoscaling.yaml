@@ -1,0 +1,21 @@
+# in order for autoscaling to work, a CPU limit must be defined for the containers and pods in the deployment.
+# deploy this file after deploy the application and service
+apiVersion: autoscaling/v1 # V1 use just CPU metrics, V2 also use memory
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-app-ha
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-server
+  maxReplicas: 5
+  minReplicas: 2
+  metrics:
+  # automatically scale the deployment if the CPU usage increases to 60 percent
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60

@@ -1,0 +1,47 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-hpa
+spec:
+  scaleTargetRef:
+    # Target resource to scale
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-deployment
+  minReplicas: 2 # Minimum number of pods
+  maxReplicas: 10 # Maximum number of pods
+  metrics:
+  # Scaling metrics
+  - type: Resource
+    resource:
+      name: cpu # cpu | memory
+      target:
+        type: Utilization # Utilization | Value | AverageValue
+        averageUtilization: 70 # Target % of requested CPU
+  - type: Pods # Scale on per-pod metric
+    pods:
+      metric:
+        name: custom_metric
+      target:
+        type: AverageValue
+        averageValue: 10
+  - type: Object # Scale based on external object (e.g., queue length)
+    object:
+      describedObject:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: other-deployment
+      metric:
+        name: queue_length
+      target:
+        type: Value
+        value: 30
+
+# Notes:
+
+# Requires metrics-server or custom metrics API.
+# Supports multiple metric types:
+#   Resource → CPU/Memory.
+#   Pods → per-pod metric.
+#   Object → external object metric.
+#   External → metrics outside cluster (e.g., cloud service).

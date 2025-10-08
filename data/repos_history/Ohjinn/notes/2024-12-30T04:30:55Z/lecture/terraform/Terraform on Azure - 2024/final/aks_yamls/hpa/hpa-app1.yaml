@@ -1,0 +1,20 @@
+# hpa-app1.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: app1-autoscaler
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: app1                # 자동 스케일링할 Deployment 이름
+  minReplicas: 3              # 최소 Pod 개수
+  maxReplicas: 6              # 최대 Pod 개수
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70  # CPU 사용률이 70% 이상일 때 스케일링, 5로 줄여야 테스트 가능

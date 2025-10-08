@@ -1,0 +1,19 @@
+{{- if gt (.Values.maxReplicaCount | int) (.Values.replicaCount | int) }}
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  labels:
+    app: {{ include "demo.name" . }}
+    chart: {{ include "demo.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  name: {{ include "demo.fullname" . }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "demo.fullname" . }}
+  maxReplicas: {{ .Values.maxReplicaCount }}
+  minReplicas: {{ .Values.replicaCount }}
+  targetCPUUtilizationPercentage: {{ .Values.scalingMetrics.targetCPUUtilizationPercentage }}
+{{- end }}

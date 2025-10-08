@@ -1,0 +1,331 @@
+# Kubernetes Deployment for MerajutASA API Gateway (Week 4)
+# Enterprise API management and service mesh
+
+# API Gateway Core
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: merajutasa-api-gateway
+  labels:
+    app: merajutasa-api-gateway
+    app.kubernetes.io/name: merajutasa-api-gateway
+    app.kubernetes.io/part-of: merajutasa
+    app.kubernetes.io/component: api-gateway
+    app.kubernetes.io/version: v1
+    component: api-gateway
+    tier: infrastructure
+    version: v1
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: merajutasa-api-gateway
+  template:
+    metadata:
+      labels:
+        app: merajutasa-api-gateway
+        app.kubernetes.io/name: merajutasa-api-gateway
+        app.kubernetes.io/part-of: merajutasa
+        app.kubernetes.io/component: api-gateway
+        app.kubernetes.io/version: v1
+        component: api-gateway
+        tier: infrastructure
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8086"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: merajutasa-api-gateway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+      - name: api-gateway
+        image: merajutasa/api-gateway:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8086
+          name: http
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: API_GATEWAY_PORT
+          value: "8086"
+        - name: API_GATEWAY_HOST
+          value: "0.0.0.0"
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: merajutasa-config
+              key: log_level
+        - name: UPSTREAM_SIGNER
+          value: "http://merajutasa-signer:4601"
+        - name: UPSTREAM_CHAIN
+          value: "http://merajutasa-chain:4602"
+        - name: UPSTREAM_COLLECTOR
+          value: "http://merajutasa-collector:4603"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "300m"
+          limits:
+            memory: "1Gi"
+            cpu: "600m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8086
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8086
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8086
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: api-gateway-config
+          mountPath: /app/config
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: api-gateway-config
+        configMap:
+          name: api-gateway-config
+      - name: tmp
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+
+---
+# Service Mesh
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: merajutasa-service-mesh
+  labels:
+    app: merajutasa-service-mesh
+    app.kubernetes.io/name: merajutasa-service-mesh
+    app.kubernetes.io/part-of: merajutasa
+    app.kubernetes.io/component: service-mesh
+    app.kubernetes.io/version: v1
+    component: service-mesh
+    tier: infrastructure
+    version: v1
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: merajutasa-service-mesh
+  template:
+    metadata:
+      labels:
+        app: merajutasa-service-mesh
+        app.kubernetes.io/name: merajutasa-service-mesh
+        app.kubernetes.io/part-of: merajutasa
+        app.kubernetes.io/component: service-mesh
+        app.kubernetes.io/version: v1
+        component: service-mesh
+        tier: infrastructure
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8087"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: merajutasa-service-mesh
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+      - name: service-mesh
+        image: merajutasa/service-mesh:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8087
+          name: http
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: SERVICE_MESH_PORT
+          value: "8087"
+        - name: SERVICE_MESH_HOST
+          value: "0.0.0.0"
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: merajutasa-config
+              key: log_level
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "400m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8087
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8087
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      nodeSelector:
+        kubernetes.io/os: linux
+
+---
+# ServiceAccounts
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: merajutasa-api-gateway
+  labels:
+    app: merajutasa-api-gateway
+    app.kubernetes.io/name: merajutasa-api-gateway
+    app.kubernetes.io/part-of: merajutasa
+    app.kubernetes.io/component: api-gateway
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: merajutasa-service-mesh
+  labels:
+    app: merajutasa-service-mesh
+    app.kubernetes.io/name: merajutasa-service-mesh
+    app.kubernetes.io/part-of: merajutasa
+    app.kubernetes.io/component: service-mesh
+
+---
+# Pod Disruption Budgets
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: merajutasa-api-gateway-pdb
+spec:
+  selector:
+    matchLabels:
+      app: merajutasa-api-gateway
+  maxUnavailable: 1
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: merajutasa-service-mesh-pdb
+spec:
+  selector:
+    matchLabels:
+      app: merajutasa-service-mesh
+  maxUnavailable: 1
+
+---
+# Horizontal Pod Autoscaler for API Gateway
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: merajutasa-api-gateway-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: merajutasa-api-gateway
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60

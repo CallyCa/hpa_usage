@@ -1,0 +1,61 @@
+# service watcher
+apiVersion: v1
+kind: Service
+metadata:
+  name: watcher
+  labels:
+    app: watcher
+spec:
+  ports:
+  - port: 80
+    targetPort: 8000
+  selector:
+    app: watcher
+    tier: backend
+    track: stable
+  type: LoadBalancer
+
+
+---
+# deployment watcher
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: watcher
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: watcher
+      tier: backend
+      track: stable
+  template:
+    metadata:
+      labels:
+        app: watcher
+        tier: backend
+        track: stable
+    spec:
+      containers:
+      - name: watcher
+        image: registry.digitalocean.com/rosyid/watcher:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 20m
+---
+# horizontal pod autoscaler watcher
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: watcher
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: watcher
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 50

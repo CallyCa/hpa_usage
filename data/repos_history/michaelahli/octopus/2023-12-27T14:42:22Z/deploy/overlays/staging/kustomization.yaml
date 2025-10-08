@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../base
+
+nameSuffix: -staging
+
+namespace: staging-octopus
+
+
+patchesStrategicMerge:
+- config.yaml
+labels:
+- includeSelectors: true
+  pairs:
+    app.kubernetes.io/environment: staging
+    app.kubernetes.io/instance: api-staging
+    app.kubernetes.io/name: api-staging

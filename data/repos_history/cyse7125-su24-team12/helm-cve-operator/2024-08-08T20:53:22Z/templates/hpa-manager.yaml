@@ -1,0 +1,27 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-manager
+  namespace: {{ .Values.namespace }}
+spec:
+    minReplicas: 1 
+    maxReplicas: 6
+    scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: cve-operator-controller-manager
+    metrics:
+      - type: Resource 
+        resource:
+          name: cpu
+          target: 
+            type: Utilization
+            averageUtilization: 80
+        #   targetAverageValue: 500m
+      - type: Resource
+        resource:
+          name: memory
+          target:
+            type: Utilization
+            averageUtilization: 80
+        #   targetAverageValue: 200Mi

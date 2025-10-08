@@ -1,0 +1,95 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mattailor-ai-prod
+  namespace: argocd
+  labels:
+    environment: production
+    app.kubernetes.io/name: mattailor-ai
+    team: platform
+    criticality: critical
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    notifications.argoproj.io/subscribe.on-deployed.slack: mattailor-production
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: mattailor-production
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: mattailor-production
+    notifications.argoproj.io/subscribe.on-deployed.email: production-alerts@mattailor.ai
+    notifications.argoproj.io/subscribe.on-health-degraded.email: production-alerts@mattailor.ai
+    notifications.argoproj.io/subscribe.on-sync-failed.email: production-alerts@mattailor.ai
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: mattailor-ai
+  source:
+    repoURL: https://github.com/your-org/mattailor-ai
+    targetRevision: main
+    path: k8s/overlays/prod
+    kustomize:
+      images:
+        - mattailor-ai-frontend:v1.0.0
+        - mattailor-ai-backend:v1.0.0
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mattailor-ai-prod
+  syncPolicy:
+    # Manual sync with strict controls for production
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+      - RespectIgnoreDifferences=true
+      - Replace=false  # Never use replace for production
+    managedNamespaceMetadata:
+      labels:
+        environment: production
+        app.kubernetes.io/name: mattailor-ai
+        pod-security.kubernetes.io/enforce: restricted
+        backup.velero.io/schedule: daily
+      annotations:
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/warn: restricted
+        deployment.kubernetes.io/rollback: allowed
+    retry:
+      limit: 2  # Limited retries for production
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 10m
+  revisionHistoryLimit: 20  # Keep more history for production
+  info:
+    - name: Description
+      value: "MatTailor AI Production Environment - Manual sync with approval gates"
+    - name: Owner
+      value: "DevOps Team & Platform Team"
+    - name: Documentation
+      value: "https://github.com/your-org/mattailor-ai/blob/main/PRODUCTION.md"
+    - name: Health Check URL
+      value: "https://mattailor.ai/health"
+    - name: Monitoring
+      value: "https://grafana.mattailor.ai/d/mattailor-ai"
+    - name: Incident Playbook
+      value: "https://wiki.mattailor.ai/incidents/production"
+  ignoreDifferences:
+    # Production-specific ignore differences
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # HPA manages replicas
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+      jsonPointers:
+        - /spec/targetRef/apiVersion
+        - /status
+    - group: networking.k8s.io
+      kind: Ingress
+      jsonPointers:
+        - /status/loadBalancer
+    - group: v1
+      kind: Secret
+      jsonPointers:
+        - /data  # Ignore secret data changes
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
+      jsonPointers:
+        - /spec/endpoints/0/interval

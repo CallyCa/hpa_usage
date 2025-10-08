@@ -1,0 +1,314 @@
+# Horizontal Pod Autoscaler for Compliance Service
+# Optimized for compliance workload patterns
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: compliance-service-hpa
+  namespace: rbi-compliance
+  labels:
+    app: compliance-service
+    component: autoscaling
+    environment: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: compliance-service
+  
+  minReplicas: 2
+  maxReplicas: 15
+  
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600  # 10 minutes - compliance workloads are less volatile
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 120
+      - type: Pods
+        value: 1
+        periodSeconds: 120
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 120  # 2 minutes
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Max
+  
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60  # Lower threshold for compliance processing
+  
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 75
+  
+  # Custom metric: Pending compliance tasks
+  - type: Pods
+    pods:
+      metric:
+        name: compliance_tasks_pending
+      target:
+        type: AverageValue
+        averageValue: "20"
+  
+  # Custom metric: Document processing queue
+  - type: Pods
+    pods:
+      metric:
+        name: document_processing_queue_depth
+      target:
+        type: AverageValue
+        averageValue: "10"
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: integration-gateway-hpa
+  namespace: rbi-compliance
+  labels:
+    app: integration-gateway
+    component: autoscaling
+    environment: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: integration-gateway
+  
+  minReplicas: 3
+  maxReplicas: 25  # Higher max for integration workloads
+  
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 180  # 3 minutes
+      policies:
+      - type: Percent
+        value: 30
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 30   # Fast scale up for integration spikes
+      policies:
+      - type: Percent
+        value: 200
+        periodSeconds: 30
+      - type: Pods
+        value: 5
+        periodSeconds: 30
+      selectPolicy: Max
+  
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  
+  # Banking API request rate
+  - type: Pods
+    pods:
+      metric:
+        name: banking_api_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "50"
+  
+  # Integration queue depth
+  - type: External
+    external:
+      metric:
+        name: integration_queue_depth
+        selector:
+          matchLabels:
+            queue: banking-integration
+      target:
+        type: AverageValue
+        averageValue: "100"
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: rbi-compliance
+  labels:
+    app: api-gateway
+    component: autoscaling
+    environment: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  
+  minReplicas: 3
+  maxReplicas: 30  # Highest scaling for gateway
+  
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 minutes
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 3
+        periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 30   # Very fast scale up
+      policies:
+      - type: Percent
+        value: 300
+        periodSeconds: 15
+      - type: Pods
+        value: 10
+        periodSeconds: 15
+      selectPolicy: Max
+  
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 75
+  
+  # Request rate (primary scaling metric for gateway)
+  - type: Pods
+    pods:
+      metric:
+        name: gateway_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "200"
+  
+  # Connection count
+  - type: Pods
+    pods:
+      metric:
+        name: gateway_active_connections
+      target:
+        type: AverageValue
+        averageValue: "500"
+  
+  # Response time
+  - type: Pods
+    pods:
+      metric:
+        name: gateway_response_time_p95
+      target:
+        type: AverageValue
+        averageValue: "100m"  # 100ms
+
+---
+# PrometheusRule for compliance and integration metrics
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: compliance-integration-scaling-rules
+  namespace: rbi-compliance
+spec:
+  groups:
+  - name: compliance.scaling
+    interval: 30s
+    rules:
+    - record: compliance_tasks_pending
+      expr: |
+        sum(compliance_tasks_total{status="pending"}) by (pod)
+    
+    - record: document_processing_queue_depth
+      expr: |
+        sum(document_processing_queue_size) by (pod)
+    
+    - record: banking_api_requests_per_second
+      expr: |
+        rate(banking_api_requests_total[1m])
+    
+    - record: integration_queue_depth
+      expr: |
+        redis_list_length{queue="banking-integration"}
+    
+    - record: gateway_requests_per_second
+      expr: |
+        rate(http_requests_total{job="api-gateway"}[1m])
+    
+    - record: gateway_active_connections
+      expr: |
+        sum(http_active_connections{job="api-gateway"}) by (pod)
+    
+    - record: gateway_response_time_p95
+      expr: |
+        histogram_quantile(0.95, 
+          rate(http_request_duration_seconds_bucket{job="api-gateway"}[1m])
+        )
+
+---
+# PodDisruptionBudgets for all services
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: compliance-service-pdb
+  namespace: rbi-compliance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: compliance-service
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: integration-gateway-pdb
+  namespace: rbi-compliance
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: integration-gateway
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: rbi-compliance
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: api-gateway

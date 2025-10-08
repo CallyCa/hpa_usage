@@ -1,0 +1,14 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: evidence-newsreader-hpa
+  labels:
+    app: evidence-newsreader
+spec:
+  scaleTargetRef:
+    apiVersion: extensions/v1beta1
+    kind: Deployment
+    name: evidence-newsreader
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 75

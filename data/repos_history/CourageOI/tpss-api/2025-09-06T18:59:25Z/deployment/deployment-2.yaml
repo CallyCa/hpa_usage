@@ -1,0 +1,154 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-stable
+  namespace: tpss
+spec:
+  selector:
+    app: tpss-rollout-demo
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: demo-canary
+#   namespace: tpss
+# spec:
+#   selector:
+#     app: tpss-rollout-demo
+#   ports:
+#     - name: http
+#       port: 80
+#       targetPort: 80
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tpss-deployment-demo
+  namespace: tpss
+  annotations:
+    sidecar.istio.io/inject: "true"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: tpss-demo
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
+      labels:
+        app: tpss-demo
+    spec:
+      containers:
+        - name: tpss-demo
+          image: nginx
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "20Mi"
+            limits:
+              cpu: "50m"
+              memory: "50Mi"
+
+---
+# apiVersion: argoproj.io/v1alpha1
+# kind: Rollout
+# metadata:
+#   name: tpss-rollout-demo
+#   annotations:
+#     sidecar.istio.io/inject: "true"
+# spec:
+#   revisionHistoryLimit: 3
+#   strategy:
+#     canary:
+#       trafficRouting:
+#         istio:
+#           virtualService:
+#             name: tpss-rollout-demo-vsvc
+#       canaryService: tpss-app-service-canary
+#       stableService: tpss-app-service-stable
+#       steps:
+#       - setWeight: 20
+#       - pause: {}
+#       - setWeight: 80
+#   selector:
+#     matchLabels:
+#       app: tpss-rollout-demo
+#   template:
+#     metadata:
+#       annotations:
+#         sidecar.istio.io/inject: "true"
+#       labels:
+#         app: tpss-rollout-demo
+#     spec:
+#       containers:
+#         - name: tpss-rollout-demo
+#           image: nginx
+#           ports:
+#           - containerPort: 80
+#           resources:
+#             requests:
+#               cpu: "0.02"
+#               memory: "20Mi"
+#             limits:
+#               cpu: ".05"
+#               memory: "50Mi"
+# ---
+# apiVersion: autoscaling/v1
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: hpa-tpss-rollout-demo
+# spec:
+#   maxReplicas: 5
+#   minReplicas: 1
+#   scaleTargetRef:
+#     apiVersion: argoproj.io/v1alpha1
+#     kind: Rollout
+#     name: tpss-rollout-demo
+#   targetCPUUtilizationPercentage: 10
+
+# ---
+# apiVersion: networking.istio.io/v1alpha3
+# kind: Gateway
+# metadata:
+#   name: tpss-rollout-demo-gateway
+# spec:
+#   selector:
+#     istio: ingressgateway # use istio default controller
+#   servers:
+#     - port:
+#         number: 80
+#         name: http
+#         protocol: HTTP
+#       hosts:
+#         - "*"
+# ---
+# apiVersion: networking.istio.io/v1alpha3
+# kind: VirtualService
+# metadata:
+#   name: tpss-rollout-demo-vsvc
+# spec:
+#   hosts:
+#     - "*"
+#   gateways:
+#     - tpss-rollout-demo-gateway
+#   http:
+#     - route:
+#         - destination:
+#             host: tpss-app-service-stable
+#             port:
+#               number: 80
+#           weight: 50
+#         - destination:
+#             host: tpss-app-service-canary
+#             port:
+#               number: 80
+#           weight: 50

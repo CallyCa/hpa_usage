@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: tts-${PROJECT_NAME}
+    service: ${PROJECT_NAME}
+    version: "${PROJECT_APP_VERSION}"
+    service_framework: nginx
+  annotations:
+    docker_tag: "${DOCKER_TAG}"
+  name: ${PROJECT_NAME}
+spec:
+  selector:
+    matchLabels:
+      app: tts-${PROJECT_NAME}
+  replicas: ${SCALE_MIN}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 2
+  template:
+    metadata:
+      labels:
+        app: tts-${PROJECT_NAME}
+        service: ${PROJECT_NAME}
+        version: "${PROJECT_APP_VERSION}"
+    spec:
+      containers:
+        - image: $CI_REGISTRY_IMAGE:$DOCKER_TAG
+          name: ${PROJECT_NAME}
+          envFrom:
+          - configMapRef:
+              name: ${PROJECT_NAME}
+          ports:
+          - name: http-api
+            containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+              httpHeaders:
+              - name: Content-Type
+                value: application/json
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: ${MEM_MIN}
+              cpu: ${CPU_MIN}
+            limits:
+              memory: ${MEM_MAX}
+              cpu: ${CPU_MAX}
+      restartPolicy: Always
+      imagePullSecrets:
+        - name: tts
+        - name: ecr
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: tts-${PROJECT_NAME}
+    service: ${PROJECT_NAME}
+  name: ${PROJECT_NAME}
+spec:
+  selector:
+    service: ${PROJECT_NAME}
+  ports:
+  - name: http-${PROJECT_NAME}
+    port: 80
+    targetPort: http-api
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ${PROJECT_NAME}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ${PROJECT_NAME}
+  minReplicas: ${SCALE_MIN}
+  maxReplicas: ${SCALE_MAX}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: 80
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: api-gateway
+spec:
+  selector:
+    istio: ingressgateway # use Istio default gateway implementation
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "api.thitruongsi.svc"
+
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: ${PROJECT_NAME}-services
+spec:
+  hosts:
+  - "api.thitruongsi.svc"
+  gateways:
+  - api-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /${PROJECT_NAME}/
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: ${PROJECT_NAME}
+        port:
+          number: 80

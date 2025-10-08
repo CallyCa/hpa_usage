@@ -1,0 +1,229 @@
+---
+kind: Template
+apiVersion: template.openshift.io/v1
+metadata:
+  name: ${NAME}
+  annotations:
+    openshift.io/display-name: Nestjs
+    description: nest-template
+    tags: instalacion,install,nestjs
+    iconClass: icon-java
+    openshift.io/long-description: Esta plantilla define los recursos necesarios para una aplicación SpringBoot, incluida una configuración de compilación y una configuración de implementación de la aplicación. No incluye una base de datos.
+    openshift.io/provider-display-name: Red Hat, Inc.
+    template.openshift.io/bindable: 'false'
+message: |-
+  Se han creado los siguientes servicios en su proyecto: ${NAME}.
+labels:
+  template: ${NAME}
+  app: ${NAME}
+objects:
+  - kind: Service
+    apiVersion: v1
+    metadata:
+      name: '${NAME}'
+      annotations:
+        description: Servicio que permite conexion hacia claropay y validar OTP
+    spec:
+      ports:
+        - name: 8080-tcp
+          port: 8080
+          protocol: TCP
+          targetPort: 8080
+      type: ClusterIP
+      selector:
+        name: '${NAME}'
+  - kind: Route
+    apiVersion: v1
+    metadata:
+      name: '${NAME}'
+    spec:
+      path: '/'
+      to:
+        kind: Service
+        name: '${NAME}'
+      port:
+        targetPort: 8080-tcp
+  - kind: ImageStream
+    apiVersion: v1
+    metadata:
+      name: '${NAME}'
+      annotations:
+        description: Realiza un seguimiento de los cambios en la imagen de la aplicación.
+  - kind: BuildConfig
+    apiVersion: v1
+    metadata:
+      name: '${NAME}'
+      annotations:
+        description: Define cómo construir la aplicación.
+        template.alpha.openshift.io/wait-for-ready: 'true'
+    spec:
+      source:
+        type: Binary
+      strategy:
+        dockerStrategy:
+          dockerfilePath: Dockerfile
+          env:
+            - name: 'PORT'
+              value: '8080'
+      output:
+        to:
+          kind: ImageStreamTag
+          name: '${NAME}:latest'
+      triggers:
+        - imageChange: {}
+          type: ImageChange
+        - type: ConfigChange
+  - kind: Secret
+    apiVersion: v1
+    metadata:
+      name: '${NAME}'
+    data:
+      MONGO_PASSWORD: cHc4ajZaVmFCaUdGcGg0Ng==
+  - kind: ConfigMap
+    apiVersion: v1
+    metadata:
+      name: '${NAME}'
+    data:
+      PORT: '8080'
+      TIMEOUT: '30000'
+      ELASTIC_APM_SERVER_URL: http://100.123.248.182:8200
+      ELASTIC_APM_ENVIRONMENT: 'CLAROPAYPROD-ARO'
+      ELASTIC_APM_ACTIVE: 'true'
+      API_TPAGA_URL: 'https://prod.wallet.tpaga.co/'
+      API_TPAGA_TOKEN: 'mak-fyyhzcawyvraysibfetpwobyokvhebsjzsqyurvtnotmgdnmgg'
+      MONGO_USERNAME: inh-nest-template
+      MONGO_HOSTNAME: clu-mongo-apimgm-prod01-pri.hovgc.mongodb.net
+      MONGO_SERVICENAME: DBSVCPaymentRegister_PR
+      VERSION: '1.0.0.0'
+  - kind: DeploymentConfig
+    apiVersion: apps.openshift.io/v1
+    metadata:
+      name: '${NAME}'
+      annotations:
+        description: Define cómo desplegar el servidor de aplicaciones.
+        template.alpha.openshift.io/wait-for-ready: 'true'
+      labels:
+        app: '${NAME}'
+        legado: MONGO-CLAROPAY
+        proyecto: CLAROPAY
+        subproyecto: BILLETERA-MOVIL-EXITO
+        tecnologia: NestJS
+    spec:
+      strategy:
+        type: Rolling
+        activeDeadlineSeconds: 21600
+        resources:
+          limits:
+            cpu: '${CPU_LIMIT}'
+            memory: '${MEMORY_LIMIT}'
+          requests:
+            cpu: '${CPU_LIMIT_REQUEST}'
+            memory: '${MEMORY_LIMIT_REQUEST}'
+        rollingParams:
+          intervalSeconds: 1
+          maxSurge: '${MAX_SURGE}'
+          maxUnavailable: '${MAX_UNAVAILABLE}'
+          timeoutSeconds: 300
+          updatePeriodSeconds: 1
+      triggers:
+        - type: ImageChange
+          imageChangeParams:
+            automatic: true
+            containerNames:
+              - ${NAME}
+            from:
+              kind: ImageStreamTag
+              name: '${NAME}:latest'
+        - type: ConfigChange
+      replicas: '${{MAX_REPLICAS}}'
+      selector:
+        name: '${NAME}'
+      template:
+        metadata:
+          name: '${NAME}'
+          labels:
+            name: '${NAME}'
+        spec:
+          containers:
+            - name: ${NAME}
+              image: ''
+              ports:
+                - containerPort: 8080
+                  protocol: 'TCP'
+              type: 'Recreate'
+              resources:
+                limits:
+                  cpu: '${CPU_LIMIT}'
+                  memory: '${MEMORY_LIMIT}'
+                requests:
+                  cpu: '${CPU_LIMIT_REQUEST}'
+                  memory: '${MEMORY_LIMIT_REQUEST}'
+              envFrom:
+                - configMapRef:
+                    name: '${NAME}'
+                - secretRef:
+                    name: '${NAME}'
+  - apiVersion: autoscaling/v1
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: ${NAME}
+    spec:
+      scaleTargetRef:
+        kind: DeploymentConfig
+        name: ${NAME}
+        apiVersion: apps.openshift.io/v1
+        subresource: scale
+      minReplicas: '${{MIN_REPLICAS}}'
+      maxReplicas: '${{MAX_REPLICAS}}'
+      targetCPUUtilizationPercentage: '${{CPU_TARGET_AVERAGE_UTILIZATION}}'
+parameters:
+  - name: NAME
+    displayName: Name
+    description: El nombre asignado a todos los objetos frontend definidos en esta plantilla.
+    required: true
+    value: 'nest-template'
+  - name: MEMORY_LIMIT
+    displayName: Memory Limit
+    description: Cantidad máxima de memoria que puede utilizar el contenedor.
+    required: true
+    value: 250Mi
+  - name: MEMORY_LIMIT_REQUEST
+    displayName: Memory Limit request
+    description: Cantidad minima de memoria que puede utilizar el contenedor.
+    required: true
+    value: 10Mi
+  - name: CPU_LIMIT
+    displayName: CPU Limit
+    description: Cantidad máxima de procesador que puede utilizar el contenedor.
+    required: true
+    value: 50m
+  - name: CPU_LIMIT_REQUEST
+    displayName: CPU Limit Request
+    description: Cantidad minima de procesador que puede utilizar el contenedor.
+    required: true
+    value: 10m
+  - name: MIN_REPLICAS
+    displayName: Minimo de Pods
+    description: Cantidad minima de pods.
+    required: true
+    value: '2'
+  - name: MAX_REPLICAS
+    displayName: Maximo de Pods
+    description: Cantidad maxima de pods.
+    required: true
+    value: '2'
+  - name: CPU_TARGET_AVERAGE_UTILIZATION
+    displayName: Porcentaje de la CPU solicitada
+    description: El porcentaje de la CPU solicitada que cada pod debería usar idealmente.
+    required: true
+    value: '70'
+  - name: MAX_SURGE
+    displayName: Max Oleada
+    description: Número máximo de pods que se pueden programar por encima del número original de pods.
+    required: true
+    value: 10%
+  - name: MAX_UNAVAILABLE
+    displayName: Max Disponibilidad
+    description: número máximo de pods que pueden no estar disponibles durante la actualización.
+    required: true
+    value: '5%'

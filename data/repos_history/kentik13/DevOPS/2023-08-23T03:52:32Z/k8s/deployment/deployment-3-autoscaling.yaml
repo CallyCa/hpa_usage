@@ -1,0 +1,54 @@
+#-------------------------------------------------------------
+# Manifest File to create Deployment with Labels and AutoScaling
+#
+# Copyleft (c) by Anton Dmytrenko 2023
+#-------------------------------------------------------------
+apiVersion : apps/v1
+kind: Deployment
+metadata:
+  name: my-web-deployment-autoscaling
+  labels:
+    app  : my-k8s-application
+    env  : prod
+    owner: AntonDmyreko
+spec:
+#  replicas: 2   # Don't need this anymore as we are using HorizontalPodAutoscaler
+  selector:
+    matchLabels:
+      project: sec
+  template:
+    metadata:
+      labels:
+        project: sec
+    spec:
+      containers:
+        - name : sec-web
+          image: kentik13/k8sphp:latest
+          ports:
+            - containerPort: 80
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-web-deployment-autoscaling
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

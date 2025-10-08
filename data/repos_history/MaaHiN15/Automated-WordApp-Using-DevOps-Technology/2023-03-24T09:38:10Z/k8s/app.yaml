@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordapp
+spec:
+  selector:
+    matchLabels:
+      app: wordapp
+  template:
+    metadata:
+      labels:
+        app: wordapp
+    spec:
+      containers:
+      - name: wordapp
+        image: maahin/wordapp:$DOCKER_IMAGE_TAG
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+        ports:
+        - containerPort: 4000
+        env:
+        - name: DB_URL
+          valueFrom:
+            configMapKeyRef:
+              name: wordapp-config
+              key: DB_URL
+        - name: API_KEY
+          valueFrom:
+            configMapKeyRef: 
+              name: wordapp-config
+              key: API_KEY
+        - name: API_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: wordapp-config
+              key: API_HOST
+        - name: SECRET_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: wordapp-config
+              key: SECRET_KEY        
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordapp-service
+  labels:
+    app: wordapp
+spec:
+  selector:
+    app: wordapp
+  type: NodePort
+  ports:
+  - name: wordapp-service-port
+    protocol: TCP
+    port: 4000
+    targetPort: 4000
+    nodePort: 30000
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: wordapp-monitor
+  labels:
+    release: kube-prom-stack
+    app: wordapp
+spec:
+  endpoints:    
+  - path: /metrics
+    port: wordapp-service-port
+    targetPort: 4000
+  namespaceSelector:
+    any: true
+  selector:
+    matchLabels:
+      app: wordapp
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordapp-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordapp
+  minReplicas: 1
+  maxReplicas: 3
+  behavior:
+    scaleDown:
+      policies:
+      - type: Percent
+        value: 20
+        periodSeconds: 30
+    scaleUp:
+      policies:
+      - type: Percent
+        value: 60
+        periodSeconds: 15
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+

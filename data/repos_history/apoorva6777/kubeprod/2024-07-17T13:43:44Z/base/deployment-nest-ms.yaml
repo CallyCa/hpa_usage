@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nest-ms-service-account
+  namespace: test_base_ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    eks.amazonaws.com/role-arn: arn:aws:iam::507831496546:role/dvss-dc-ap1-secrets-ssm-role
+--- 
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: aws-secrets
+  namespace: test_base_ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  provider: aws
+  parameters:
+    objects: |
+      - objectName: "dvss-dc-ap1-app-secrets-ssm-param-store"
+        objectType: "ssmparameter"
+        jmesPath: 
+          - path: db_host
+            objectAlias: DATABASE_HOST
+          - path: db_user
+            objectAlias: DATABASE_USER
+          - path: db_password
+            objectAlias: DATABASE_PASSWORD
+          - path: redis_password
+            objectAlias: REDIS_PASSWORD  
+          - path: redis_host
+            objectAlias: REDIS_HOST
+          - path: redis_port
+            objectAlias: REDIS_PORT
+
+---            
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nest-ms-deployment
+  namespace: test_base_ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  selector:
+    matchLabels:
+      app: nestapp
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: nestapp
+    spec:
+      imagePullSecrets:
+        - name: docker-registry-secret
+      serviceAccountName: nest-ms-service-account
+      volumes:
+        - name: aws-secrets-volume
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: aws-secrets
+      containers:
+      - name: nestapp
+        image: xyz/details-test:latest
+        ports:
+        - containerPort: 3000
+        resources:
+          limits:
+            cpu: "256m" 
+            memory: "512Mi"
+          requests:
+            cpu: "256m"
+            memory: "512Mi"
+        volumeMounts:
+        - name: aws-secrets-volume
+          mountPath: /mnt/secrets-store
+          readOnly: true
+  
+--- 
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nest-ms-deployment-hpa
+  namespace: test_base_ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource: 
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization  
+          averageUtilization: 70
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nest-ms-deployment
+
+

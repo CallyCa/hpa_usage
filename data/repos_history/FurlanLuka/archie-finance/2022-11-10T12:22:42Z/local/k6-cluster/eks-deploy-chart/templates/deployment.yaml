@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: 'archie-{{ .Values.service }}'
+  labels:
+    app: 'archie-{{ .Values.service }}'
+    tags.datadoghq.com/env: '{{ .Values.environment }}'
+    tags.datadoghq.com/service: 'archie-{{ .Values.service }}'
+    tags.datadoghq.com/version: '{{ .Values.tag }}'
+spec:
+  selector:
+    matchLabels:
+      app: 'archie-{{ .Values.service }}'
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: 'archie-{{ .Values.service }}'
+        tags.datadoghq.com/env: '{{ .Values.environment }}'
+        tags.datadoghq.com/service: 'archie-{{ .Values.service }}'
+        tags.datadoghq.com/version: '{{ .Values.tag }}'
+        helm-revision: '{{ .Release.Revision }}'
+    spec:
+      containers:
+        - name: 'archie-{{ .Values.service }}'
+          image: '{{ .Values.image }}:{{ .Values.tag }}'
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          livenessProbe:
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            httpGet:
+              path: /health
+              port: 80
+          resources:
+            requests:
+              memory: '64Mi'
+              cpu: '50m'
+          #            limits:
+          #              memory: '256Mi'
+          #              cpu: '500m'
+          env:
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_ENV
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/env']
+            - name: DD_VERSION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/version']
+            - name: DD_SERVICE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/service']
+            - name: DD_LOGS_INJECTION
+              value: 'true'
+      imagePullSecrets:
+        - name: regcred
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: 'archie-{{ .Values.service }}-service'
+  labels:
+    app: 'archie-{{ .Values.service }}-service'
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: 'archie-{{ .Values.service }}'

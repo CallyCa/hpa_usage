@@ -1,0 +1,89 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  labels:
+    app: sticky-demo-dev
+    tier: dev
+  name: sticky-demo-scaler-dev
+spec:
+  maxReplicas: 10
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sticky-demo-dev
+  targetCPUUtilizationPercentage: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: sticky-demo-dev
+    tier: dev
+  name: sticky-demo-dev
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: sticky-demo-dev
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: sticky-demo-dev
+    spec:
+      containers:
+        - image: yangxaipient/sticky-session-demo:latest
+          env:
+            - name: SCRIPT_NAME
+              value: /sticky-demo
+            - name: POD_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+          imagePullPolicy: Always
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 80
+            initialDelaySeconds: 5
+            timeoutSeconds: 2
+          name: main-container
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 80
+            initialDelaySeconds: 5
+            timeoutSeconds: 2
+          resources:
+            requests:
+              cpu: 100m
+              memory: 400Mi
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+  labels:
+    app: sticky-demo-dev
+    tier: dev
+  name: sticky-demo-dev-nodeport
+spec:
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 80
+  selector:
+    app: sticky-demo-dev
+  type: NodePort

@@ -1,0 +1,42 @@
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "gowiki"
+  namespace: "default"
+  labels:
+    app: "gowiki"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: "gowiki"
+  template:
+    metadata:
+      labels:
+        app: "gowiki"
+    spec:
+      containers:
+      - name: "gowiki-sha256-1"
+        image: "gcr.io/michelletandya-gke-dev/gowiki@sha256:2c984aabc5d5c4eaa780ada6778e5c1ba88394f0df26a8fb191df2dceccbff4e"
+---
+apiVersion: "autoscaling/v2beta1"
+kind: "HorizontalPodAutoscaler"
+metadata:
+  name: "gowiki-hpa-ef5o"
+  namespace: "default"
+  labels:
+    app: "gowiki"
+spec:
+  scaleTargetRef:
+    kind: "Deployment"
+    name: "gowiki"
+    apiVersion: "apps/v1"
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: "Resource"
+    resource:
+      name: "cpu"
+      targetAverageUtilization: 80
+

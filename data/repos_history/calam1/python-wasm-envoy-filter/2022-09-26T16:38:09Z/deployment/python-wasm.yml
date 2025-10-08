@@ -1,0 +1,186 @@
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: python-wasm
+  labels:
+    app: python-wasm
+    version: latest
+    app.kubernetes.io/name: python-wasm
+    app.kubernetes.io/version: latest
+  annotations:
+spec:
+  selector:
+    app: python-wasm
+  type: NodePort
+  ports:
+    - name: "http-python"
+      port: 80
+      targetPort: 5000
+      nodePort: 30000
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-wasm
+  annotations:
+  labels:
+    app: python-wasm
+    version: latest
+    app.kubernetes.io/name: python-wasm
+    app.kubernetes.io/version: latest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: python-wasm
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/statsInclusionPrefixes: local_rate_limit,cluster.inbound|80
+        # these are wasm annotations
+        sidecar.istio.io/userVolume: '[{"name":"new-filter","configMap": {"name": "new-filter"}}]'
+        sidecar.istio.io/userVolumeMount: '[{"mountPath":"/var/local/wasm","name":"new-filter"}]'
+      labels:
+        app: python-wasm
+        version: latest
+        app.kubernetes.io/name: python-wasm
+        app.kubernetes.io/version: latest
+    spec:
+      containers:
+      - name: python-wasm
+        image: python-wasm:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
+          name: "http-python"
+        resources:
+          limits:
+            cpu: 1.5
+            memory: "1Gi"
+          requests:
+            cpu: 50m
+            memory: "256Mi"
+        livenessProbe:
+          httpGet:
+            path: /health-check
+            port: 5000
+          initialDelaySeconds: 120
+          periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health-check
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 5
+        env:
+        - name: DD_AGENT_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: DD_SERVICE_NAME
+          value: python-wasm
+        - name: DD_TRACE_GLOBAL_TAGS
+          value: "env:"
+        - name: SERVER_PORT
+          value: "5000"
+      imagePullSecrets:
+      - name: resiliency-python-wasm-image-pull-secrets
+      # volumes:
+      # - name: filter
+      #   configMap: 
+      #     name: new-filter
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: python-wasm
+  labels:
+    app: python-wasm
+    version: latest
+    app.kubernetes.io/name: python-wasm
+    app.kubernetes.io/version: latest
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: python-wasm
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: 70
+
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  annotations:
+    type: internal
+  name: python-wasm
+  labels:
+    app: python-wasm
+    version: latest
+    app.kubernetes.io/name: python-wasm
+    app.kubernetes.io/version: latest
+spec:
+  selector:
+    istio: ilbgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "*"
+    tls:
+      mode: PASSTHROUGH
+      # mode: SIMPLE
+
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: python-wasm
+  labels:
+    app: python-wasm
+    version: latest
+    app.kubernetes.io/name: python-wasm
+    app.kubernetes.io/version: latest
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - python-wasm
+  http:
+  - route:
+    - destination:
+        port:
+          number: 80
+        host: python-wasm
+---
+
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: python-wasm
+  labels:
+    app: python-wasm
+    version: latest
+    app.kubernetes.io/name: python-wasm
+    app.kubernetes.io/version: latest
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: python-wasm

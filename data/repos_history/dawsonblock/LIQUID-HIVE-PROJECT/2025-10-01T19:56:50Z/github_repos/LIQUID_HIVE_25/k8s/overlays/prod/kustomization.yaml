@@ -1,0 +1,36 @@
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: liquid-hive
+
+bases:
+  - ../../base
+
+namePrefix: prod-
+
+patches:
+  - target:
+      kind: Deployment
+      name: liquid-hive-api
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 5
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: liquid-hive-api-hpa
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 5
+      - op: replace
+        path: /spec/maxReplicas
+        value: 20
+
+configMapGenerator:
+  - name: liquid-hive-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=INFO
+      - CORS_ALLOW_ORIGINS=https://liquid-hive.example.com

@@ -1,0 +1,451 @@
+# NOX API v8.0.0 Kubernetes Deployment Configuration
+# Blue-Green Deployment Strategy for Staging
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nox-api-deployment-green
+  namespace: nox-staging-green
+  labels:
+    app: nox-api
+    version: v8.0.0
+    environment: staging
+    deployment-color: green
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 2
+  selector:
+    matchLabels:
+      app: nox-api
+      version: v8.0.0
+      deployment-color: green
+  template:
+    metadata:
+      labels:
+        app: nox-api
+        version: v8.0.0
+        deployment-color: green
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: nox-api-service-account
+      containers:
+      - name: nox-api
+        image: nox-api:v8.0.0-staging
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        - containerPort: 3001
+          name: websocket
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "staging"
+        - name: API_VERSION
+          value: "8.0.0"
+        - name: PORT
+          value: "3000"
+        - name: WS_PORT
+          value: "3001"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: nox-api-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: nox-api-secrets
+              key: redis-url
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nox-api-secrets
+              key: secret-key
+        - name: GOOGLE_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: oauth-secrets
+              key: google-client-id
+        - name: GOOGLE_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth-secrets
+              key: google-client-secret
+        - name: GITHUB_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: oauth-secrets
+              key: github-client-id
+        - name: GITHUB_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth-secrets
+              key: github-client-secret
+        - name: MICROSOFT_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: oauth-secrets
+              key: microsoft-client-id
+        - name: MICROSOFT_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth-secrets
+              key: microsoft-client-secret
+        - name: AI_SECURITY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-security-secrets
+              key: api-key
+        # Performance optimization environment variables
+        - name: WEBVITALS_ENABLED
+          value: "true"
+        - name: CACHE_OPTIMIZATION_ENABLED
+          value: "true"
+        - name: WEBSOCKET_POOL_SIZE
+          value: "100"
+        - name: MAX_CONNECTIONS_PER_USER
+          value: "10"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        - name: temp-volume
+          mountPath: /tmp/nox
+        - name: logs-volume
+          mountPath: /app/logs
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: config-volume
+        configMap:
+          name: nox-api-config
+      - name: temp-volume
+        emptyDir:
+          sizeLimit: 1Gi
+      - name: logs-volume
+        emptyDir:
+          sizeLimit: 500Mi
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+
+---
+# Service Configuration for Green Deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: nox-api-service-green
+  namespace: nox-staging-green
+  labels:
+    app: nox-api
+    version: v8.0.0
+    deployment-color: green
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  ports:
+  - name: http
+    port: 80
+    targetPort: 3000
+    protocol: TCP
+  - name: websocket
+    port: 3001
+    targetPort: 3001
+    protocol: TCP
+  selector:
+    app: nox-api
+    version: v8.0.0
+    deployment-color: green
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nox-api-hpa-green
+  namespace: nox-staging-green
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nox-api-deployment-green
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+
+---
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nox-api-pdb-green
+  namespace: nox-staging-green
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: nox-api
+      version: v8.0.0
+      deployment-color: green
+
+---
+# Network Policy for Security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nox-api-network-policy
+  namespace: nox-staging-green
+spec:
+  podSelector:
+    matchLabels:
+      app: nox-api
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    - podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: 3000
+    - protocol: TCP
+      port: 3001
+  egress:
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+    - protocol: TCP
+      port: 6379  # Redis
+    - protocol: TCP
+      port: 443   # HTTPS
+    - protocol: TCP
+      port: 80    # HTTP
+    - protocol: UDP
+      port: 53    # DNS
+
+---
+# ConfigMap for Application Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nox-api-config
+  namespace: nox-staging-green
+data:
+  app.yaml: |
+    app:
+      name: "NOX API"
+      version: "8.0.0"
+      environment: "staging"
+      log_level: "info"
+      
+    server:
+      port: 3000
+      websocket_port: 3001
+      timeout: 30000
+      keepalive_timeout: 65000
+      
+    performance:
+      webvitals_enabled: true
+      cache_optimization: true
+      lazy_loading: true
+      bundle_optimization: true
+      
+    security:
+      ai_monitoring: true
+      rate_limiting: true
+      cors_enabled: true
+      
+    scientific_computing:
+      rdkit_enabled: true
+      psi4_enabled: true
+      cantera_enabled: true
+      xtb_enabled: true
+      
+    oauth:
+      providers:
+        - google
+        - github
+        - microsoft
+      multi_provider_enabled: true
+      
+  nginx.conf: |
+    upstream nox-api {
+        least_conn;
+        server 127.0.0.1:3000 max_fails=3 fail_timeout=30s;
+    }
+    
+    server {
+        listen 80;
+        server_name staging-api.yourdomain.com;
+        
+        # Security headers
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer-when-downgrade" always;
+        add_header Content-Security-Policy "default-src 'self'" always;
+        
+        # Performance optimizations
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+        
+        # WebSocket support
+        location /ws {
+            proxy_pass http://127.0.0.1:3001;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 86400;
+        }
+        
+        # API endpoints
+        location / {
+            proxy_pass http://nox-api;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # Timeouts
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+        }
+        
+        # Health check endpoint
+        location /health {
+            proxy_pass http://nox-api/health;
+            access_log off;
+        }
+    }
+
+---
+# Service Account for RBAC
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nox-api-service-account
+  namespace: nox-staging-green
+automountServiceAccountToken: true
+
+---
+# Role for Service Account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: nox-staging-green
+  name: nox-api-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nox-api-rolebinding
+  namespace: nox-staging-green
+subjects:
+- kind: ServiceAccount
+  name: nox-api-service-account
+  namespace: nox-staging-green
+roleRef:
+  kind: Role
+  name: nox-api-role
+  apiGroup: rbac.authorization.k8s.io

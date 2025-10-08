@@ -1,0 +1,226 @@
+# Public Website Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: public-website
+  namespace: remotehive
+  labels:
+    app: public-website
+    tier: frontend
+    version: "1.0"
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: public-website
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: public-website
+        tier: frontend
+        version: "1.0"
+    spec:
+      initContainers:
+      - name: wait-for-backend
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          until nc -z backend-api 8000; do
+            echo "Waiting for Backend API..."
+            sleep 2
+          done
+          echo "Backend API is ready!"
+      containers:
+      - name: public-website
+        image: remotehive/public-website:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        - name: VITE_API_URL
+          value: "https://api.remotehive.com"
+        - name: VITE_AUTOSCRAPER_URL
+          value: "https://scraper.remotehive.com"
+        - name: VITE_APP_URL
+          valueFrom:
+            configMapKeyRef:
+              name: remotehive-config
+              key: PUBLIC_URL
+        - name: VITE_ADMIN_URL
+          valueFrom:
+            configMapKeyRef:
+              name: remotehive-config
+              key: ADMIN_URL
+        - name: VITE_CLERK_PUBLISHABLE_KEY
+          value: "pk_test_your-clerk-publishable-key"
+        - name: VITE_ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: remotehive-config
+              key: ENVIRONMENT
+        volumeMounts:
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 30
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 101
+          runAsGroup: 101
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - NET_BIND_SERVICE
+      volumes:
+      - name: nginx-cache
+        emptyDir:
+          sizeLimit: 1Gi
+      - name: nginx-run
+        emptyDir:
+          sizeLimit: 100Mi
+      restartPolicy: Always
+---
+# Public Website Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: public-website
+  namespace: remotehive
+  labels:
+    app: public-website
+    tier: frontend
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  selector:
+    app: public-website
+    tier: frontend
+---
+# Public Website Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: public-website-hpa
+  namespace: remotehive
+  labels:
+    app: public-website
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: public-website
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Max
+---
+# Public Website Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: public-website-pdb
+  namespace: remotehive
+  labels:
+    app: public-website
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: public-website
+      tier: frontend
+---
+# Public Website CDN Service (for static assets)
+apiVersion: v1
+kind: Service
+metadata:
+  name: public-website-cdn
+  namespace: remotehive
+  labels:
+    app: public-website
+    component: cdn
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  selector:
+    app: public-website
+    tier: frontend

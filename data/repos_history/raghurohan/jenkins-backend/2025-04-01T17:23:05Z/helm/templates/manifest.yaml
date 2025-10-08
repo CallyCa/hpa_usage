@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend
+  namespace: expense
+data:
+  DB_HOST: {{ .Values.configmap.dbhost }}     # This should  the DNS name of the HEADLESS mysql service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: expense
+  labels:                # This is the label of the replicaset. This is used to identify the replicaset only.
+    app: nodejs             
+    tier: backend
+    project: expense
+spec:
+  replicas: 3               # Number of pods to be created
+  selector:
+    matchLabels:         # This should be the label of the pod to which this replicaset will manage          
+      app: nodejs             
+      tier: backend
+      project: expense
+  template:
+    metadata:
+      labels:             # (This is the label of the pod) this label should be same as matchLabels of selector  
+        app: nodejs             
+        tier: backend
+        project: expense     
+    spec:
+      containers:
+      - name: backend
+        image: {{ .Values.deployment.image }}:{{ .Values.deployment.imageversion }}  
+              # using "" is Safe in all cases:
+              # Prevents errors if a value is accidentally null.
+              # Handles special characters correctly.
+        envFrom:
+        - configMapRef:
+            name: backend
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: backend
+  namespace: expense
+spec:
+  selector:           # This is the label of the pod to which this service will route the traffic
+    app: nodejs             
+    tier: backend
+    project: expense    
+  ports:
+  - name: nodejs-service
+    port: {{ .Values.service.port }}         # Service Port , this is for other containers to communicate with nginx container
+    targetPort: 8080    # Container Port
+    protocol: TCP
+---
+
+#autoscaling
+
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend
+  namespace: expense
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: {{ Values.hpa.CPU }}

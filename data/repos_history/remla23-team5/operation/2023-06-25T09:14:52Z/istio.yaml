@@ -1,0 +1,249 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-service-v1
+  labels:
+    app: model-service
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: model-service
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: model-service
+        version: v1
+    spec:
+      containers:
+      - name: model-service
+        image: ghcr.io/remla23-team5/model-service:v0.0.12
+        ports:
+        - containerPort: 8080
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-v1
+  labels:
+    app: app
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: app
+        version: v1
+    spec:
+      containers:
+      - name: app
+        image: ghcr.io/remla23-team5/app:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: model_service_url
+          value: http://model-service-serv:1234/predict
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-v2
+  labels:
+    app: app
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: app
+        version: v2
+    spec:
+      containers:
+      - name: app
+        image: ghcr.io/remla23-team5/app:v2
+        ports:
+        - containerPort: 8000
+        env:
+        - name: model_service_url
+          value: http://model-service-serv:1234/predict
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+spec:
+  selector:
+    app: app
+  ports:
+    - name: http
+      port: 1234
+      targetPort: 8000
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-service-serv
+spec:
+  selector:
+    app: model-service
+  ports:
+    - name: http
+      port: 1234
+      targetPort: 8080
+
+---
+
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: app-destination-rule
+spec:
+  host: app
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+
+---
+
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: model-service-destination-rule
+spec:
+  host: model-service-serv
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+
+---
+
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: team5-gateway
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+
+---
+
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: team5-entry-service
+spec:
+  gateways:
+    - team5-gateway
+  hosts:
+  - "*"
+  http:
+  - match:
+    - headers:
+        version:
+          exact: v2
+    route:
+    - destination:
+        host: app
+        subset: v2
+  - match:
+    - headers:
+        version:
+          exact: v1
+    route:
+    - destination:
+        host: app
+        subset: v1
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: app
+        subset: v1
+      weight: 50
+    - destination:
+        host: app
+        subset: v2
+      weight: 50
+
+---
+
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: limit-app-service-local
+spec:
+  workloadSelector:
+    labels:
+      app: app
+  configPatches:
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: "envoy.filters.network.http_connection_manager"
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.local_ratelimit
+          typed_config:
+            "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+            type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+            value:
+              stat_prefix: http_local_rate_limiter
+              token_bucket:
+                max_tokens: 10
+                tokens_per_fill: 10
+                fill_interval: 60s
+              filter_enabled:
+                runtime_key: local_rate_limit_enabled
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              filter_enforced:
+                runtime_key: local_rate_limit_enforced
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              response_headers_to_add:
+                - append: false
+                  header:
+                    key: x-local-rate-limit
+                    value: 'true'

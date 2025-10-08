@@ -1,0 +1,236 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docker-cats-deployment-baby
+  namespace: docker-cats
+  labels:
+    app: docker-cats-baby
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: docker-cats-baby
+  template:
+    metadata:
+      labels:
+        app: docker-cats-baby
+    spec:
+      containers:
+      - name: baby
+        image: unfor19/docker-cats
+        ports:
+        - name: liveness-port
+          containerPort: 8080
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: liveness-port
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        startupProbe:
+          tcpSocket:
+            port: liveness-port
+          failureThreshold: 30
+          periodSeconds: 10
+        env:
+        - name: APP_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: docker-cats-configmap-baby
+              key: docker-cats-app
+        resources:
+          requests:
+            cpu: 100m
+            memory: "256Mi"
+          limits:
+            cpu: 200m
+            memory: "512Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docker-cats-deployment-green
+  namespace: docker-cats
+  labels:
+    app: docker-cats-green
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: docker-cats-green
+  template:
+    metadata:
+      labels:
+        app: docker-cats-green
+    spec:
+      containers:
+      - name: green
+        image: unfor19/docker-cats
+        ports:
+        - name: liveness-port
+          containerPort: 8080
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: liveness-port
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        startupProbe:
+          tcpSocket:
+            port: liveness-port
+          failureThreshold: 30
+          periodSeconds: 10
+        env:
+        - name: APP_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: docker-cats-configmap-green
+              key: docker-cats-app
+        resources:
+          requests:
+            cpu: 100m
+            memory: "256Mi"
+          limits:
+            cpu: 200m
+            memory: "512Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docker-cats-deployment-dark
+  namespace: docker-cats
+  labels:
+    app: docker-cats-dark
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: docker-cats-dark
+  template:
+    metadata:
+      labels:
+        app: docker-cats-dark
+    spec:
+      containers:
+      - name: dark
+        image: tunfor19/docker-cats
+        ports:
+        - name: liveness-port
+          containerPort: 8080
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: liveness-port
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        startupProbe:
+          tcpSocket:
+            port: liveness-port
+          failureThreshold: 30
+          periodSeconds: 10
+        env:
+        - name: APP_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: docker-cats-configmap-dark
+              key: docker-cats-app
+        resources:
+          requests:
+            cpu: 100m
+            memory: "256Mi"
+          limits:
+            cpu: 200m
+            memory: "512Mi"
+--- ### Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: docker-cats-service-baby
+  namespace: docker-cats
+spec:
+  selector:
+    app: docker-cats-baby
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: docker-cats-service-green
+  namespace: docker-cats
+spec:
+  selector:
+    app: docker-cats-green
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: docker-cats-service-dark
+  namespace: docker-cats
+spec:
+  selector:
+    app: docker-cats-dark
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+--- ### HPA
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: docker-cats-hpa-baby
+  namespace: docker-cats
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: docker-cats-deployment-baby
+  minReplicas: 1
+  maxReplicas: 2
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: docker-cats-hpa-green
+  namespace: docker-cats
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: docker-cats-deployment-green
+  minReplicas: 1
+  maxReplicas: 2
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: docker-cats-hpa-dark
+  namespace: docker-cats
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: docker-cats-deployment-dark
+  minReplicas: 1
+  maxReplicas: 2
+  targetCPUUtilizationPercentage: 50

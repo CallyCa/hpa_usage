@@ -1,0 +1,28 @@
+{{- if .Values.hpa.enabled -}}
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "app.name" . }}
+  {{- if .Values.namespaceOverride }}
+  namespace: {{ .Values.namespaceOverride }}
+  {{- end }}
+  {{- if .Values.hpa.labels }}
+  labels:
+    {{- toYaml .Values.hpa.labels | nindent 4 }}
+  {{- end }}
+  {{- if .Values.hpa.annotations }}
+  annotations:
+    {{- toYaml.Values.hpa.annotations | nindent 4 }}
+  {{- end }}
+spec:
+  scaleTargetRef:
+    {{- include "hpa.targetRef" . | nindent 4 }}
+  minReplicas: {{ .Values.app.replicas }}
+  maxReplicas: {{ include "app.maxReplicas" . }}
+  metrics:
+  {{ range .Values.hpa.metrics }}
+  - type: {{ .type }}
+    resource:
+      {{- toYaml .resource | nindent 6 }}
+  {{- end -}}
+{{- end -}}

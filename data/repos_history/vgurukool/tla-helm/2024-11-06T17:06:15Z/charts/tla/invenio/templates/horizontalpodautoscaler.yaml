@@ -1,0 +1,19 @@
+{{- if .Values.web.autoscaler.enabled }}
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  labels:
+    app: web
+    template: invenio-application
+  name: web
+spec:
+  maxReplicas: {{ .Values.web.autoscaler.max_web_replicas }}
+  minReplicas: {{ .Values.web.autoscaler.min_web_replicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web
+  targetCPUUtilizationPercentage: {{ .Values.web.autoscaler.scaler_cpu_utilization }}
+{{- end }}
+

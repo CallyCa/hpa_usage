@@ -1,0 +1,21 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hpa-deployment
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+
+#Como o HPA funciona
+#O HPA ajusta o número de réplicas para tentar manter a utilização de 
+#CPU próxima ao alvo definido no HPA, que no caso é targetCPUUtilizationPercentage: 50%.
+#Esse 50% refere-se à média de utilização de CPU em relação ao valor de requests.cpu.
+#Então, se os pods utilizarem consistentemente mais de 50% de seus recursos solicitados 
+#(no caso, 100 milicores de CPU para uma solicitação de 200 milicores), o HPA pode decidir 
+#escalar (aumentar o número de pods) para distribuir a carga de trabalho e manter a utilização 
+#de CPU dentro do alvo.

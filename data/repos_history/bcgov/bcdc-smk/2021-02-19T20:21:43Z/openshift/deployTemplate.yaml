@@ -1,0 +1,281 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: bcdc-smk-template
+labels:
+  app: bcdc-smk
+parameters:
+  - name: NAME
+    description: "base name for the all objects"
+    value: bcdcsmk
+  - name: ENV
+    description: "this is dev|test|prd"
+    value: dev
+  - name: "CONTAINER_SRC"
+    description: "path to the container/image stream"
+    value: docker.pkg.github.com/bcgov/bcdc-smk/bcdc-smk
+  - name: "CONTAINER_SRC_SECRET_NAME"
+    description: "name of the secret that is used to retrieve the container, require by github hosted packages (images)"
+    value: bcdcsmk-image-secret
+  - name: "DEPLOY_NAMESPACE"
+    description: "The namespace / project where the template is to be deployed"
+    value: dbc-kirk-tools
+  - name: "IMAGE_LABEL"
+    description: "the label that identifies what image to deploy"
+    value: "latest"
+  - name: "ROUTE_HOST"
+    description: "the route to be used when creating the Kong based route"
+    value: "bcdc-smk.data.gov.bc.ca"
+  - name: "GITHUB_PACKAGE_ACCESS_JSON_BASE64"
+    description: "The 64 bit encoded json with the secret defs for access to GITHUB packages"
+
+objects:
+  - kind: Secret
+    apiVersion: v1
+    data:
+      .dockerconfigjson: >-
+        ${GITHUB_PACKAGE_ACCESS_JSON_BASE64}
+    metadata:
+      name: ${CONTAINER_SRC_SECRET_NAME}
+      namespace: ${DEPLOY_NAMESPACE}
+    type: kubernetes.io/dockerconfigjson
+
+  - kind: "DeploymentConfig"
+    apiVersion: "v1"
+    metadata:
+      annotations:
+        openshift.io/generated-by: OpenShiftNewApp
+      generation: 4
+      labels:
+        app: ${NAME}-${ENV}-app
+      name: ${NAME}-${ENV}-dc
+      namespace: ${DEPLOY_NAMESPACE}
+    spec:
+      replicas: 2
+      revisionHistoryLimit: 10
+      selector:
+        app: ${NAME}-${ENV}-app
+        deploymentconfig: ${NAME}-${ENV}-dc
+      strategy:
+        activeDeadlineSeconds: 21600
+        resources: {}
+        rollingParams:
+          intervalSeconds: 1
+          maxSurge: 25%
+          maxUnavailable: 25%
+          timeoutSeconds: 600
+          updatePeriodSeconds: 1
+        
+        type: Rolling
+      template:
+        metadata:
+          annotations:
+            openshift.io/generated-by: OpenShiftNewApp
+          labels:
+            app: ${NAME}-${ENV}-app
+            deploymentconfig: ${NAME}-${ENV}-dc
+        spec:
+          containers:
+            - image: "${CONTAINER_SRC}:${IMAGE_LABEL}"
+              imagePullPolicy: IfNotPresent
+              livenessProbe:
+                failureThreshold: 3
+                httpGet:
+                  path: /
+                  port: 8080
+                  scheme: HTTP
+                initialDelaySeconds: 1
+                periodSeconds: 10
+                successThreshold: 1
+                timeoutSeconds: 7
+    
+              name: ${NAME}-${ENV}-app
+              ports:
+                - containerPort: 8080
+                  protocol: TCP
+              readinessProbe:
+                failureThreshold: 3
+                httpGet:
+                  path: /
+                  port: 8080
+                  scheme: HTTP
+                initialDelaySeconds: 1
+                periodSeconds: 10
+                successThreshold: 1
+                timeoutSeconds: 7
+        
+              resources: {}
+              terminationMessagePath: /dev/termination-log
+              terminationMessagePolicy: File
+          dnsPolicy: ClusterFirst
+          imagePullSecrets:
+            - name: ${CONTAINER_SRC_SECRET_NAME}
+          restartPolicy: Always
+          schedulerName: default-scheduler
+          securityContext: {}
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 1
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          terminationGracePeriodSeconds: 30
+      test: false
+      triggers:
+        - type: ConfigChange
+
+  - kind: "Service"
+    apiVersion: "v1"
+    metadata:
+      annotations:
+        openshift.io/generated-by: OpenShiftNewApp
+      labels:
+        app: ${NAME}-${ENV}-app
+      name: ${NAME}-${ENV}-svc
+      namespace: ${DEPLOY_NAMESPACE}
+    spec:
+      ports:
+        - name: 8080-tcp
+          port: 8080
+          protocol: TCP
+          targetPort: 8080
+      selector:
+        app: ${NAME}-${ENV}-app
+        deploymentconfig: ${NAME}-${ENV}-dc
+      sessionAffinity: None
+    
+  - kind: Route
+    apiVersion: v1
+    metadata:
+      labels:
+        app: ${NAME}-${ENV}-rt
+      name: ${NAME}-${ENV}-rt
+      namespace: ${DEPLOY_NAMESPACE}
+    spec:
+      port:
+        targetPort: 8080-tcp
+      tls:
+        termination: edge
+      to:
+        kind: Service
+        name: ${NAME}-${ENV}-svc
+        weight: 100
+      wildcardPolicy: None
+
+  - kind: Route
+    apiVersion: v1
+    metadata:
+      labels:
+        app: ${NAME}-${ENV}-extrt
+      name: ${NAME}-${ENV}-extrt
+      namespace: ${DEPLOY_NAMESPACE}
+    spec:
+      host: ${ROUTE_HOST}
+      port:
+        targetPort: 8080-tcp
+      tls:
+        termination: edge
+      to:
+        kind: Service
+        name: ${NAME}-${ENV}-svc
+        weight: 100
+      wildcardPolicy: None
+  
+
+  - kind: ServiceAccount
+    apiVersion: v1
+    metadata:
+      name: ${NAME}-${ENV}-sa
+      labels:
+        app: ${NAME}-${ENV}-sa
+      namespace: ${DEPLOY_NAMESPACE}
+    # secrets:
+    #   - name: gha-deploy-sa-token
+    #   - name: gha-deploy-sa-dockercfg
+    imagePullSecrets:
+      - name: gha-deploy-sa-dockercfg
+    #   - name: ${CONTAINER_SRC_SECRET_NAME}
+      
+
+  - kind: Role
+    apiVersion: v1
+    metadata:
+      name:  ${NAME}-${ENV}-role
+      namespace: ${DEPLOY_NAMESPACE}
+    rules:
+      - apiGroups:
+          - apps.openshift.io
+        resources:
+          - deploymentconfigs
+        verbs:
+          - get
+          - list
+          - create
+      - apiGroups:
+          - route.openshift.io
+        resources:
+          - routes
+        verbs:
+          - get
+          - list
+          - create
+
+  - kind: RoleBinding
+    apiVersion: v1
+    metadata:
+      name: ${NAME}-${ENV}-rb
+      namespace: ${DEPLOY_NAMESPACE}
+    roleRef:
+      kind: Role
+      name: ${NAME}-${ENV}-role
+      namespace: ${DEPLOY_NAMESPACE}
+    subjects:
+      - apiGroup: rbac.authorization.k8s.io
+        kind: ServiceAccount
+        name: ${NAME}-${ENV}-sa
+        namespace: ${DEPLOY_NAMESPACE}
+
+  - kind: RoleBinding
+    apiVersion: v1
+    metadata:
+      name: ${NAME}-${ENV}-edit-rb
+      namespace: ${DEPLOY_NAMESPACE}
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: edit
+    subjects:
+      - kind: ServiceAccount
+        name: ${NAME}-${ENV}-sa
+        apiGroup: rbac.authorization.k8s.io
+        namespace: ${DEPLOY_NAMESPACE}
+        
+  - apiVersion: autoscaling/v1
+    kind: HorizontalPodAutoscaler
+    metadata:
+      labels:
+        app: ${NAME}
+      name: bcdcsmk-dev-hpa
+      namespace: ${DEPLOY_NAMESPACE}
+    spec:
+      maxReplicas: 12
+      minReplicas: 2
+      scaleTargetRef:
+        apiVersion: v1
+        kind: DeploymentConfig
+        name:  ${NAME}-${ENV}-dc
+      targetCPUUtilizationPercentage: 85

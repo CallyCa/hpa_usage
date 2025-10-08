@@ -1,0 +1,17 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: prueba-go-argo-hpa
+  namespace: prueba-go-argo
+  labels:
+    app: prueba-go-argo
+    version: 0.0.1
+    backstage.io/kubernetes-id: prueba-go-argo
+spec:
+ scaleTargetRef:
+   apiVersion: apps/v1
+   kind: Deployment
+   name: prueba-go-argo
+ minReplicas: 1
+ maxReplicas: 4
+ targetCPUUtilizationPercentage: 75

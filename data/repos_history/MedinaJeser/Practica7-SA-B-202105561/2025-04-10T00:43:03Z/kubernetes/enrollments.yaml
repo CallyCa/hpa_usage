@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: enrollments-ms-deployment
+  namespace: sa-p7
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: enrollments-ms
+  template:
+    metadata:
+      labels:
+        app: enrollments-ms
+    spec:
+      containers:
+        - name: enrollments-ms-container
+          image: jsrmedina/enrollments-ms:latest
+          ports:
+            - containerPort: 8002
+          env:
+            - name: DATABASE_URL
+              value: "mongodb+srv://admin-sa:sacluster00@clustersa.at5ngtq.mongodb.net/enrollments_ms?retryWrites=true&w=majority&appName=ClusterSA"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: enrollments-ms-service
+  namespace: sa-p7
+spec:
+  selector:
+    app: enrollments-ms
+  ports:
+    - protocol: TCP
+      port: 8002
+      targetPort: 8002
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: enrollments-ms-hpa
+  namespace: sa-p7
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: enrollments-ms-deployment
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80

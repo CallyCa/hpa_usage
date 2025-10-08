@@ -1,0 +1,25 @@
+# PARTE 5: HPA (Horizontal Pod Autoscaler)
+# =======================================
+# OBJETIVO: Crear un HPA para el deployment deploy-a
+# TAREAS:
+# 1. Definir el recurso HPA
+# 2. Configurar el target de CPU y el rango de réplicas
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: deploy-a-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: deploy-a
+  minReplicas: 1  # TODO: Cambiar si es necesario
+  maxReplicas: 3  # TODO: Cambiar si es necesario
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50  # TODO: Cambiar el porcentaje de CPU 

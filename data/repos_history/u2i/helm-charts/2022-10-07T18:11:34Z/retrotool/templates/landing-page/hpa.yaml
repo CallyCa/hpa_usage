@@ -1,0 +1,27 @@
+{{- if ne .Values.replicas.min .Values.replicas.max }}
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-landing-page-hpa
+  labels:
+    app.kubernetes.io/name: {{ include "retrotool-chart.name" . }}
+    helm.sh/chart: {{ include "retrotool-chart.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  maxReplicas: {{ .Values.landingPage.replicas.max }}
+  minReplicas: {{ .Values.landingPage.replicas.min }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}-landing-page-deployment
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: {{ .Values.landingPage.replicas.limits.cpu }}
+    - type: Resource
+      resource:
+        name: memory
+        targetAverageUtilization: {{ .Values.landingPage.replicas.limits.memory}}
+{{- end }}

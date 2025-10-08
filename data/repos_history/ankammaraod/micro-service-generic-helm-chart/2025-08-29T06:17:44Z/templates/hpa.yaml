@@ -1,0 +1,46 @@
+{{- $microServiceName := .Values.global.microServiceName }}
+{{- $memoryRequest := int (.Values.global.deployment.containers.memoryRequest | replace "Mi" "") }}
+{{- $memoryLimit := int (.Values.global.deployment.containers.memoryLimit | replace "Mi" "") }}
+{{- if .Values.global.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $microServiceName }}
+  {{- if .Values.global.labels }}
+  labels:
+    {{- include "janus.microservices.helm.labels" . | nindent 4 }}
+  {{- end }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $microServiceName }}
+  minReplicas: {{ .Values.global.hpa.minReplicas }}
+  maxReplicas: {{ .Values.global.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ printf "%.0f" (div (mulf .Values.global.hpa.costPerformanceConstant $memoryLimit) $memoryRequest) }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.global.hpa.scaleUpStabilizationWindowSeconds }}
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.global.hpa.scaleDownStabilizationWindowSeconds }}
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+{{- end }}

@@ -1,0 +1,39 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/vl
+    kind: Deployment
+    name: web-app
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          # the following is a percentage (%)
+          type: Utilization
+          averageUtilization: 90
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          # the following is a percentage (%)
+          type: Utilization
+          averageUtilization: 50
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 10
+      policies:
+        - type: Pod
+          value: 2
+          periodSeconds: 5
+    scaleDown:
+      stabilizationWindowSeconds: 20
+      policies:
+        - type: Pod
+          value: 1
+          periodSeconds: 5

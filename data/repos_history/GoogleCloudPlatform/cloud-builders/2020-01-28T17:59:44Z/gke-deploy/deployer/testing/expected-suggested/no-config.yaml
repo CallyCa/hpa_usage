@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: my-app
+  name: my-image
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-image
+  template:
+    metadata:
+      labels:
+        app: my-image
+        app.kubernetes.io/name: my-app
+    spec:
+      containers:
+      - image: index.docker.io/library/my-image  # Will be set to actual image before deployment
+        name: my-image
+
+
+---
+
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  labels:
+    app.kubernetes.io/name: my-app
+  name: my-image-hpa
+spec:
+  maxReplicas: 5
+  metrics:
+  - resource:
+      name: cpu
+      targetAverageUtilization: 80
+    type: Resource
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-image

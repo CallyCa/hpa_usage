@@ -1,0 +1,163 @@
+NAME: ui
+LAST DEPLOYED: Wed Nov 20 13:13:17 2024
+NAMESPACE: default
+STATUS: pending-install
+REVISION: 1
+HOOKS:
+---
+# Source: ui/templates/tests/test-connection.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "ui-test-connection"
+  labels:
+    app.kubernetes.io/name: ui
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['ui:8080']
+  restartPolicy: Never
+MANIFEST:
+---
+# Source: ui/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ui-service-account
+---
+# Source: ui/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ui-config
+data:
+  ENDPOINTS_ASSETS: http://assets:8080
+  ENDPOINTS_CARTS: http://carts:8080
+  ENDPOINTS_CATALOG: http://catalog:8080
+  ENDPOINTS_CHECKOUT: http://checkout:8080
+  ENDPOINTS_ORDERS: http://orders:8080
+  JAVA_OPTS: -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/urandom
+  SERVER_TOMCAT_ACCESSLOG_ENABLED: "true"
+---
+# Source: ui/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  labels:
+    app.kubernetes.io/name: ui
+spec:
+  type: NodePort
+  ports:
+    - port: 8888
+      targetPort: 8080
+      protocol: TCP
+      nodePort: 30090 # Only for NodePort, remove if using LoadBalancer
+  selector:
+    app.kubernetes.io/name: ui
+---
+# Source: ui/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui-deployment
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ui
+    spec:
+      serviceAccountName: ui-service-account      
+      containers:
+        - name: ui
+          image: "arsenet10/revive-ui:01"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SERVER_TOMCAT_ACCESSLOG_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: ui-config
+                  key: SERVER_TOMCAT_ACCESSLOG_ENABLED
+            - name: JAVA_OPTS
+              valueFrom:
+                configMapKeyRef:
+                  name: ui-config
+                  key: JAVA_OPTS
+            - name: ENDPOINTS_CATALOG
+              valueFrom:
+                configMapKeyRef:
+                  name: ui-config
+                  key: ENDPOINTS_CATALOG
+            - name: ENDPOINTS_CARTS
+              valueFrom:
+                configMapKeyRef:
+                  name: ui-config
+                  key: ENDPOINTS_CARTS
+            - name: ENDPOINTS_ORDERS
+              valueFrom:
+                configMapKeyRef:
+                  name: ui-config
+                  key: ENDPOINTS_ORDERS
+            - name: ENDPOINTS_CHECKOUT
+              valueFrom:
+                configMapKeyRef:
+                  name: ui-config
+                  key: ENDPOINTS_CHECKOUT
+            - name: ENDPOINTS_ASSETS
+              valueFrom:
+                configMapKeyRef:
+                  name: ui-config
+                  key: ENDPOINTS_ASSETS
+          # livenessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: http
+          # readinessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: http
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 200m
+              memory: 128Mi
+---
+# Source: ui/templates/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ui-hpa
+  labels:
+    app.kubernetes.io/name: ui
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ui-deployment
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    #
+
+NOTES:
+1. Get the application URL by running these commands:
+  export NODE_PORT=$(kubectl get --namespace default -o jsonpath="{.spec.ports[0].nodePort}" services ui)
+  export NODE_IP=$(kubectl get nodes --namespace default -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT

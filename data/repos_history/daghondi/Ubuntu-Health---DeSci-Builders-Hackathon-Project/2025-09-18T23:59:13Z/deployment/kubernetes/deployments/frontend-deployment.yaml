@@ -1,0 +1,208 @@
+# Ubuntu Health Frontend Deployment
+# React/Next.js application with Ubuntu philosophy integration
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ubuntu-health-frontend
+  namespace: ubuntu-health
+  labels:
+    app: ubuntu-health-frontend
+    component: frontend
+    ubuntu.philosophy: "i-am-because-we-are"
+    ubuntu.healing: "community-interface"
+    version: "1.0.0"
+  annotations:
+    ubuntu.community/description: "Frontend application serving Ubuntu Health community"
+    ubuntu.community/role: "User interface for community-driven healthcare"
+    ubuntu.wisdom/integration: "Ubuntu philosophy woven throughout user experience"
+spec:
+  replicas: 3  # Community resilience through multiple instances
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: ubuntu-health-frontend
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: ubuntu-health-frontend
+        component: frontend
+        ubuntu.philosophy: "i-am-because-we-are"
+        ubuntu.healing: "community-interface"
+      annotations:
+        ubuntu.community/pod-purpose: "Serving community health interface"
+        ubuntu.wisdom/quotes: "Rotating Ubuntu philosophy quotes in UI"
+    spec:
+      serviceAccountName: ubuntu-health-frontend
+      containers:
+      - name: ubuntu-health-frontend
+        image: ubuntu-health/frontend:1.0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: NEXT_PUBLIC_APP_NAME
+          value: "Ubuntu Health"
+        - name: NEXT_PUBLIC_UBUNTU_PHILOSOPHY
+          value: "I am because we are"
+        - name: NEXT_PUBLIC_API_URL
+          value: "https://api.ubuntu-health.org"
+        - name: NEXT_PUBLIC_SOLANA_NETWORK
+          value: "mainnet-beta"
+        - name: NEXT_PUBLIC_ELDER_COUNCIL_ADDRESS
+          valueFrom:
+            secretKeyRef:
+              name: ubuntu-health-secrets
+              key: elder-council-address
+        - name: NEXT_PUBLIC_UBUNTU_TREASURY_ADDRESS
+          valueFrom:
+            secretKeyRef:
+              name: ubuntu-health-secrets
+              key: ubuntu-treasury-address
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/ready
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: ubuntu-wisdom-content
+          mountPath: /app/ubuntu-wisdom
+          readOnly: true
+        - name: cultural-assets
+          mountPath: /app/cultural-assets
+          readOnly: true
+        - name: frontend-logs
+          mountPath: /app/logs
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: ubuntu-wisdom-content
+        configMap:
+          name: ubuntu-wisdom-content
+      - name: cultural-assets
+        configMap:
+          name: ubuntu-cultural-assets
+      - name: frontend-logs
+        emptyDir: {}
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      
+---
+# Ubuntu Health Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: ubuntu-health-frontend-service
+  namespace: ubuntu-health
+  labels:
+    app: ubuntu-health-frontend
+    component: frontend
+    ubuntu.philosophy: "i-am-because-we-are"
+  annotations:
+    ubuntu.community/service-purpose: "Frontend service for Ubuntu Health community"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: ubuntu-health-frontend
+    component: frontend
+    
+---
+# Ubuntu Health Frontend ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ubuntu-health-frontend
+  namespace: ubuntu-health
+  labels:
+    app: ubuntu-health-frontend
+    component: frontend
+    ubuntu.philosophy: "i-am-because-we-are"
+  annotations:
+    ubuntu.community/account-purpose: "Service account for frontend community access"
+    
+---
+# Ubuntu Health Frontend HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ubuntu-health-frontend-hpa
+  namespace: ubuntu-health
+  labels:
+    app: ubuntu-health-frontend
+    component: frontend
+    ubuntu.philosophy: "i-am-because-we-are"
+  annotations:
+    ubuntu.community/scaling-philosophy: "Scale with community needs, Ubuntu-style"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ubuntu-health-frontend
+  minReplicas: 2  # Always maintain community presence
+  maxReplicas: 10  # Scale with community growth
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Gentle scaling down for community stability
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60   # Quick scaling up for community needs
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30

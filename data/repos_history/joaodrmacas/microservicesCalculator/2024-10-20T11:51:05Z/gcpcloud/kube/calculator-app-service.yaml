@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: calculator-app-service
+  labels:
+    app: calculator-app-service
+spec:
+  replicas: 1  # Number of pod replicas
+  selector:
+    matchLabels:
+      app: calculator-app-service
+  template:
+    metadata:
+      labels:
+        app: calculator-app-service
+    spec:
+      containers:
+        - name: calculator-app-service
+          image: joaomacas02/calculator-app-service:latest  # Ensure this image exists
+          ports:
+            - containerPort: 5000  # Port inside the container
+          env:
+            - name: SUM_SERVICE_URL
+              value: "http://sum-service:5000"  # Environment variable to access sum-service
+            - name: SUB_SERVICE_URL
+              value: "http://sub-service:5000"  # Environment variable to access sub-service
+            - name: MUL_SERVICE_URL
+              value: "http://mul-service:5000"  # Environment variable to access mul-service
+            - name: DIV_SERVICE_URL
+              value: "http://div-service:5000"  # Environment variable to access div-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: calculator-app-service
+spec:
+  selector:
+    app: calculator-app-service
+  ports:
+    - protocol: TCP
+      port: 5005  # External port to expose
+      targetPort: 5000  # Port inside the container
+  type: NodePort  # You can change this to LoadBalancer if needed

@@ -1,0 +1,109 @@
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: asm-ingressgateway
+spec:
+  selector:
+    asm: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+---
+# [START servicemesh_base_deployment_service_serviceaccount_asm_ingressgateway]
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: asm-ingressgateway
+# [END servicemesh_base_deployment_service_serviceaccount_asm_ingressgateway]
+---
+# [START servicemesh_base_deployment_service_deployment_asm_ingressgateway]
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: asm-ingressgateway
+spec:
+  selector:
+    matchLabels:
+      asm: ingressgateway
+  template:
+    metadata:
+      annotations:
+        inject.istio.io/templates: gateway
+      labels:
+        asm: ingressgateway
+    spec:
+      containers:
+      - name: istio-proxy
+        image: auto
+        env:
+        - name: ISTIO_META_UNPRIVILEGED_POD
+          value: "true"
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 2000m
+            memory: 1024Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - all
+          privileged: false
+          readOnlyRootFilesystem: true
+      securityContext:
+        fsGroup: 1337
+        runAsGroup: 1337
+        runAsNonRoot: true
+        runAsUser: 1337
+      serviceAccountName: asm-ingressgateway
+# [END servicemesh_base_deployment_service_deployment_asm_ingressgateway]
+---
+# [START servicemesh_base_deployment_service_service_asm_ingressgateway]
+apiVersion: v1
+kind: Service
+metadata:
+  name: asm-ingressgateway
+  annotations:
+    cloud.google.com/neg: '{"exposed_ports": {"80":{}}}'
+  labels:
+    asm: ingressgateway
+spec:
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+  selector:
+    asm: ingressgateway
+  type: ClusterIP
+# [END servicemesh_base_deployment_service_service_asm_ingressgateway]
+---
+# [START servicemesh_base_deployment_service_hpa_asm_ingressgateway]
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: asm-ingressgateway
+spec:
+  maxReplicas: 5
+  minReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: asm-ingressgateway
+# [END servicemesh_base_deployment_service_hpa_asm_ingressgateway]

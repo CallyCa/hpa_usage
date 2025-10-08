@@ -1,0 +1,118 @@
+# Deployment to deploy helloworld application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-world
+  namespace: hello-world
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-world
+  template:
+    metadata:
+      labels:
+        app: hello-world
+    spec:
+      serviceAccountName: hello-world
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        kubernetes.io/os: linux
+      containers:
+        - name: hello-world
+          image: "<dockerrepo.io>/helloworld:v0.0.1"
+          imagePullPolicy: Always
+          command: [dotnet]
+          args: [HelloWorld.dll]
+          ports:
+            - name: web
+              containerPort: 5008              
+          resources: # CPU and memory limits for the application
+            limits:
+              cpu: 200m
+              memory: 1Gi
+            requests:
+              cpu: 200m
+              memory: 1Gi
+          livenessProbe: # Liveness probe to check the container health/ restart if probe fails
+            httpGet:
+              path: /status/connect
+              port: 5008
+            initialDelaySeconds: 1
+            timeoutSeconds: 2
+            periodSeconds: 2
+            failureThreshold: 5
+          readinessProbe: # Readiness probe for containers to wait to serve the traffic 
+            httpGet:
+              path: /status/connect
+              port: 5008
+            initialDelaySeconds: 1
+            timeoutSeconds: 2
+            periodSeconds: 2
+            failureThreshold: 5 
+
+---
+#Create namespace for hello world application
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: hello-world
+  labels:
+    name: hello-world
+    app: hello-world
+
+---
+#Create ServiceAccount for hello world application
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hello-world
+  namespace: hello-world
+
+---
+# Create Service for hello world application
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-world
+  namespace: hello-world
+  labels:
+    app: hello-world
+    version: v1
+spec:
+  type: LoadBalancer 
+  ports:
+    - port: 80
+      name: rest
+      targetPort: 5008
+  selector:
+    app: hello-world
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hello-world
+  namespace: hello-world
+  labels:
+    app: hello-world
+spec:
+  scaleTargetRef: 
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hello-world
+  minReplicas: 2
+  maxReplicas: 10
+  metrics: # Metrics to scale based on the CPU and memory utilization
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 60

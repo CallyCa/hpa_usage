@@ -1,0 +1,223 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8sgpt
+  namespace: default
+spec:
+  replicas: ${K8SGPT_HPA_MIN}
+  revisionHistoryLimit: ${K8SGPT_HPA_MAX}
+  selector:
+    matchLabels:
+      app: k8sgpt
+  # strategy:
+  #   type: RollingUpdate
+  #   rollingUpdate:
+  #     maxUnavailable: 1
+  #     maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: k8sgpt
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: k8sgpt-analyzer
+      automountServiceAccountToken: true
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: k8sgpt
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: k8sgpt
+      volumes:
+        - name: k8sgpt-config
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: k8sgpt-cache
+          emptyDir:
+            sizeLimit: 64Mi
+
+      # Auto-configure Gemini before the main container starts
+      initContainers:
+        - name: k8sgpt-auth-add
+          image: ghcr.io/k8sgpt-ai/k8sgpt:latest
+          env:
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: k8sgpt-secret
+                  key: GEMINI_API_KEY
+          volumeMounts:
+            - name: k8sgpt-config
+              mountPath: /home/nonroot/.config
+          command:
+            - /k8sgpt
+            - auth
+            - add
+            - --backend
+            - google
+            - --password
+            - $(GEMINI_API_KEY)
+            - --model
+            - gemini-2.5-flash
+
+        - name: k8sgpt-auth-default
+          image: ghcr.io/k8sgpt-ai/k8sgpt:latest
+          volumeMounts:
+            - name: k8sgpt-config
+              mountPath: /home/nonroot/.config
+          command:
+            - /k8sgpt
+            - auth
+            - default
+            - google
+
+      containers:
+        - name: k8sgpt
+          image: ghcr.io/k8sgpt-ai/k8sgpt:latest
+          imagePullPolicy: IfNotPresent
+          args: ["serve"]
+          # Optional (helps some libs): also expose key as GOOGLE_API_KEY env
+          env:
+            - name: K8SGPT_BACKEND
+              value: google
+            - name: K8SGPT_MODEL
+              value: gemini-2.5-flash
+            - name: GOOGLE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: k8sgpt-secret
+                  key: GEMINI_API_KEY
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 8081
+          volumeMounts:
+            - name: k8sgpt-config
+              mountPath: /home/nonroot/.config
+            - name: k8sgpt-cache
+              mountPath: /home/nonroot/.cache
+          # startupProbe:
+          #   httpGet:
+          #     path: /
+          #     port: http
+          #   failureThreshold: 24
+          #   periodSeconds: 5
+          #   timeoutSeconds: 2
+          # readinessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: http
+          #   initialDelaySeconds: 5
+          #   periodSeconds: 10
+          #   timeoutSeconds: 3
+          #   failureThreshold: 6
+          # livenessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: http
+          #   initialDelaySeconds: 30
+          #   periodSeconds: 20
+          #   timeoutSeconds: 3
+          #   failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8sgpt-service
+  namespace: default
+  labels:
+    app: k8sgpt
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8081"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: k8sgpt
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+    - name: metrics
+      port: 8081
+      targetPort: 8081
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: k8sgpt-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: k8sgpt
+  minReplicas: ${K8SGPT_HPA_MIN}
+  maxReplicas: ${K8SGPT_HPA_MAX}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: k8sgpt-pdb
+  namespace: default
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: k8sgpt

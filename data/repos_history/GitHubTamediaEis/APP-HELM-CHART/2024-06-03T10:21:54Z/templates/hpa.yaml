@@ -1,0 +1,31 @@
+{{- if and (.Values.scale.enabled) (ne .Values.scale.minReplicas .Values.scale.maxReplicas)}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  annotations: 
+    {{- toYaml .Values.metadata.hpaAnnotations | nindent 4 }}
+  name: {{ .Release.Name }}
+spec:
+  minReplicas: {{ .Values.scale.minReplicas }}
+  maxReplicas: {{ .Values.scale.maxReplicas }}
+  metrics:
+    {{- if ne (int .Values.scale.memoryThresholdPercentage) -1 }}
+    - resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.scale.memoryThresholdPercentage }}
+      type: Resource
+    {{- end }}
+    - resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.scale.cpuThresholdPercentage }}
+      type: Resource
+      
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}
+{{- end }}

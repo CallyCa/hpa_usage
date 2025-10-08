@@ -1,0 +1,20 @@
+{{- if .Values.autoscaling.currencyExchange.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "currency-services.fullname" . }}-currency-exchange
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "currency-services.fullname" . }}-currency-exchange
+  minReplicas: {{ .Values.autoscaling.currencyExchange.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.currencyExchange.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.currencyExchange.targetCPUUtilizationPercentage }}
+{{- end }}

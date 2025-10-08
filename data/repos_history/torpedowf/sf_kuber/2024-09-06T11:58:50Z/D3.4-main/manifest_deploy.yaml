@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-sf
+  labels:
+    app: web_server
+    owner: omg
+    description: web_server_for_site
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      project: myweb
+  template:
+    metadata:
+      labels:
+        project: myweb
+        owner: omg
+        description: web_server_pod
+    spec:
+      containers:
+        - name: nginx-sf
+          image: nginx:1.21.1-alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: config-nginx
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: auth-basic
+              mountPath: /etc/nginx/htpasswd
+              subPath: htpasswd
+          env:
+            - name: NGINX_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: sf-auth-nginx
+                  key: username.txt
+            - name: NGINX_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sf-auth-nginx
+                  key: password.txt
+      volumes:
+        - name: config-nginx
+          configMap:
+            name: nginx-base
+        - name: auth-basic
+          secret:
+            secretName: auth-basic
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-deploy-autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: myweb-autoscaling
+  minReplicas: 3
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

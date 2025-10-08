@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: expense  # Optional: specify your namespace here
+  labels:
+    app: frontend
+    env: dev
+spec:
+  replicas: 2  # Number of desired pods
+  selector:
+    matchLabels:
+      app: frontend
+      env: dev
+      
+  template:
+    metadata:
+      labels:
+        app: frontend
+        env: dev
+    spec:
+      containers:
+      - name: frontend
+        image: naveen6792/frontend:v1  # Specify the Docker image
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          # limits is greater than or equal to requests
+          limits:
+            cpu: 100m
+            memory: 128Mi
+        
+        
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: expense # Optional: specify your namespace here
+spec:
+  type: LoadBalancer  # Change to NodePort or LoadBalancer if needed
+  selector:
+     app: frontend
+     env: dev
+  ports:
+    - port: 80  # Port exposed by the service
+      targetPort: 80 # Port on the pod to forward traffic to
+      protocol: TCP
+
+
+---
+
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+ name: frontend
+ namespace: expense
+spec:
+ scaleTargetRef:
+   apiVersion: apps/v1
+   kind: Deployment
+   name: frontend
+ minReplicas: 1
+ maxReplicas: 10
+ targetCPUUtilizationPercentage: 15 # usually 75 in real environment            

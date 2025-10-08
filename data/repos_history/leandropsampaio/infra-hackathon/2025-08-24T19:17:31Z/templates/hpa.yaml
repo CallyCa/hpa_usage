@@ -1,0 +1,46 @@
+{{- if .Values.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Values.hpa.name }}
+  labels:
+    app: {{ .Values.app.name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Values.app.name }}
+  minReplicas: {{ .Values.hpa.minReplicas }}
+  maxReplicas: {{ .Values.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.metrics.cpu.averageUtilization }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.metrics.memory.averageUtilization }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.hpa.behavior.scaleUp.stabilizationWindowSeconds }}
+      selectPolicy: {{ .Values.hpa.behavior.scaleUp.selectPolicy }}
+      policies:
+        - type: Percent
+          value: {{ .Values.hpa.behavior.scaleUp.policies.percent.value }}
+          periodSeconds: {{ .Values.hpa.behavior.scaleUp.policies.percent.periodSeconds }}
+        - type: Pods
+          value: {{ .Values.hpa.behavior.scaleUp.policies.pods.value }}
+          periodSeconds: {{ .Values.hpa.behavior.scaleUp.policies.pods.periodSeconds }}
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.hpa.behavior.scaleDown.stabilizationWindowSeconds }}
+      selectPolicy: {{ .Values.hpa.behavior.scaleDown.selectPolicy }}
+      policies:
+        - type: Percent
+          value: {{ .Values.hpa.behavior.scaleDown.policies.percent.value }}
+          periodSeconds: {{ .Values.hpa.behavior.scaleDown.policies.percent.periodSeconds }}
+{{- end }}

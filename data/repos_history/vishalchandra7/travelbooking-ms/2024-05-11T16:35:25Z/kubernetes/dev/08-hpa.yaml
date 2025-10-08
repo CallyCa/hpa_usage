@@ -1,0 +1,17 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: dev-travelbooking-hpa
+  namespace: dev
+  labels:
+    env: dev
+    app: travelbooking-ms
+    layer: frontend
+spec:
+  maxReplicas: 5
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: extensions/v1beta1
+    kind: Deployment
+    name: dev-travelbooking-deployment
+  targetCPUUtilizationPercentage: 80

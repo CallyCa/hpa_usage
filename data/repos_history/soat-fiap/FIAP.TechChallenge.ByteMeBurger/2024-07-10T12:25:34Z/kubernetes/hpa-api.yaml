@@ -1,0 +1,25 @@
+# Copyright (c) 2024, Italo Pessoa (https://github.com/italopessoa)
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: deployment-api
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: ContainerResource
+      containerResource:
+        container: api-container
+        name: cpu
+        target:
+          averageUtilization: 50
+          type: Utilization

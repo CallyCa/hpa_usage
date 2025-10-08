@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mindbox-test #можно также вводить эти данные как переменные через {{ }} но не буду запариваться
+spec:
+  selector:
+    matchLabels:
+      app: mindbox-app
+  template:
+    metadata:
+      labels:
+        app: mindbox-app
+    spec:
+      affinity:
+        podAntiAffinity: # выполняем условие отказоустойчивости, чтобы поды не распределялись на одной ноде
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchLables:
+              app: mindbox-app
+      containers:
+      - name: mindbox-app
+        image: mindbox-test:latest # плейсхолдер docker-image нашего приложения
+        resources:
+          requests: # запрашиваем ресурсы по условию, чтобы под распределился на подходящую ноду
+            memory: "128M"
+            cpu: "100m"
+          limits:
+            memory: "140M" # взял чуть больше, чтобы контейнер не валился при каждом проке в системе больше 128М
+            cpu: "500m" # условие не дает конкретики поэтому беру с запасом ( на всякий случай )
+        ports:
+        - containerPort: 80 # указываем для информации какой порт будет слушать наш контейнер
+          protocol: TCP # зададим явно для информативности, т.к. по дефолту k8s подразумевает TCP
+        startupProbe: # проверям что под с приложением завелся успешно, если нет - убиваем под
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 1
+          failureThreshold: 5
+       
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mindbox-app
+  # изначально была идея взять 2 реплики, но возможна ситуация, что 2 пода будут на нодах в одной зоне где падение зоны приведет к недоступности 
+  minReplicas: 3  
+  maxReplicas: 6 # изначально хотел взять 5, но выход из строя зоны (2 пода) нагрузит сильно оставшиеся 3 пода
+  metrics:
+  - type: Resource # решил не считать память, т.к. по условию в нагрузке она всегда держит ровно 128М
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80

@@ -1,0 +1,83 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qotp
+  namespace: challenges
+  annotations:
+    cloud.google.com/backend-config: '{"default": "release-wave-2"}'
+    external-dns.alpha.kubernetes.io/hostname: "qotp.ctf.maplebacon.org"
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+    - name: leet
+      port: 1337
+      targetPort: 1337
+      protocol: TCP
+  selector:
+    app: qotp
+  sessionAffinity: ClientIP
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qotp
+  labels:
+    app: qotp
+  namespace: challenges
+spec:
+  selector:
+    matchLabels:
+      app: qotp
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: qotp
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node_pool
+                    operator: In
+                    values:
+                      - maplectf-node-pool
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      containers:
+        - name: qotp
+          image: gcr.io/maplectf-2022/qotp:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 1337
+              name: leet
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: qotp
+  namespace: challenges
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: qotp
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50

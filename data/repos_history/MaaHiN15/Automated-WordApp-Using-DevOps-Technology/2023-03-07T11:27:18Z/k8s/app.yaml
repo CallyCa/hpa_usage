@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordapp
+spec:
+  selector:
+    matchLabels:
+      app: wordapp
+  template:
+    metadata:
+      labels:
+        app: wordapp
+    spec:
+      containers:
+      - name: wordapp
+        image: maahin/wordapp:1.0
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        ports:
+        - containerPort: 4000
+        env:
+        - name: DB_URL
+          value: mongodb://maahin:admin@mongo-app:27017
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordapp-service
+spec:
+  selector:
+    app: wordapp
+  ports:
+  - port: 4000
+    targetPort: 4000
+

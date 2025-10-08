@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: project-api
+  namespace: gameai-prod
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: project-api
+  template:
+    metadata:
+      labels:
+        app: project-api
+    spec:
+      containers:
+      - name: project-api
+        image: genwatt/project-api:latest
+        ports:
+        - containerPort: 5001
+        envFrom:
+        - configMapRef:
+            name: gameai-config-prod
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-api
+  namespace: gameai-prod
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5001
+    targetPort: 5001
+  selector:
+    app: project-api

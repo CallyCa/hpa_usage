@@ -1,0 +1,33 @@
+{{- if .Values.chromeNode.enabled }}
+{{- if .Values.chromeNode.enableHPA }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "seleniumGrid.chromeNode.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels: &chrome_node_labels
+    app: selenium-chrome-node
+    app.kubernetes.io/name: selenium-chrome-node
+    {{- include "seleniumGrid.commonLabels" . | nindent 4 }}
+    {{- with .Values.chromeNode.labels }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.customLabels }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ template "seleniumGrid.chromeNode.fullname" . }}
+  minReplicas: 1
+  maxReplicas: {{ .Values.chromeNode.maxNodesHPA }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+{{- end  }}
+{{- end  }}

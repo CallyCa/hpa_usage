@@ -1,0 +1,452 @@
+# Advanced Horizontal and Vertical Pod Autoscaling Configuration
+# Combines HPA for scale-out and VPA for right-sizing
+
+---
+# KEDA Scaler for Advanced Event-Driven Autoscaling
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keda
+  
+---
+# Install KEDA CRDs and Controller (reference deployment)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keda-operator
+  namespace: keda
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keda-operator
+  template:
+    metadata:
+      labels:
+        app: keda-operator
+    spec:
+      containers:
+        - name: keda-operator
+          image: ghcr.io/kedacore/keda:2.12.0
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 8081
+              name: metrics
+          env:
+            - name: WATCH_NAMESPACE
+              value: ""
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "keda-operator"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+
+---
+# Advanced HPA for API Gateway with Custom Metrics
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa-advanced
+  namespace: microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 2
+  maxReplicas: 50
+  metrics:
+    # CPU-based scaling
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    
+    # Memory-based scaling  
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    
+    # Custom metric: Request rate
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"
+    
+    # Custom metric: Response time
+    - type: Pods
+      pods:
+        metric:
+          name: http_request_duration_p95_seconds
+        target:
+          type: AverageValue
+          averageValue: "500m"  # 500ms
+          
+    # External metric: Queue length
+    - type: External
+      external:
+        metric:
+          name: queue_length
+          selector:
+            matchLabels:
+              queue: "api-requests"
+        target:
+          type: Value
+          value: "10"
+
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 minutes
+      policies:
+        - type: Percent
+          value: 50  # Scale down max 50% of replicas
+          periodSeconds: 60
+        - type: Pods
+          value: 2   # Scale down max 2 pods
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60   # 1 minute
+      policies:
+        - type: Percent
+          value: 100  # Scale up max 100% of replicas
+          periodSeconds: 30
+        - type: Pods
+          value: 5    # Scale up max 5 pods
+          periodSeconds: 30
+
+---
+# VPA for API Gateway Resource Right-sizing
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: api-gateway-vpa
+  namespace: microservices
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  updatePolicy:
+    updateMode: "Auto"  # Auto-update resource requests/limits
+  resourcePolicy:
+    containerPolicies:
+      - containerName: api-gateway
+        mode: "Auto"
+        maxAllowed:
+          cpu: 2000m
+          memory: 4Gi
+        minAllowed:
+          cpu: 100m
+          memory: 128Mi
+        controlledResources: ["cpu", "memory"]
+        controlledValues: RequestsAndLimits
+
+---
+# KEDA ScaledObject for Queue-based Scaling
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: api-gateway-queue-scaler
+  namespace: microservices
+spec:
+  scaleTargetRef:
+    name: api-gateway
+  minReplicaCount: 2
+  maxReplicaCount: 100
+  cooldownPeriod: 300
+  pollingInterval: 30
+  triggers:
+    # Redis queue trigger
+    - type: redis
+      metadata:
+        address: redis:6379
+        listName: api_request_queue
+        listLength: '5'
+    
+    # Prometheus metric trigger
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
+        metricName: http_requests_rate
+        threshold: '100'
+        query: sum(rate(http_requests_total{service="api-gateway"}[5m]))
+    
+    # RabbitMQ trigger
+    - type: rabbitmq
+      metadata:
+        host: amqp://guest:guest@rabbitmq:5672/
+        queueName: api_requests
+        queueLength: '10'
+
+---
+# HPA for User Service with Advanced Metrics
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: user-service-hpa-advanced
+  namespace: microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: user-service
+  minReplicas: 1
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70
+    # Database connection scaling
+    - type: External
+      external:
+        metric:
+          name: database_connection_utilization
+        target:
+          type: Value
+          value: "80"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600  # 10 minutes - slower for database connections
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 120  # 2 minutes
+      policies:
+        - type: Pods
+          value: 3
+          periodSeconds: 60
+
+---
+# VPA for User Service
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: user-service-vpa
+  namespace: microservices
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: user-service
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: user-service
+        maxAllowed:
+          cpu: 1000m
+          memory: 2Gi
+        minAllowed:
+          cpu: 50m
+          memory: 64Mi
+
+---
+# HPA for Product Service
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: product-service-hpa-advanced
+  namespace: microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: product-service
+  minReplicas: 2
+  maxReplicas: 30
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+    # Search query rate scaling
+    - type: Pods
+      pods:
+        metric:
+          name: search_queries_per_second
+        target:
+          type: AverageValue
+          averageValue: "50"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 180
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 90
+    scaleUp:
+      stabilizationWindowSeconds: 90
+      policies:
+        - type: Percent
+          value: 200
+          periodSeconds: 45
+
+---
+# Cluster Autoscaler Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-autoscaler-config
+  namespace: kube-system
+data:
+  cluster_autoscaler_config.yaml: |
+    # Multi-cloud cluster autoscaler configuration
+    aws:
+      enabled: true
+      region: us-east-1
+      nodeGroups:
+        - name: "microservices-nodes"
+          minSize: 3
+          maxSize: 50
+          desiredCapacity: 5
+          instanceTypes: ["t3.medium", "t3.large", "t3.xlarge"]
+          spotEnabled: true
+          spotMaxPrice: "0.10"
+        - name: "microservices-compute-optimized"
+          minSize: 0
+          maxSize: 20
+          instanceTypes: ["c5.large", "c5.xlarge"]
+          spotEnabled: true
+          spotMaxPrice: "0.15"
+    
+    gcp:
+      enabled: true
+      region: us-central1
+      nodeGroups:
+        - name: "microservices-pool"
+          minSize: 2
+          maxSize: 40
+          machineType: "e2-standard-4"
+          preemptible: true
+        - name: "microservices-performance-pool"
+          minSize: 0
+          maxSize: 15
+          machineType: "c2-standard-4"
+          preemptible: false
+    
+    # Scaling policies
+    scaleDownEnabled: true
+    scaleDownDelayAfterAdd: 10m
+    scaleDownUnneededTime: 10m
+    scaleDownUtilizationThreshold: 0.5
+    maxNodeProvisionTime: 15m
+    
+    # Cost optimization
+    preferSpotInstances: true
+    maxSpotInstancePercentage: 70
+    balanceSimilarNodeGroups: true
+    skipNodesWithLocalStorage: false
+    skipNodesWithSystemPods: false
+
+---
+# Performance-based Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: microservices
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: user-service-pdb
+  namespace: microservices
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: user-service
+
+---
+# Predictive Scaling CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: predictive-scaling-analyzer
+  namespace: microservices
+spec:
+  schedule: "*/15 * * * *"  # Every 15 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: predictor
+              image: python:3.11-slim
+              command:
+                - python
+                - -c
+                - |
+                  import json
+                  import requests
+                  from datetime import datetime, timedelta
+                  
+                  # Query Prometheus for historical data
+                  prometheus_url = "http://prometheus.monitoring.svc.cluster.local:9090"
+                  
+                  # Analyze traffic patterns and predict scaling needs
+                  def predict_scaling():
+                      # Get current metrics
+                      query = "avg(rate(http_requests_total[5m]))"
+                      response = requests.get(f"{prometheus_url}/api/v1/query", 
+                                            params={"query": query})
+                      
+                      if response.status_code == 200:
+                          data = response.json()
+                          current_rate = float(data['data']['result'][0]['value'][1])
+                          
+                          # Simple prediction: if current rate > historical average * 1.5
+                          if current_rate > 100:  # Threshold for pre-scaling
+                              print(f"Recommending pre-scale: current rate {current_rate}")
+                              # Could trigger scaling annotation update here
+                          else:
+                              print(f"Normal traffic: {current_rate}")
+                  
+                  predict_scaling()
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+          restartPolicy: OnFailure

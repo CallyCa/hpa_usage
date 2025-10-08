@@ -1,0 +1,148 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: riley
+  labels:
+    app: riley
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: riley
+  template:
+    metadata:
+      labels:
+        app: riley
+    spec:
+      containers:
+      - name: riley-server
+        image: iad.ocir.io/${OCI_TENANCY}/riley-server:latest
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        env:
+        - name: RILEY_API_URL
+          valueFrom:
+            secretKeyRef:
+              name: riley-secrets
+              key: api-url
+        - name: RILEY_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: riley-secrets
+              key: client-id
+        - name: RILEY_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: riley-secrets
+              key: client-secret
+        volumeMounts:
+        - name: riley-data
+          mountPath: /opt/app/data
+        - name: riley-models
+          mountPath: /opt/app/models
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: riley-data
+        persistentVolumeClaim:
+          claimName: riley-data-pvc
+      - name: riley-models
+        persistentVolumeClaim:
+          claimName: riley-models-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: riley-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 443
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: riley
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: riley-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Gi
+  storageClassName: oci-block-volume
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: riley-models-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: oci-block-volume
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: riley-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: riley
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: riley-ingress
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - api.riley.oracle.cloud
+    secretName: riley-tls
+  rules:
+  - host: api.riley.oracle.cloud
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: riley-service
+            port:
+              number: 443

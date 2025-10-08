@@ -1,0 +1,76 @@
+auth:
+  adminUser: admin
+  adminPassword: admin123
+
+proxy: edge
+
+service:
+  type: nodePort
+  port: 80
+
+ingress:
+  enabled: true
+  annotations: 
+    alb.ingress.kubernetes.io/actions.ssl-redirect.type: "redirect"
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:eu-west-1:297071026656:certificate/b368021d-cc49-44b0-b471-c4f63b1d6d29"
+    alb.ingress.kubernetes.io/group.name: "datavisyn-test-eks"
+    alb.ingress.kubernetes.io/healthcheck-protocol: "HTTP"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/scheme: "internet-facing"
+    alb.ingress.kubernetes.io/security-groups: "sg-098eddc7f2cba9552,sg-0835829910c38d499"
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/subnets: "subnet-09369a52f175cfc67,subnet-03b7d9a6422c0a350,subnet-0abd28689a34bcbb9"
+    alb.ingress.kubernetes.io/target-type: "ip"
+  hosts:
+    - host: Keyclock.datavisyn.pro
+      paths:
+        - path: /
+          pathType: prefix
+  tls: []
+
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: mysecretpassword
+  primary:
+    persistence:
+      enabled: false
+      storageClass: gp2
+      size: 8Gi
+
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 250m
+  limits:
+    memory: 1Gi
+    cpu: 500m
+
+replicaCount: 1
+
+securityContext:
+  enabled: true
+  fsGroup: 1001
+  runAsUser: 1001
+
+containerSecurityContext:
+  enabled: true
+  runAsUser: 1001
+
+livenessProbe:
+  enabled: true
+readinessProbe:
+  enabled: true
+
+metrics:
+  enabled: false
+
+serviceAccount:
+  create: false
+  name: ""
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80

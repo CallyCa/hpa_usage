@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: channel-depl
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: channel
+  template:
+    metadata:
+      labels:
+        app: channel
+    spec:
+      containers:
+        - name: slack-channel-prod
+          image: gcr.io/ticketing-dev-281211/slack-channel-prod
+          env:
+            - name: MONGO_URI
+              value: mongodb://channel-mongo-srv:27017/channel
+            - name: JWT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: JWT_KEY
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: channel-srv
+  namespace: production
+spec:
+  type: ClusterIP
+  selector:
+    app: channel
+  ports:
+    - name: channel
+      protocol: TCP
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: channel-hpa
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: channel-depl
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: AverageValue
+        averageValue: 18000Mi

@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: visaas-prod-login-nodejs
+  labels:
+    app: visaas-prod-login-nodejs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: visaas-prod-login-nodejs
+  minReadySeconds: 60
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 5
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: visaas-prod-login-nodejs
+    spec:
+      containers:
+        - name: visaas-prod-login-nodejs
+          image: 759971283879.dkr.ecr.ap-south-1.amazonaws.com/login-nodejs:1.0.0-7
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: runfile
+              value: "login.server.mjs"
+          resources:
+            requests:
+              cpu: "75m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1024Mi"
+          volumeMounts:
+            - name: efs-storage
+              mountPath: /app/logs/
+      volumes:
+        - name: efs-storage
+          persistentVolumeClaim:
+            claimName: efs-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: visaas-prod-login-nodejs
+spec:
+  selector:
+    app: visaas-prod-login-nodejs
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+  type: ClusterIP
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: visaas-prod-login-nodejs-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: visaas-prod-login-nodejs
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 300
+        - type: Percent
+          value: 20
+          periodSeconds: 300

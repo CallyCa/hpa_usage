@@ -1,0 +1,28 @@
+{{- if .Values.radixworker.autoscaling.enabled }}
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "radix.fullname" . }}-worker
+  labels:
+    {{- include "radix.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "radix.fullname" . }}
+  minReplicas: {{ .Values.radixworker.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.radixworker.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.radixworker.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: {{ .Values.radixworker.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.radixworker.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        targetAverageUtilization: {{ .Values.radixworker.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,21 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: data-acquisition-hpa
+  namespace: default # Or your target namespace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: data-acquisition-service # Matches the name of your Data Acquisition Service Deployment
+  minReplicas: 1
+  maxReplicas: 3 # Adjust as needed
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        # Target 70% of the requested CPU.
+        # If request is 100m, HPA will scale up if average usage > 70m.
+        averageUtilization: 70

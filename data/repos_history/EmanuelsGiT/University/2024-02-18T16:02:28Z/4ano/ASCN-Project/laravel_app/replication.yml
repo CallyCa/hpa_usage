@@ -1,0 +1,34 @@
+---
+# Kubernetes HorizontalPodAutoscaler
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: laravel-scale
+  namespace: default 
+  labels:
+    app: laravel-scale
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: laravel-deployment
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+
+#apiVersion: autoscaling.k8s.io/v1
+#kind: VerticalPodAutoscaler
+#metadata:
+#  name: laravel-deployment
+#  namespace: default
+#  clusterName: ascn-cluster
+#spec:
+#  targetRef:
+#    kind: Deployment
+#    name: laravel-deployment
+#    apiVersion: apps/v1
+#  updatePolicy:
+#    updateMode: Auto
+#  resourcePolicy:
+#    containerPolicies: []

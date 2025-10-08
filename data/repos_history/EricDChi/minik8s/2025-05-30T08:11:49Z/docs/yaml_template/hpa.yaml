@@ -1,0 +1,28 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: test-hpa
+  namespace: default
+  #uid: "123e4567-e89b-12d3-a456-426614174000"
+  labels:
+    app: example-app
+spec:
+  minReplicas: 2
+  maxReplicas: 10
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: ReplicaSet #目标资源类型
+    metadata:
+      name: frontend1
+      namespace: default
+      #uid: "223e4567-e89b-12d3-a456-426614174001"
+  metrics:
+    cpuPercent: 60      # CPU利用率百分比 如果发现实际利用率高于阈值，就扩容，低于就缩容
+    memoryPercent: 40   # 内存利用率百分比
+# status: #内部监控时会使用，创建时不会有
+#   currentReplicas: 3
+#   currentMetrics:
+#     cpuUtilization: 65
+#     memoryUtilization: 75
+#     cpuPercent: 68.2
+#     memoryPercent: 78.5

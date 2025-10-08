@@ -1,0 +1,183 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "toae-console.fullname" . }}-router
+  labels:
+    {{- include "toae-console.labels" . | nindent 4 }}
+    name: {{ include "toae-console.fullname" . }}-router
+spec:
+  {{- if not .Values.router.autoscaling.enabled }}
+  replicas: {{ .Values.router.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "toae-console.selectorLabels" . | nindent 6 }}
+      name: {{ include "toae-console.fullname" . }}-router
+  template:
+    metadata:
+      {{- with .Values.router.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "toae-console.selectorLabels" . | nindent 8 }}
+        name: {{ include "toae-console.fullname" . }}-router
+    spec:
+      serviceAccountName: {{ include "toae-console.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.router.podSecurityContext | nindent 8 }}
+      containers:
+        - name: router
+          securityContext:
+            {{- toYaml .Values.router.securityContext | nindent 12 }}
+          image: "{{ .Values.global.imageRepoPrefix }}/{{ .Values.router.image.repository }}:{{ default .Values.global.imageTag .Values.router.image.tag }}"
+          imagePullPolicy: {{ .Values.router.image.pullPolicy }}
+          env:
+            - name: FORCE_HTTPS_REDIRECT
+              value: "{{ .Values.router.forceHttpsRedirect }}"
+            - name: UI_SERVICE_NAME
+              value: {{ include "toae-console.fullname" . }}-ui
+            - name: UI_SERVICE_PORT
+              value: {{ .Values.ui.service.port | quote }}
+            - name: API_SERVICE_HOST
+              value: {{ include "toae-console.fullname" . }}-server
+            - name: API_SERVICE_PORT
+              value: {{ .Values.server.service.port | quote }}
+            - name: TOAE_MINIO_HOST
+              value: {{ include "toae-console.fullname" . }}-file-server
+            - name: TOAE_MINIO_PORT
+              value: "9000"
+          envFrom:
+            - configMapRef:
+                name: "{{ include "toae-console.fullname" . }}-config"
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 10
+            successThreshold: 1
+          volumeMounts:
+            {{- if or .Values.router.tls.secretName (and .Values.router.tls.cert .Values.router.tls.key) }}
+            - name: certs
+              mountPath: /etc/toae/certs
+              readOnly: true
+            {{- end }}
+          resources:
+            {{- toYaml .Values.router.resources | nindent 12 }}
+      volumes:
+        {{- if .Values.router.tls.secretName }}
+        - name: certs
+          secret:
+            secretName: {{ .Values.router.tls.secretName }}
+        {{- else if and .Values.router.tls.cert .Values.router.tls.key }}
+        - name: certs
+          secret:
+            secretName: toae-router-tls
+        {{- end }}
+      {{- with .Values.router.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.router.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.router.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+{{- if or .Values.router.service.create .Values.ingress.enable }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "toae-console.fullname" . }}-router
+  labels:
+    {{- include "toae-console.labels" . | nindent 4 }}
+    name: {{ include "toae-console.fullname" . }}-router
+  {{- with .Values.router.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.router.service.type }}
+  ports:
+    - port: {{ .Values.router.service.httpsPort }}
+      targetPort: https
+      protocol: TCP
+      name: https
+    - port: {{ .Values.router.service.httpPort }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "toae-console.selectorLabels" . | nindent 4 }}
+    name: {{ include "toae-console.fullname" . }}-router
+{{- end }}
+---
+{{- if .Values.router.autoscaling.enabled }}
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "toae-console.fullname" . }}-router
+  labels:
+    {{- include "toae-console.labels" . | nindent 4 }}
+    name: {{ include "toae-console.fullname" . }}-router
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "toae-console.fullname" . }}-router
+  minReplicas: {{ .Values.router.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.router.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.router.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: {{ .Values.router.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.router.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        targetAverageUtilization: {{ .Values.router.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+---
+{{- if and .Values.router.tls.cert .Values.router.tls.key }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "toae-console.fullname" . }}-router-tls
+  labels:
+    {{- include "toae-console.labels" . | nindent 4 }}
+    name: {{ include "toae-console.fullname" . }}-router-tls
+type: kubernetes.io/tls
+data:
+  tls.crt: |-
+{{ .Values.router.tls.cert | b64enc | indent 4}}
+  tls.key: |-
+{{ .Values.router.tls.key | b64enc | indent 4}}
+{{- end }}

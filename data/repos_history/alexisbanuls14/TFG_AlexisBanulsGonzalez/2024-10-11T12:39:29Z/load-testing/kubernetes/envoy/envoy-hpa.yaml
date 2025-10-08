@@ -1,0 +1,13 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: envoy-hpa
+  namespace: load-testing
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: envoy-egress-proxy
+  minReplicas: 3
+  maxReplicas: 15
+  targetCPUUtilizationPercentage: 70

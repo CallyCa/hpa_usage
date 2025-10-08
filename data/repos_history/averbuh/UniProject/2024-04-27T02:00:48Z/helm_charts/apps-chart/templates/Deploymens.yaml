@@ -1,0 +1,90 @@
+apiVersion: apps/v1 #  for k8s versions before 1.9.0 use apps/v1beta2  and before 1.8.0 use extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.AppName }}
+      tier: {{ .Values.tier }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.AppName}}
+        tier: {{ .Values.tier }}
+    spec:
+      containers:
+      - name: {{ .Values.AppName }}
+        image: {{ .Values.ImageName }}:{{ .Values.tag }}
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+#        env:
+#        - name: GET_HOSTS_FROM
+#          value: dns
+          # If your cluster config does not include a dns service, then to
+          # instead access environment variables to find service host
+          # info, comment out the 'value: dns' line above, and uncomment the
+          # line below:
+          # value: env
+        ports:
+        - containerPort: 8080
+        - containerPort: 443
+        env:
+          - name: POSTGRES_USER
+            valueFrom:
+              secretKeyRef:
+                name: postgres-secret
+                key: POSTGRES_USER
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: postgres-secret 
+                key: POSTGRES_PASSWORD 
+          - name: POSTGRES_DB
+            valueFrom:
+              secretKeyRef:
+                name: postgres-secret 
+                key: POSTGRES_DB
+
+      imagePullSecrets:
+      - name: postgres-secret
+      - name: regcred
+
+---
+
+#apiVersion: apps/v1
+#kind: ReplicaSet
+#metadata:
+#  name: {{ .Release.Name }}
+#spec:
+#  replicas: {{ .Values.replicas }}
+#  selector:
+#    matchLabels:
+#      app: {{ .Values.AppName}}
+#  template:
+#    metadata:
+#      labels:
+#        app: {{ .Values.AppName}}
+#    spec:
+#      containers:
+#      - name: {{ .Values.AppName}}
+#        image: {{ .Values.ImageName }}
+
+
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  maxReplicas: {{ .Values.maxReplicas }}
+  minReplicas: {{ .Values.minReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}
+  targetCPUUtilizationPercentage: 50
+ 

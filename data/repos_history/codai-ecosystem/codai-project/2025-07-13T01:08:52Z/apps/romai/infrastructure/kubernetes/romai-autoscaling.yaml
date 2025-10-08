@@ -1,0 +1,476 @@
+# 📈 ROMAI Auto-Scaling Configuration
+# Horizontal and Vertical Pod Autoscaling for Production
+# Generated for Phase 4 Week 4 Day 25 - Cloud Deployment & Scaling
+
+# =============================================================================
+# 📊 Horizontal Pod Autoscaler - ROMAI API
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: romai-api-hpa
+  namespace: romai-production
+  labels:
+    app: romai-api
+    tier: backend
+    component: autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: romai-api
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  # CPU utilization target
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  # Memory utilization target
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # Custom metrics - requests per second
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "100"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 30
+      - type: Pods
+        value: 5
+        periodSeconds: 30
+      selectPolicy: Max
+---
+# =============================================================================
+# 📊 Horizontal Pod Autoscaler - ROMAI Dashboard
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: romai-dashboard-hpa
+  namespace: romai-production
+  labels:
+    app: romai-dashboard
+    tier: frontend
+    component: autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: romai-dashboard
+  minReplicas: 2
+  maxReplicas: 15
+  metrics:
+  # CPU utilization target
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  # Memory utilization target
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 75
+  # Custom metrics - concurrent users
+  - type: Pods
+    pods:
+      metric:
+        name: concurrent_users
+      target:
+        type: AverageValue
+        averageValue: "500"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 15
+        periodSeconds: 60
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      - type: Pods
+        value: 3
+        periodSeconds: 30
+      selectPolicy: Max
+---
+# =============================================================================
+# 📊 Horizontal Pod Autoscaler - ROMAI MCP
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: romai-mcp-hpa
+  namespace: romai-production
+  labels:
+    app: romai-mcp
+    tier: backend
+    component: autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: romai-mcp
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  # CPU utilization target
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 65
+  # Memory utilization target
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 75
+  # Custom metrics - MCP connections
+  - type: Pods
+    pods:
+      metric:
+        name: mcp_active_connections
+      target:
+        type: AverageValue
+        averageValue: "50"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 120
+      - type: Pods
+        value: 1
+        periodSeconds: 120
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Max
+---
+# =============================================================================
+# 📈 Vertical Pod Autoscaler - ROMAI API
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: romai-api-vpa
+  namespace: romai-production
+  labels:
+    app: romai-api
+    tier: backend
+    component: vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: romai-api
+  updatePolicy:
+    updateMode: "Auto"
+    minReplicas: 3
+  resourcePolicy:
+    containerPolicies:
+    - containerName: romai-api
+      minAllowed:
+        cpu: 100m
+        memory: 256Mi
+      maxAllowed:
+        cpu: 2000m
+        memory: 4Gi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+---
+# =============================================================================
+# 📈 Vertical Pod Autoscaler - ROMAI Dashboard
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: romai-dashboard-vpa
+  namespace: romai-production
+  labels:
+    app: romai-dashboard
+    tier: frontend
+    component: vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: romai-dashboard
+  updatePolicy:
+    updateMode: "Auto"
+    minReplicas: 2
+  resourcePolicy:
+    containerPolicies:
+    - containerName: romai-dashboard
+      minAllowed:
+        cpu: 50m
+        memory: 128Mi
+      maxAllowed:
+        cpu: 1000m
+        memory: 2Gi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+---
+# =============================================================================
+# 📈 Vertical Pod Autoscaler - ROMAI MCP
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: romai-mcp-vpa
+  namespace: romai-production
+  labels:
+    app: romai-mcp
+    tier: backend
+    component: vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: romai-mcp
+  updatePolicy:
+    updateMode: "Auto"
+    minReplicas: 2
+  resourcePolicy:
+    containerPolicies:
+    - containerName: romai-mcp
+      minAllowed:
+        cpu: 50m
+        memory: 128Mi
+      maxAllowed:
+        cpu: 1000m
+        memory: 2Gi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+---
+# =============================================================================
+# 🎯 Pod Disruption Budget - ROMAI API
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: romai-api-pdb
+  namespace: romai-production
+  labels:
+    app: romai-api
+    tier: backend
+    component: pdb
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: romai-api
+---
+# =============================================================================
+# 🎯 Pod Disruption Budget - ROMAI Dashboard
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: romai-dashboard-pdb
+  namespace: romai-production
+  labels:
+    app: romai-dashboard
+    tier: frontend
+    component: pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: romai-dashboard
+---
+# =============================================================================
+# 🎯 Pod Disruption Budget - ROMAI MCP
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: romai-mcp-pdb
+  namespace: romai-production
+  labels:
+    app: romai-mcp
+    tier: backend
+    component: pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: romai-mcp
+---
+# =============================================================================
+# 📊 Custom Metrics - ServiceMonitor for Prometheus
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: romai-metrics
+  namespace: romai-production
+  labels:
+    app: romai
+    tier: monitoring
+    component: metrics
+spec:
+  selector:
+    matchLabels:
+      metrics: enabled
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scheme: http
+  - port: http
+    interval: 30s
+    path: /health
+    scheme: http
+---
+# =============================================================================
+# 🔍 Prometheus Rules for Custom Metrics
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: romai-autoscaling-rules
+  namespace: romai-production
+  labels:
+    app: romai
+    tier: monitoring
+    component: rules
+spec:
+  groups:
+  - name: romai.autoscaling
+    interval: 30s
+    rules:
+    # HTTP requests per second
+    - record: romai:http_requests_per_second
+      expr: rate(http_requests_total{namespace="romai-production"}[5m])
+    
+    # Concurrent users
+    - record: romai:concurrent_users
+      expr: sum(websocket_connections{namespace="romai-production"}) by (pod)
+    
+    # MCP active connections
+    - record: romai:mcp_active_connections
+      expr: sum(mcp_connections_active{namespace="romai-production"}) by (pod)
+    
+    # API response time percentiles
+    - record: romai:api_response_time_p95
+      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{namespace="romai-production"}[5m]))
+    
+    # Error rate
+    - record: romai:error_rate
+      expr: rate(http_requests_total{namespace="romai-production",status=~"5.."}[5m]) / rate(http_requests_total{namespace="romai-production"}[5m])
+    
+    # CPU saturation
+    - record: romai:cpu_saturation
+      expr: (1 - rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100
+    
+    # Memory utilization
+    - record: romai:memory_utilization
+      expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+---
+# =============================================================================
+# 🚨 Alerting Rules for Auto-scaling Events
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: romai-autoscaling-alerts
+  namespace: romai-production
+  labels:
+    app: romai
+    tier: monitoring
+    component: alerts
+spec:
+  groups:
+  - name: romai.autoscaling.alerts
+    rules:
+    # High traffic alert
+    - alert: RomaiHighTraffic
+      expr: romai:http_requests_per_second > 500
+      for: 2m
+      labels:
+        severity: warning
+        component: autoscaler
+      annotations:
+        summary: "High traffic detected on ROMAI services"
+        description: "Request rate is {{ $value }} requests/second, scaling may be needed"
+    
+    # Pod scaling limit reached
+    - alert: RomaiPodScalingLimitReached
+      expr: kube_horizontalpodautoscaler_status_current_replicas{namespace="romai-production"} >= kube_horizontalpodautoscaler_spec_max_replicas{namespace="romai-production"}
+      for: 5m
+      labels:
+        severity: critical
+        component: autoscaler
+      annotations:
+        summary: "ROMAI pod scaling limit reached"
+        description: "{{ $labels.horizontalpodautoscaler }} has reached maximum replicas ({{ $value }})"
+    
+    # High error rate
+    - alert: RomaiHighErrorRate
+      expr: romai:error_rate > 0.05
+      for: 3m
+      labels:
+        severity: critical
+        component: api
+      annotations:
+        summary: "High error rate detected"
+        description: "Error rate is {{ $value | humanizePercentage }}, immediate investigation required"
+    
+    # Resource exhaustion warning
+    - alert: RomaiResourceExhaustion
+      expr: romai:cpu_saturation > 85 or romai:memory_utilization > 90
+      for: 5m
+      labels:
+        severity: warning
+        component: infrastructure
+      annotations:
+        summary: "Resource exhaustion warning"
+        description: "CPU: {{ $value }}% or Memory utilization is critically high"

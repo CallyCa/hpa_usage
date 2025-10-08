@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docker-asa-deployment
+spec:
+  replicas: 3  # Default number of replicas
+  selector:
+    matchLabels:
+      app: docker-asa-deployment
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: docker-asa-deployment
+    spec:
+      containers:
+      - name: docker-asa-deployment
+        image: docker-asa-image
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: "500m"  # Defines CPU limits for scaling
+          requests:
+            cpu: "250m"
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: docker-asa-pdb
+spec:
+  minAvailable: 3  # Minimum pods always available
+  selector:
+    matchLabels:
+      app: docker-asa-deployment
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: docker-asa-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: docker-asa-deployment
+  minReplicas: 3  # Minimum number of replicas
+  maxReplicas: 10  # Maximum number of replicas
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50  # The percentage threshold to scale pods
+

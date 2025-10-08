@@ -1,0 +1,330 @@
+{{#each (sortedK8sValue k8sValue.elements) as |value index|}}
+{{#if (equals (objectType value index) "Namespace")}}
+---
+apiVersion: "v1"
+kind: "{{value.object.kind}}"
+metadata: 
+  name: "{{value.object.metadata.name}}"
+  annotations: 
+    msaez.io/x: "1194"
+    msaez.io/y: "379"
+spec: 
+  finalizers: 
+    - "kubernetes"
+{{/if}}
+{{#if (equals (objectType value index) "Deployment")}}
+---
+apiVersion: "apps/v1"
+kind: "{{value.object.kind}}"
+metadata: 
+  name: "{{value.object.metadata.name}}"
+  labels: 
+    app: "{{value.object.metadata.name}}"
+  namespace: "{{value.object.metadata.namespace}}"
+  annotations: 
+    msaez.io/x: "775"
+    msaez.io/y: "556"
+spec: 
+  selector: 
+    matchLabels: 
+      app: "{{value.object.metadata.name}}"
+  replicas: 1
+  template: 
+    metadata: 
+      labels: 
+        app: "{{value.object.metadata.name}}"
+    spec: 
+      containers: 
+        - 
+          name: "{{value.object.metadata.name}}"
+          image: "{{value.object.spec.template.spec.containers.[0].image}}"
+          ports: 
+            - 
+              containerPort: 8080
+          readinessProbe: 
+            httpGet: 
+              path: "/actuator/health"
+              port: 8080
+            initialDelaySeconds: 10
+            timeoutSeconds: 2
+            periodSeconds: 5
+            failureThreshold: 10
+          livenessProbe: 
+            httpGet: 
+              path: "/actuator/health"
+              port: 8080
+            initialDelaySeconds: 120
+            timeoutSeconds: 2
+            periodSeconds: 5
+            failureThreshold: 5
+{{/if}}
+{{#if (equals (objectType value index) "Pod")}}
+---
+apiVersion: "v1"
+kind: "{{value.object.kind}}"
+metadata: 
+  name: "{{value.object.metadata.name}}"
+  labels: 
+    app: "{{value.object.metadata.name}}"
+  namespace: "{{value.object.metadata.namespace}}"
+  annotations: 
+    msaez.io/x: "1096"
+    msaez.io/y: "290"
+spec: 
+  containers: 
+    - 
+      name: "{{value.object.metadata.name}}"
+      image: "{{value.object.spec.containers.[0].image}}"
+      ports: 
+        - 
+          containerPort: 80
+{{/if}}
+{{#if (equals (objectType value index) "Service")}}
+---
+apiVersion: "v1"
+kind: "{{value.object.kind}}"
+metadata: 
+  name: "{{value.object.metadata.name}}"
+  labels: 
+    app: "{{value.object.metadata.name}}"
+  namespace: "{{value.object.metadata.namespace}}"
+  annotations: 
+    msaez.io/x: "775"
+    msaez.io/y: "356"
+spec: 
+  ports: 
+    - 
+      port: 8080
+      targetPort: 8080
+  selector: 
+    app: "{{value.object.metadata.name}}"
+
+{{/if}}
+{{#if (equals (objectType value index) "ReplicaSet")}}
+---
+apiVersion: "apps/v1"
+kind: "{{value.object.kind}}"
+metadata: 
+  name: "{{value.object.metadata.name}}"
+  labels: 
+    app: "{{value.object.metadata.name}}"
+  namespace: "{{value.object.metadata.namespace}}"
+  annotations: 
+    msaez.io/x: "1258"
+    msaez.io/y: "293"
+spec: 
+  replicas: 1
+  selector: 
+    matchLabels: 
+      app: "{{value.object.metadata.name}}"
+  template: 
+    metadata: 
+      labels: 
+        app: "{{value.object.metadata.name}}"
+    spec: 
+      containers: 
+        - 
+          name: "{{value.object.metadata.name}}"
+          image: "{{value.object.spec.template.spec.containers.[0].image}}"
+          ports: 
+            - 
+              containerPort: 80
+{{/if}}
+{{#if (equals (objectType value index) "StatefulSet")}}
+---
+apiVersion: "apps/v1"
+kind: "{{value.object.kind}}"
+metadata: 
+  name: "{{value.object.metadata.name}}"
+  namespace: "{{value.object.metadata.namespace}}"
+  annotations: 
+    msaez.io/x: "1249"
+    msaez.io/y: "458"
+spec: 
+  selector: 
+    matchLabels: 
+      app: "{{value.object.metadata.name}}"
+  serviceName: "{{value.object.metadata.name}}"
+  replicas: 1
+  template: 
+    metadata: 
+      labels: 
+        app: "{{value.object.metadata.name}}"
+    spec: 
+      containers: 
+        - 
+          name: "{{value.object.metadata.name}}"
+          image: "{{value.object.spec.template.spec.containers.[0].image}}"
+          ports: 
+            - 
+              containerPort: 80
+              name: "{{value.object.metadata.name}}"
+{{/if}}
+{{#if (equals (objectType value index) "DaemonSet")}}
+---
+apiVersion: "apps/v1"
+kind: "{{value.object.kind}}"
+metadata: 
+  name: "{{value.object.metadata.name}}"
+  namespace: "{{value.object.metadata.namespace}}"
+  annotations: 
+    msaez.io/x: "1090"
+    msaez.io/y: "464"
+spec: 
+  selector: 
+    matchLabels: 
+      name: ""
+      app: "{{value.object.metadata.name}}"
+  template: 
+    metadata: 
+      labels: 
+        name: ""
+        app: "{{value.object.metadata.name}}"
+    spec: 
+      containers: 
+        - 
+          name: "{{value.object.metadata.name}}"
+          image: "{{value.object.spec.template.spec.containers.[0].image}}"
+          ports: 
+            - 
+              containerPort: 80
+{{/if}}
+{{#if (equals (objectType value index) "HorizontalPodAutoscaler")}}
+---
+apiVersion: "autoscaling/v2beta2"
+kind: "{{value.object.kind}}"
+metadata: 
+  name: "{{value.object.metadata.name}}"
+  namespace: "{{value.object.metadata.namespace}}"
+  annotations: 
+    msaez.io/x: "910"
+    msaez.io/y: "550"
+spec: 
+  scaleTargetRef: {}
+  minReplicas: 1
+  maxReplicas: 10
+  metrics: 
+    - 
+      type: "Resource"
+      resource: 
+        name: "cpu"
+        target: 
+          type: "Utilization"
+          averageUtilization: 50
+{{/if}}
+{{#if (equals (objectType value index) "StorageClass")}}
+---
+apiVersion: "storage.k8s.io/v1"
+kind: "{{value.object.kind}}"
+metadata: 
+  name: "{{value.object.metadata.name}}"
+  namespace: "{{value.object.metadata.namespace}}"
+  annotations: 
+    msaez.io/x: "813"
+    msaez.io/y: "98"
+provisioner: ""
+parameters: 
+  type: "gp2"
+reclaimPolicy: "Delete"
+{{/if}}
+{{#if (equals (objectType value index) "PersistentVolumeClaim")}}
+---
+apiVersion: "v1"
+kind: "{{value.object.kind}}"
+metadata: 
+  name: "{{value.object.metadata.name}}"
+  annotations: 
+    msaez.io/x: "967"
+    msaez.io/y: "93"
+  namespace: "{{value.object.metadata.namespace}}"
+spec: 
+  accessModes: 
+    - ""
+  resources: 
+    requests: 
+      storage: "10Mi"
+  storageClassName: "{{value.object.spec.storageClassName}}"
+  volumeMode: ""
+{{/if}}
+{{#if (equals (objectType value index) "PersistentVolume")}}
+---
+apiVersion: "v1"
+kind: "{{value.object.kind}}"
+metadata: 
+  name: "{{value.object.metadata.name}}"
+  namespace: "{{value.object.metadata.namespace}}"
+  annotations: 
+    msaez.io/x: "1148"
+    msaez.io/y: "95"
+spec: 
+  accessModes: 
+    - ""
+  capacity: 
+    storage: "1Gi"
+  persistentVolumeReclaimPolicy: ""
+  volumeMode: "Filesystem"
+  hostPath: 
+    path: "/tmp"
+{{/if}}
+{{/each}}
+
+<function>
+
+  window.$HandleBars.registerHelper("objectType", function(value, index){
+    var objectType = value.object.kind;
+  
+    return objectType;
+  });
+  
+  window.$HandleBars.registerHelper('equals', function(a, b) {
+    return a === b;
+  });
+  
+  window.$HandleBars.registerHelper("sortedK8sValue", function(value){
+    var sortedObj = [];
+    var copyValue = value
+    
+    Object.keys(copyValue).forEach(function (ele) {
+      if(copyValue[ele]._type=="Namespace"){
+        sortedObj.push(copyValue[ele]);
+      }
+    })
+    
+    Object.keys(copyValue).forEach(function (ele) {
+      if(copyValue[ele]._type=="Deployment"){
+        sortedObj.push(copyValue[ele]);
+      }
+    })
+    
+    Object.keys(copyValue).forEach(function (ele) {
+      if(copyValue[ele]._type=="Pod"){
+        sortedObj.push(copyValue[ele]);
+      }
+    })
+    
+    Object.keys(copyValue).forEach(function (ele) {
+      if(copyValue[ele]._type=="Service"){
+        sortedObj.push(copyValue[ele]);
+      }
+    })
+    
+    Object.keys(copyValue).forEach(function (ele) {
+      if(copyValue[ele]._type=="StorageClass"){
+        sortedObj.push(copyValue[ele]);
+      }
+    })
+    
+    Object.keys(copyValue).forEach(function (ele) {
+      if(copyValue[ele]._type=="PersistentVolumeClaim"){
+        sortedObj.push(copyValue[ele]);
+      }
+    })
+    
+    Object.keys(copyValue).forEach(function (ele) {
+        sortedObj.push(copyValue[ele]);
+    })
+    
+    return sortedObj;
+  });
+                
+</function>

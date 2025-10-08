@@ -1,0 +1,33 @@
+kube-state-metrics:
+  namespaceOverride: control-plane-system
+  replicas: 2
+  kubeResources:
+    certificatesigningrequests: true
+    configmaps: true
+    cronjobs: true
+    daemonsets: true
+    deployments: true
+    endpoints: true
+    horizontalpodautoscalers: true
+    ingresses: true
+    jobs: true
+    leases: true
+    limitranges: true
+    mutatingwebhookconfigurations: true
+    namespaces: true
+    networkpolicies: true
+    nodes: true
+    persistentvolumeclaims: true
+    persistentvolumes: true
+    poddisruptionbudgets: true
+    pods: true
+    replicasets: true
+    replicationcontrollers: true
+    resourcequotas: true
+    secrets: true
+    services: true
+    statefulsets: true
+    storageclasses: true
+    verticalpodautoscalers: false
+    validatingwebhookconfigurations: false
+    volumeattachments: true

@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: redis
+    app.kubernetes.io/part-of: giropops-hpa
+  name: redis-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+        app.kubernetes.io/part-of: giropops-hpa
+    spec:
+      containers:
+      - image: redis
+        name: redis
+        ports:
+          - containerPort: 6379
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+          requests:
+            memory: "128Mi"
+            cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  labels:
+    app.kubernetes.io/part-of: giropops-hpa
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: giropops-senhas
+    app.kubernetes.io/part-of: giropops-hpa
+  name: giropops-senhas
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: giropops-senhas
+  template:
+    metadata:
+      labels:
+        app: giropops-senhas
+        app.kubernetes.io/part-of: giropops-hpa
+    spec:
+      initContainers:
+        - name: check-redis-service-liveness
+          image: busybox:1.28
+          command: ['sh', '-c', "until nslookup $REDIS_HOST; do echo waiting for $REDIS_HOST; sleep 2; done"]
+          env:
+          - name: REDIS_HOST
+            value: redis-service
+      containers:
+      - image: linuxtips/giropops-senhas:1.0
+        name: giropops-senhas
+        env:
+        - name: REDIS_HOST
+          value: redis-service
+        ports:
+        - containerPort: 5000
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: 0.08
+            memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: giropops-senhas
+  labels:
+    app: giropops-senhas
+    app.kubernetes.io/part-of: giropops-hpa
+spec:
+  selector:
+    app: giropops-senhas
+  ports:
+    - port: 5000
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: giropops-senhas-hpa
+  labels:
+    app.kubernetes.io/part-of: giropops-hpa
+spec:
+  minReplicas: 2
+  maxReplicas: 10
+  # how should it scale
+  behavior:
+    scaleUp:
+      selectPolicy: Max # # tells the scheduler to scale agressivaly (if it can scale up to 5, then it will scale 5)
+      # selectPolicy: Min # tells the scheduler to scale conservative (if it can scale up to 2, then it will scale only one pod at a the time)
+      stabilizationWindowSeconds: 10 # will wait 10 seconds before starts to scaling up
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+  # when it should scale
+  metrics:
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+    - type: ContainerResource
+      containerResource:
+        container: giropops-senhas 
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: giropops-senhas

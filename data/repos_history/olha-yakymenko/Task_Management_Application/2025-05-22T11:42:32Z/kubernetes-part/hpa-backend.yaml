@@ -1,0 +1,40 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend
+  namespace: tasks
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend 
+  minReplicas: 1
+  maxReplicas: 10  
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # Skalowanie przy 70% użycia CPU
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80  # Skalowanie przy 80% użycia pamięci
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60  # Stabilizacja po skalowaniu w górę
+      selectPolicy: Max  # Maksymalny wzrost replik
+      policies:
+        - type: Percent
+          value: 100  # Wzrost o 100% w ciągu 60 sekund (podwojenie liczby replik)
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 60  # Stabilizacja po skalowaniu w dół
+      selectPolicy: Min  # Minimalny spadek replik
+      policies:
+        - type: Percent
+          value: 50  # Zmniejszenie liczby replik o 50% w ciągu 60 sekund
+          periodSeconds: 60

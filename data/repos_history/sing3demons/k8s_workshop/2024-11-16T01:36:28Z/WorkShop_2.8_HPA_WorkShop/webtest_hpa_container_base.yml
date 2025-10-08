@@ -1,0 +1,29 @@
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: webtest-container-base
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: webtest
+  minReplicas: 1
+  maxReplicas: 10
+  containerMetrics:
+  - name: webtest # Target container within the Pods
+  metrics:
+  - type: ContainerResource
+    resource:
+      name: cpu
+      container: webtest
+      target:
+        type: Utilization
+        averageUtilization: 10
+#  - type: ContainerResource
+#    resource:
+#      container: webtest
+#      name: memory
+#      target:
+#        type: Utilization
+#        averageUtilization: 10

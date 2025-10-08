@@ -1,0 +1,44 @@
+{{- if and .Values.hpa.enabled .Values.courseService.enabled .Values.hpa.courseService.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: course-service-hpa
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: course-service
+    component: hpa
+    {{- include "v-learning.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: course-service
+  minReplicas: {{ .Values.hpa.courseService.minReplicas | default .Values.hpa.default.minReplicas }}
+  maxReplicas: {{ .Values.hpa.courseService.maxReplicas | default .Values.hpa.default.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.courseService.targetCPUUtilizationPercentage | default .Values.hpa.default.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.courseService.targetMemoryUtilizationPercentage | default .Values.hpa.default.targetMemoryUtilizationPercentage }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.hpa.courseService.scaleDown.stabilizationWindowSeconds | default .Values.hpa.default.scaleDown.stabilizationWindowSeconds }}
+      policies:
+      - type: Percent
+        value: {{ .Values.hpa.courseService.scaleDown.percentValue | default .Values.hpa.default.scaleDown.percentValue }}
+        periodSeconds: {{ .Values.hpa.courseService.scaleDown.periodSeconds | default .Values.hpa.default.scaleDown.periodSeconds }}
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.hpa.courseService.scaleUp.stabilizationWindowSeconds | default .Values.hpa.default.scaleUp.stabilizationWindowSeconds }}
+      policies:
+      - type: Percent
+        value: {{ .Values.hpa.courseService.scaleUp.percentValue | default .Values.hpa.default.scaleUp.percentValue }}
+        periodSeconds: {{ .Values.hpa.courseService.scaleUp.periodSeconds | default .Values.hpa.default.scaleUp.periodSeconds }}
+{{- end }}

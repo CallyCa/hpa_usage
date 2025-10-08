@@ -1,0 +1,90 @@
+---
+# .kubernetes/cluster-setup/helm-provider-static-rbac.yaml
+# Comprehensive RBAC for Crossplane Helm Provider
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crossplane-provider-helm-comprehensive
+rules:
+  # Core resources
+  - apiGroups: [""]
+    resources:
+      [
+        "namespaces",
+        "serviceaccounts",
+        "services",
+        "configmaps",
+        "secrets",
+        "pods",
+        "endpoints",
+        "events",
+      ]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # Apps resources
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # Networking resources
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # Policy resources
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # RBAC resources
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # Storage resources
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "persistentvolumeclaims"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # Batch resources
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # Autoscaling resources
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # Admission resources
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources:
+      ["validatingwebhookconfigurations", "mutatingwebhookconfigurations"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # Events
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+---
+# ClusterRoleBinding for current Helm provider
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: crossplane-provider-helm-binding-current
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: crossplane-provider-helm-comprehensive
+subjects:
+  - kind: ServiceAccount
+    name: provider-helm-9abd50db4cc4
+    namespace: crossplane-system
+---
+# ClusterRoleBinding for future Helm providers (will be updated by automation)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: crossplane-provider-helm-binding-future
+  annotations:
+    # This will be updated by automation scripts
+    helm-provider-auto-update: "true"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: crossplane-provider-helm-comprehensive
+subjects: []

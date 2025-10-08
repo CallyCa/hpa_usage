@@ -1,0 +1,171 @@
+# Exporter
+exporter:
+  metadata:
+    name: "metoro-exporter"
+    podAnnotations: {}
+    selectorLabels:
+      app.kubernetes.io/name: "metoro-exporter"
+  replicas: 2
+  updateStrategy:
+    type: "RollingUpdate"
+  envVars:
+    mandatory:
+      otlpUrl: "https://us-east.metoro.io/ingest/api/v1/otel"
+      apiServerUrl: "https://us-east.metoro.io/api/v1/exporter"
+      shouldDropMetoroData: "true"
+    userDefined: {}
+  image:
+    tag: "v2-stable"
+    repository: quay.io/metoro/metoro-exporter
+    pullPolicy: "Always"
+    imagePullSecrets: [ ]
+  # Placeholder configmap
+  configMap:
+    name: "exporter-config"
+    values:
+      config.yml: |-
+        # Placeholder config
+  serviceAccount:
+    name: "metoro-exporter"
+  clusterRole:
+    name: "metoro-exporter-cluster-role"
+  clusterRoleBinding:
+    name: "metoro-exporter-cluster-role-binding"
+  services:
+    metoroExporter:
+      name: "metoro-exporter"
+      port: 80
+  resources:
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+    requests:
+      cpu: "1"
+      memory: "2Gi"
+  secret:
+    name: "exporter-secret"
+    bearerToken: "CHANGE_ME"
+    externalSecret:
+      enabled: false
+      name: "CHANGE_ME"
+      secretKey: "AUTH_TOKEN"
+  scheduling:
+    nodeSelector: {}
+    affinity: {}
+    tolerations: []
+  autoscaling:
+    horizontalPodAutoscaler:
+      enabled: true
+      name: "metoro-exporter-hpa"
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
+# Node Agent
+nodeAgent:
+  metadata:
+    name: "metoro-node-agent"
+    podAnnotations: {}
+    selectorLabels:
+      app.kubernetes.io/name: "metoro-node-agent"
+  envVars:
+    mandatory: {}
+    userDefined: {}
+  updateStrategy:
+    type: "RollingUpdate"
+  prometheus:
+    scrape: true
+    # Port numbers below 1024 are often blocked. If you change this port, make sure it is open.
+    port: "8080"
+  image:
+    repository: quay.io/metoro/metoro-node-agent
+    tag: "v2-stable"
+    # This should be kept as Always in the vast majority of cases. The node agent restarts itself each day in order to pick up the latest agent image.
+    # If this is set to anything else, the node agent will fall behind and miss out on new features, bug fixes and security patches.
+    pullPolicy: "Always"
+    imagePullSecrets: []
+  # The below resources are tuned for a typical deployment. Around 200k requests per node per hour. Reach out for help tuning these values.
+  resources:
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+    requests:
+      cpu: "300m"
+      memory: "300Mi"
+  priorityClassName: ""
+  scheduling:
+    affinity:
+       nodeAffinity:
+         requiredDuringSchedulingIgnoredDuringExecution:
+           nodeSelectorTerms:
+             # We can't run on Fargate (or any other serverless platform) as we don't have access to the host to run ebpf programs
+             - matchExpressions:
+                 - key: eks.amazonaws.com/compute-type
+                   operator: NotIn
+                   values:
+                     - fargate
+    tolerations: []
+    nodeSelector: {}
+
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    existingSecret: "redis-secret"
+    existingSecretPasswordKey: "password"
+  architecture: standalone
+  fullnameOverride: "metoro-redis"
+  master:
+    resourcesPreset: "medium"
+    persistence:
+      enabled: true
+
+# Otel Instrumentation
+instrumentationWebhook:
+  enabled: false
+  secretName: "metoro-instrumentation-webhook-secret"
+  name: "metoro-instrumentation-webhook"
+  replicas: 2
+  image:
+    tag: "stable"
+    repository: quay.io/metoro/metoro-instrumentation-webhook
+    pullPolicy: "Always"
+  service:
+    name: "metoro-instrumentation-webhook"
+    port: 80
+    targetPort: 8080
+    type: "ClusterIP"
+  mutatingWebhookConfiguration:
+    autoGenerateCert:
+      enabled: true
+      recreate: false
+      certPeriodDays: 3650
+    certManager:
+      enabled: false
+    name: "metoro-instrumentation-webhook.metoro.io"
+  serviceAccount:
+    name: "metoro-instrumentation-webhook"
+  clusterRole:
+    name: "metoro-instrumentation-webhook-cluster-role"
+  clusterRoleBinding:
+    name: "metoro-instrumentation-webhook-cluster-role-binding"
+  resources:
+    limits:
+      cpu: "100m"
+      memory: "128Mi"
+    requests:
+      cpu: "10m"
+      memory: "64Mi"
+otelInstrumentation:
+  enabled: false
+opentelemetry-operator:
+  enabled: false
+  admissionWebhooks:
+    certManager:
+      enabled: false
+    autoGenerateCert:
+      enabled: true
+  manager:
+    collectorImage:
+      repository: otel/opentelemetry-collector-k8s
+    extraArgs:
+      - "--enable-go-instrumentation=true"

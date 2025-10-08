@@ -1,0 +1,27 @@
+# this manifest is used to deploy an horizontal pod autoscaler which scales httpd deployment according to apache_accesses_per_second metric
+
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: httpd-hpa
+  namespace: frontend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+
+  - type: Object
+    object:
+      metric:
+        name: apache_accesses_per_second
+      describedObject:
+        apiVersion: batch/v1
+        kind: Job
+        name: apache_and_exporter-pod
+      target:
+        type: Value
+        value: 0.5

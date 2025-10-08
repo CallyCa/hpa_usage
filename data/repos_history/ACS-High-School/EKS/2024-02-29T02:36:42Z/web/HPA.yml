@@ -1,0 +1,27 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nginx-react-app-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nginx-react-app-deployment
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 2
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 10  # 스케일 다운 결정을 위해 메트릭을 확인하는 시간을 60초로 설정
+      policies:
+      - type: Pods
+        value: 1  # 한 번에 스케일 다운할 수 있는 Pod 수
+        periodSeconds: 5  # 스케일 다운 평가 주기
+

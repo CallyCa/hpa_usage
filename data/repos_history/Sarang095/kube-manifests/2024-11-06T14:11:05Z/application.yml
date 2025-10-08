@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: example-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/Sarang095/kube-manifests.git'
+    targetRevision: master
+    path: ./helm-kube
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: 'https://kubernetes.default.svc'
+  syncPolicy:
+    automated:
+      prune: true              # Automatically delete resources not in Git
+      selfHeal: true            # Detect and revert out-of-sync states
+    syncOptions:
+      - CreateNamespace=true    # Automatically create namespace if it doesn't exist
+      - Validate=false          # Validate resource manifests during sync
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas       # Ignore replica changes
+
+  revisionHistoryLimit: 5  
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: argocd-server
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 50
+

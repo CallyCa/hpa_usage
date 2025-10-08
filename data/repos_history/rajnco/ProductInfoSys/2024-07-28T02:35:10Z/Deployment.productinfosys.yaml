@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: productinfosys
+    backend: one
+  name: productinfosys
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: productinfosys
+      backend: one
+  template:
+    metadata:
+      labels:
+        app: productinfosys
+        backend: one
+    spec:
+      containers:
+      - image: 127.0.0.1:5000/productinfosys:latest
+        name: productinfosys
+        ports:
+        - containerPort: 8080
+        resources: 
+          limits:
+            cpu: 100m
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 200Mi
+
+
+#--- k create deployment  productinfosys  --image=productinfosys --replicas=1  --port=8080 --dry-run=client -o yaml  > Deployment.productinfosys.yaml
+#
+# create local registry
+# https://stackoverflow.com/questions/59053573/minikube-not-pull-image-from-local-docker-container-registry?rq=3
+#
+# docker tag productinfosys:latest 127.0.0.1:5000/productinfosys:latest 
+# docker push 127.0.0.1:5000/productinfosys:latest
+#
+---
+
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: productinfosys
+spec:
+  maxReplicas: 10
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: productinfosys
+  targetCPUUtilizationPercentage: 60
+status:
+  currentReplicas: 0
+  desiredReplicas: 0

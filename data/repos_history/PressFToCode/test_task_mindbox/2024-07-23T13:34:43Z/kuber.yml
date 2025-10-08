@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+spec:
+  replicas: 4  # Устанавливаем 4 пода, чтобы справиться с пиковой нагрузкой
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      containers:
+      - name: web-app-container
+        image: your-docker-image:latest  # Укажите ваш образ приложения
+        resources:
+          requests:
+            cpu: "300m"  # Рекомендуемое количество для высоких нагрузок
+            memory: "128Mi"  # Постоянное требование памяти
+          limits:
+            cpu: "500m"  # Ограничиваем максимальное потребление CPU
+            memory: "256Mi"  # Ограничиваем использование памяти, чтобы избежать чрезмерного потребления
+        readinessProbe:
+          httpGet:
+            path: /health  # Путь, по которому приложение проверяет свою готовность
+            port: 8080  # Порт, на котором приложение слушает
+          initialDelaySeconds: 10  # Задержка перед первой проверкой
+          periodSeconds: 5  # Проверяем каждую 5 секунд
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60  # Задержка перед проверкой "живости"
+          periodSeconds: 10  # Проверяем каждые 10 секунд
+      affinities:  # Правила размещения подов для мультизонального кластера
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - web-app
+            topologyKey: "kubernetes.io/hostname"  # Распределение по нодам
+      tolerations:  # Если используются узлы с taint, укажите допустимости
+        - key: "example-key"
+          operator: "Equal"
+          value: "example-value"
+          effect: "NoSchedule"
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-app-autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-app
+  minReplicas: 2  # Минимальное количество подов для обеспечения работы ночью
+  maxReplicas: 10  # Максимальное количество подов в часы пик
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: AverageUtilization
+        averageUtilization: 60  # Запуск новых подов при использовании CPU более 60%
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-app
+spec:
+  type: LoadBalancer  # Используем LoadBalancer для доступа к приложению из внешней сети
+  selector:
+    app: web-app
+  ports:
+    - protocol: TCP
+      port: 80  # Порт пода, по которому получится доступ к приложению
+      targetPort: 8080  # Порт, на котором прослушивается контейнер

@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: retailproject-namespace
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retailproject-shippingorder-read-deployment
+  namespace: retailproject-namespace
+spec:
+  selector:
+    matchLabels:
+      app: retailproject
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: retailproject
+    spec:
+      containers:
+        - name: retailproject-shippingorder-read-container
+          image: shippingorder-read-retailproject_service
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 200m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: retailproject-shippingorder-read-service
+  namespace: retailproject-namespace
+spec:
+  selector:
+    app: retailproject
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30003
+  type: NodePort
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: retailproject-shippingorder-read-service-hpa
+  namespace: retailproject-namespace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: retailproject-shippingorder-read-deployment
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50 # When the CPU utilization is greater than or equal 50% of 100m cpu requested, the HPA will replicated the service

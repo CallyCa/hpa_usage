@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mxmariner
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mxmariner-web-scaler
+spec:
+  scaleTargetRef:
+    kind: ReplicaSet
+    name: mxmariner-web-dep
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mxmariner-web-svc
+  namespace: mxmariner
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8088
+  selector:
+    app: mxmariner-web-svc
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mxmariner-web-deb
+  namespace: mxmariner
+spec:
+  selector:
+    matchLabels:
+      app: mxmariner-web-svc
+  template:
+    metadata:
+      labels:
+        app: mxmariner-web-svc
+    spec:
+      containers:
+        - image: manimaul/mxmariner.com:09-12-20_r0
+          name: mxmariner-web-svc
+          ports:
+            - containerPort: 8088
+              name: http
+          resources:
+            requests:
+              cpu: 100m
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+    kubernetes.io/ingress.class: traefik-cert-manager
+    ingress.kubernetes.io/custom-request-headers: l5d-dst-override:mxmariner-web-svc.mxmariner.svc.cluster.local:80
+  name: mxmarineringress
+  namespace: mxmariner
+spec:
+  rules:
+    - host: mxmariner.com
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: mxmariner-web-svc
+              servicePort: 80
+  tls:
+    - hosts:
+        - mxmariner
+      secretName: mxmariner-cert
+---
+apiVersion: cert-manager.io/v1alpha2
+kind: Certificate
+metadata:
+  name: mxmariner-cert
+  namespace: mxmariner
+spec:
+  commonName: mxmariner.com
+  secretName: mxmariner-cert
+  dnsNames:
+    - mxmariner.com
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer

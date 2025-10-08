@@ -1,0 +1,12 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: driveprojekt-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: driveprojekt-deployment
+  minReplicas: 3
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 80

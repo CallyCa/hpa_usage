@@ -1,0 +1,17 @@
+apiVersion: v1 #создаем сервис горизонтального масштабирования приложения до 4 под при загрузке процессора на 80%
+kind: HorizontalPodAutoscaler
+metadata:
+  name: test-app-hpa
+  namespace: demo-ns
+  spec:
+    scaleTargetRef: null
+    apiVersion: demo
+    kind: Deployment
+    name: demo
+    minReplicas: 1
+    maxReplicas: 4
+    metrics:
+      - type: Resource
+        resource: null
+        name: cpu
+        targetAverageUtilization: 80

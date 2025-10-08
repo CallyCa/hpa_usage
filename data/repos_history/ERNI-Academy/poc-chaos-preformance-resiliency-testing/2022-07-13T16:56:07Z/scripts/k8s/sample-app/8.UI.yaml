@@ -1,0 +1,100 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uistatefulset
+  namespace: generating-chaos
+spec:
+  replicas: 1
+  template:
+    metadata:
+      namespace: generating-chaos
+      labels:
+        role: uiservice
+        app: uiservice
+    spec:
+      containers:
+      - name: uiservice
+        image: generatingchaoscontainerregistry.azurecr.io/microservices.generatingchaos.ui
+        ports:
+        - containerPort: 80
+        env:
+          - name: ASPNETCORE_ENVIRONMENT
+            value: "Development"
+          - name: ApiUrl
+            value: http://apiservice
+  selector:
+    matchLabels:
+      app: uiservice
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: uistatefulset
+  namespace: generating-chaos
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: uistatefulset
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+  - type: Pods
+    pods:
+      metric:
+        name: packets-per-second
+      target:
+        type: AverageValue
+        averageValue: 0.1k
+  - type: Object
+    object:
+      metric:
+        name: requests-per-second
+      describedObject:
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        name: main-route
+      target:
+        type: Value
+        value: 0.1k 
+status:
+  observedGeneration: 1
+  currentReplicas: 1
+  desiredReplicas: 1
+  currentMetrics:
+  - type: Resource
+    resource:
+      name: cpu
+      current:
+        averageUtilization: 0
+        averageValue: 0
+  - type: Object
+    object:
+      metric:
+        name: requests-per-second
+      describedObject:
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        name: main-route
+      current:
+        value: 10k
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: uiservice
+  namespace: generating-chaos
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: uiservice

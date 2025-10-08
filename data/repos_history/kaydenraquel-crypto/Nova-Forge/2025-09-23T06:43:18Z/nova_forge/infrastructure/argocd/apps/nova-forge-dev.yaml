@@ -1,0 +1,86 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nova-forge-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    app.kubernetes.io/name: nova-forge
+    app.kubernetes.io/instance: nova-forge-dev
+    app.kubernetes.io/component: orchestrator
+    environment: development
+  annotations:
+    argocd.argoproj.io/sync-wave: "100"
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: nova-dev
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: nova-dev
+spec:
+  project: nova-forge-dev
+
+  source:
+    repoURL: https://github.com/nova-forge/nova-forge
+    targetRevision: develop
+    path: helm/nova-forge
+    helm:
+      releaseName: nova-forge-dev
+      valueFiles:
+        - values.yaml
+        - values.dev.yaml
+      parameters:
+        - name: image.tag
+          value: dev-latest
+        - name: global.environment
+          value: development
+      # Allow values from external sources
+      valuesObject:
+        # Override specific values for dev
+        replicaCount: 1
+        autoscaling:
+          enabled: false
+        monitoring:
+          enabled: false
+        backup:
+          enabled: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nova-dev
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - RespectIgnoreDifferences=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  revisionHistoryLimit: 10
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+      jsonPointers:
+        - /spec/minReplicas
+        - /spec/maxReplicas
+
+  info:
+    - name: "Environment"
+      value: "Development"
+    - name: "Team"
+      value: "Nova Forge Development"
+    - name: "Slack Channel"
+      value: "#nova-dev"

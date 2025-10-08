@@ -1,0 +1,83 @@
+stringData:
+  AZURE_EVENTHUBS_NAMESPACE: aksdemong
+  AZURE_STORAGE_ACCOUNT_NAME: testrg94bc
+  AZURE_STORAGE_CONTAINER_NAME: aksevencontainer
+  AZURE_EVENTHUB_NAME: demoevenhub
+  AZURE_CLIENT_ID: a5948bd0-10cd-42c7-b066-264ff114ddb9
+  AZURE_CLIENT_SECRET: ""
+  AZURE_TENANT_ID: 16b3c013-d300-468d-ac64-7eda0820b6d3
+  EVENTHUB_CONNECTIONSTRING: ''
+  STORAGE_CONNECTIONSTRING: ''
+  
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: eventhub-secret
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eventhub-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eventhub-consumer
+  template:
+    metadata:
+      labels:
+        app: eventhub-consumer
+    spec:
+            containers:
+            - name: eventhub-consumer
+              image: aksngacr.azurecr.io/samples/spring-boot-eh:latest  
+              envFrom:
+              - secretRef:
+                  name: eventhub-secret
+              ports:
+              - containerPort: 8080
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: "512Mi"
+                requests:
+                  cpu: "0.5"
+                  memory: "256Mi"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: eventhub-consumer-scaledobject
+spec:
+  scaleTargetRef:
+    name: eventhub-consumer
+  cooldownPeriod: 100
+  minReplicaCount: 2
+  maxReplicaCount: 4
+  advanced:
+    restoreToOriginalReplicaCount: true
+    horizontalPodAutoscalerConfig:
+      name: keda-hpa-fsm-state-logger-scaledobject
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 10
+          policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 15
+  triggers:
+  - type: azure-eventhub
+    metadata:
+      connectionFromEnv: EVENTHUB_CONNECTIONSTRING
+      storageConnectionFromEnv: STORAGE_CONNECTIONSTRING
+      eventHubNamespace: aksdemong
+      eventHubName: demoevenhub
+      blobContainer: aksevencontainer
+      consumerGroup: $Default
+      unprocessedEventThreshold: '64'
+      activationUnprocessedEventThreshold: '10'
+  - type: cpu
+    metricType: Utilization
+    metadata:
+      value: "80"

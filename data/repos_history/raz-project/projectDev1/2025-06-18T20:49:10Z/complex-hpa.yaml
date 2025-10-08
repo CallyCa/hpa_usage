@@ -1,0 +1,113 @@
+# Deployment configuration for our application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: project-node-app
+spec:
+  replicas: 1 # Initial number of pods
+  selector:
+    matchLabels:
+      app: project-node-app # Labels to identify pods
+  template:
+    metadata:
+      labels:
+        app: project-node-app # Labels applied to pods
+    spec:
+      containers:
+        - name: project-node-app
+          image: rsrs88/nodejs-app:1.0 # Container image to use
+          resources:
+            requests: # Minimum resources required
+              cpu: 100m # 0.1 CPU core
+              memory: 64Mi # 64 Megabytes of memory
+            limits: # Maximum resources allowed
+              cpu: 500m # 0.5 CPU core
+              memory: 128Mi # 128 Megabytes of memory
+          ports:
+            - containerPort: 80 # HTTP port for the application
+              name: http
+            - containerPort: 8000 # Metrics port for Prometheus
+              name: metrics
+          readinessProbe: # Check if pod is ready to receive traffic
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5 # Wait 5s before first check
+            periodSeconds: 10 # Check every 10s
+          livenessProbe: # Check if pod is healthy
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15 # Wait 15s before first check
+            periodSeconds: 20 # Check every 20s
+---
+# Service configuration to expose the application
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-node-app-service
+spec:
+  selector:
+    app: project-node-app # Select pods with this label
+  ports:
+    - port: 80 # Service port
+      targetPort: 80 # Container port
+      name: http
+    - port: 8000 # Service port for metrics
+      targetPort: 8000 # Container port for metrics
+      name: metrics
+  type: NodePort # Expose service on each node's IP
+---
+# HorizontalPodAutoscaler configuration
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: project-node-app
+spec:
+  scaleTargetRef: # What to scale
+    apiVersion: apps/v1
+    kind: Deployment
+    name: project-node-app
+  minReplicas: 1 # Minimum number of pods
+  maxReplicas: 10 # Maximum number of pods
+  metrics: # Metrics to scale on
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 20 # Scale when CPU usage exceeds 20%
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 30 # Increased memory threshold to 30%
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: 1 # Scale when average requests per second exceeds 1
+  behavior: # How to scale
+    scaleUp: # Rules for scaling up
+      stabilizationWindowSeconds: 5 # Wait 5s before scaling up
+      policies:
+        - type: Percent
+          value: 400 # Scale up by 400%
+          periodSeconds: 3 # Every 3 seconds
+        - type: Pods
+          value: 8 # Add 8 pods
+          periodSeconds: 5 # Every 5 seconds
+      selectPolicy: Max # Choose the faster scaling option
+    scaleDown: # Rules for scaling down
+      stabilizationWindowSeconds: 0 # No stabilization window for scale down
+      policies:
+        - type: Percent
+          value: 100 # Scale down by 100%
+          periodSeconds: 1 # Every 1 second
+        - type: Pods
+          value: 8 # Remove 8 pods
+          periodSeconds: 1 # Every 1 second
+      selectPolicy: Max # Choose the faster scaling option

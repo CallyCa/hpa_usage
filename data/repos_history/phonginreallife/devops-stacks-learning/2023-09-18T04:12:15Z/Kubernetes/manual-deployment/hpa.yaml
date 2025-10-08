@@ -1,0 +1,12 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+ name: eks-react-hpa-deployment
+spec:
+ scaleTargetRef:
+   apiVersion: apps/v1
+   kind: Deployment
+   name: eks-react-phong-trainee-deployment 
+ minReplicas: 5
+ maxReplicas: 10
+ targetCPUUtilizationPercentage: 50

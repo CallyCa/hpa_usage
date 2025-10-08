@@ -1,0 +1,15 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: template-hpa
+  labels:
+    app: template-hpa
+    tenant: template-tenant
+spec:
+  scaleTargetRef:  
+    apiVersion: apps/v1
+    kind: Deployment
+    name: template-deploy
+  minReplicas: 0
+  maxReplicas: 0
+  targetCPUUtilizationPercentage: 0

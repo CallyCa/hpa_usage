@@ -1,0 +1,425 @@
+# Horizontal Pod Autoscaler Configuration
+# Auto-scales security dashboard components based on load
+# Designed to handle 10M+ events per day
+
+---
+# Frontend Auto-scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: security-dashboard-frontend-hpa
+  namespace: security-dashboard
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: security-dashboard-frontend
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  # CPU-based scaling
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  # Memory-based scaling
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # Request rate scaling
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "1000"
+  # Custom metric: Active WebSocket connections
+  - type: Object
+    object:
+      metric:
+        name: websocket_connections
+      describedObject:
+        apiVersion: v1
+        kind: Service
+        name: security-dashboard-frontend
+      target:
+        type: Value
+        value: "5000"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      - type: Pods
+        value: 4
+        periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 120
+      - type: Pods
+        value: 2
+        periodSeconds: 120
+      selectPolicy: Min
+
+---
+# GraphQL API Auto-scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: security-dashboard-graphql-hpa
+  namespace: security-dashboard
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: security-dashboard-graphql
+  minReplicas: 5
+  maxReplicas: 50
+  metrics:
+  # CPU-based scaling
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  # Memory-based scaling
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 75
+  # GraphQL query complexity
+  - type: External
+    external:
+      metric:
+        name: graphql_query_complexity
+        selector:
+          matchLabels:
+            service: security-dashboard-graphql
+      target:
+        type: AverageValue
+        averageValue: "500"
+  # Response time P95
+  - type: External
+    external:
+      metric:
+        name: http_request_duration_p95
+        selector:
+          matchLabels:
+            service: security-dashboard-graphql
+      target:
+        type: Value
+        value: "100m"  # 100ms
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      - type: Percent
+        value: 200
+        periodSeconds: 30
+      - type: Pods
+        value: 10
+        periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 180
+      selectPolicy: Min
+
+---
+# Event Processor Auto-scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: security-event-processor-hpa
+  namespace: security-dashboard
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: security-event-processor
+  minReplicas: 10
+  maxReplicas: 100
+  metrics:
+  # Kafka consumer lag
+  - type: External
+    external:
+      metric:
+        name: kafka_consumer_lag
+        selector:
+          matchLabels:
+            topic: security-events
+            consumer_group: security-processor
+      target:
+        type: AverageValue
+        averageValue: "1000"
+  # Events per second
+  - type: External
+    external:
+      metric:
+        name: events_processed_per_second
+        selector:
+          matchLabels:
+            service: security-event-processor
+      target:
+        type: AverageValue
+        averageValue: "500"
+  # CPU utilization
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      - type: Percent
+        value: 300
+        periodSeconds: 60
+      - type: Pods
+        value: 20
+        periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 900
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 300
+      selectPolicy: Min
+
+---
+# Database Connection Pool Auto-scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: security-db-proxy-hpa
+  namespace: security-dashboard
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: security-db-proxy
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  # Active database connections
+  - type: External
+    external:
+      metric:
+        name: pg_stat_activity_count
+        selector:
+          matchLabels:
+            database: security_events
+      target:
+        type: AverageValue
+        averageValue: "50"
+  # Connection pool saturation
+  - type: External
+    external:
+      metric:
+        name: connection_pool_saturation
+        selector:
+          matchLabels:
+            service: security-db-proxy
+      target:
+        type: Value
+        value: "0.8"  # 80% saturation
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Pods
+        value: 2
+        periodSeconds: 120
+    scaleDown:
+      stabilizationWindowSeconds: 1800
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 600
+
+---
+# Redis Cache Auto-scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: security-redis-hpa
+  namespace: security-dashboard
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: security-redis
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+  # Memory utilization
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  # Cache hit ratio (inverse scaling - scale up when hit ratio is low)
+  - type: External
+    external:
+      metric:
+        name: redis_cache_hit_ratio
+        selector:
+          matchLabels:
+            service: security-redis
+      target:
+        type: Value
+        value: "0.95"  # Scale up if hit ratio < 95%
+  # Operations per second
+  - type: External
+    external:
+      metric:
+        name: redis_ops_per_second
+        selector:
+          matchLabels:
+            service: security-redis
+      target:
+        type: AverageValue
+        averageValue: "10000"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+      - type: Pods
+        value: 2
+        periodSeconds: 180
+    scaleDown:
+      stabilizationWindowSeconds: 3600
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 1800
+
+---
+# Vertical Pod Autoscaler for API Gateway
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: security-api-gateway-vpa
+  namespace: security-dashboard
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: security-api-gateway
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: api-gateway
+      minAllowed:
+        cpu: 500m
+        memory: 512Mi
+      maxAllowed:
+        cpu: 4
+        memory: 4Gi
+      controlledResources: ["cpu", "memory"]
+      mode: Auto
+
+---
+# Cluster Autoscaler Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-autoscaler-status
+  namespace: kube-system
+data:
+  nodes.max: "100"
+  nodes.min: "10"
+  scale-down-delay-after-add: "10m"
+  scale-down-unneeded-time: "10m"
+  skip-nodes-with-local-storage: "false"
+  skip-nodes-with-system-pods: "true"
+  max-node-provision-time: "15m"
+  max-graceful-termination-sec: "600"
+
+---
+# Priority Classes for Critical Components
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: security-critical
+value: 1000
+globalDefault: false
+description: "Critical security platform components"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: security-high
+value: 900
+globalDefault: false
+description: "High priority security components"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: security-medium
+value: 800
+globalDefault: false
+description: "Medium priority security components"
+
+---
+# Pod Disruption Budgets
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: security-frontend-pdb
+  namespace: security-dashboard
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: security-dashboard-frontend
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: security-graphql-pdb
+  namespace: security-dashboard
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: security-dashboard-graphql
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: security-processor-pdb
+  namespace: security-dashboard
+spec:
+  minAvailable: 5
+  selector:
+    matchLabels:
+      app: security-event-processor

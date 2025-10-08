@@ -1,0 +1,38 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-poc-springboot-app
+spec:
+  scaleTargetRef:
+    # point the HPA at the sample application
+    # you created above
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "poc-springboot-app.fullname" . }}
+  # autoscale between min and max replicas
+  minReplicas: {{ .Values.hpa.minReplicas }}
+  maxReplicas: {{ .Values.hpa.maxReplicas }}
+  metrics:
+    # use a "Pods" metric, which takes the average of the
+    # given metric across all pods controlled by the autoscaling target
+    - type: Pods
+      pods:
+        metric:
+          name: database_partitioning_unprocessed
+        target:
+          type: AverageValue
+          averageValue: 1
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 3600
+      policies:
+        - periodSeconds: 600
+          type: Percent
+          value: 100
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+

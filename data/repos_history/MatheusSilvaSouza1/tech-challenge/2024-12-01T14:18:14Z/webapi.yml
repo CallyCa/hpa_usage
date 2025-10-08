@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webapi-config
+  namespace: tech-challenge
+data:
+  appsettings.json: |
+    {
+      "Logging": {
+        "LogLevel": {
+          "Default": "Information",
+          "Microsoft.AspNetCore": "Warning"
+        }
+      },
+      "AllowedHosts": "*",
+      "ConnectionStrings": {
+        "DefaultConnection": "Host=db; Database=tech-challenge; Username=tech-challenge; Password=tech-challenge"
+      },
+      "MessageHost": {
+        "Host": "amqp://rabbitmq:5672",
+        "User": "guest",
+        "Pass": "guest"
+      }
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapi
+  labels:
+    app: webapi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webapi
+  template:
+    metadata:
+      labels:
+        app: webapi
+    spec:
+      containers:
+      - name: webapi
+        image: escorpion559/contacts:latest
+        ports:
+        - containerPort: 7296
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+        volumeMounts:
+        - mountPath: /app/appsettings.json
+          name: webapi-config
+          subPath: appsettings.json
+      volumes:
+      - name: webapi-config
+        configMap:
+          name: webapi-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapi
+spec:
+  ports:
+  - port: 7296
+    targetPort: 7296
+  selector:
+    app: webapi
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: webapi
+  labels:
+    app: webapi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: webapi
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80

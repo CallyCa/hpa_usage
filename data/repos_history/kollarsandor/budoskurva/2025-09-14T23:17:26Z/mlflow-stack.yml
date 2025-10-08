@@ -1,0 +1,396 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jaide-ultimate
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-mlflow
+  namespace: jaide-ultimate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-mlflow
+  template:
+    metadata:
+      labels:
+        app: mysql-mlflow
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+            - name: MYSQL_DATABASE
+              value: mlflow
+            - name: MYSQL_USER
+              value: mlflow
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mlflow-password
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - mountPath: /var/lib/mysql
+              name: mysql-pvc
+      volumes:
+        - name: mysql-pvc
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: jaide-ultimate
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: jaide-ultimate
+type: Opaque
+data:
+  password: cGFzc3dvcmQ=  # base64 "password"
+  mlflow-password: bWxmZG9j  # base64 "mlflowdoc"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio-mlflow
+  namespace: jaide-ultimate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio-mlflow
+  template:
+    metadata:
+      labels:
+        app: minio-mlflow
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              value: minioadmin
+            - name: MINIO_ROOT_PASSWORD
+              value: minioadmin123
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001
+          volumeMounts:
+            - mountPath: /data
+              name: minio-pvc
+      volumes:
+        - name: minio-pvc
+          persistentVolumeClaim:
+            claimName: minio-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+  namespace: jaide-ultimate
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-mlflow
+  namespace: jaide-ultimate
+spec:
+  selector:
+    app: minio-mlflow
+  ports:
+    - port: 9000
+      targetPort: 9000
+      name: s3
+    - port: 9001
+      targetPort: 9001
+      name: console
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow-server
+  namespace: jaide-ultimate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlflow-server
+  template:
+    metadata:
+      labels:
+        app: mlflow-server
+    spec:
+      serviceAccountName: mlflow-sa
+      containers:
+        - name: mlflow
+          image: python:3.12-slim
+          command: ["sh", "-c"]
+          args:
+            - |
+              pip install mlflow==2.9.1 pymysql boto3 qiskit torch networkx matplotlib plotly && \
+              mlflow server \
+                --backend-store-uri mysql+pymysql://root:password@mysql-mlflow.jaide-ultimate.svc.cluster.local:3306/mlflow \
+                --default-artifact-root s3://mlflow-artifacts/ \
+                --host 0.0.0.0 \
+                --port 5000 \
+                --serve-artifacts \
+                --static-prefix / \
+                --no-static-prefix-redirect
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              value: minioadmin
+            - name: AWS_SECRET_ACCESS_KEY
+              value: minioadmin123
+            - name: MLFLOW_S3_ENDPOINT_URL
+              value: http://minio-mlflow.jaide-ultimate.svc.cluster.local:9000
+            - name: BOTO_S3_ENDPOINT_URL
+              value: http://minio-mlflow.jaide-ultimate.svc.cluster.local:9000
+          ports:
+            - containerPort: 5000
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          volumeMounts:
+            - mountPath: /mlflow
+              name: mlflow-config
+      volumes:
+        - name: mlflow-config
+          configMap:
+            name: mlflow-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mlflow-config
+  namespace: jaide-ultimate
+data:
+  mlflow.yaml: |
+    backend_stores:
+      mysql:
+        driver: pymysql
+        host: mysql-mlflow.jaide-ultimate.svc.cluster.local
+        port: 3306
+        database: mlflow
+        username: mlflow
+        password: mlflowdoc
+    artifacts:
+      s3:
+        bucket: mlflow-artifacts
+        endpoint_url: http://minio-mlflow.jaide-ultimate.svc.cluster.local:9000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow-server
+  namespace: jaide-ultimate
+spec:
+  selector:
+    app: mlflow-server
+  ports:
+    - port: 5000
+      targetPort: 5000
+      name: http
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-mlflow
+  namespace: jaide-ultimate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana-mlflow
+  template:
+    metadata:
+      labels:
+        app: grafana-mlflow
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: admin123
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: Admin
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            - mountPath: /etc/grafana/provisioning/datasources
+              name: grafana-ds
+            - mountPath: /etc/grafana/provisioning/dashboards
+              name: grafana-dash
+      volumes:
+        - name: grafana-ds
+          configMap:
+            name: grafana-ds
+        - name: grafana-dash
+          configMap:
+            name: grafana-dash
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-ds
+  namespace: jaide-ultimate
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-operated.jaide-ultimate.svc.cluster.local:9090
+        isDefault: true
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki.jaide-ultimate.svc.cluster.local:3100
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dash
+  namespace: jaide-ultimate
+data:
+  jaide-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "JAIDE Chaos Trace Dashboard",
+        "panels": [
+          {
+            "type": "stat",
+            "title": "Custom Chaos Lyap",
+            "targets": [{"expr": "mlflow_metric_custom_chaos_lyap"}],
+            "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}}}
+          },
+          {
+            "type": "timeseries",
+            "title": "Quantum Corr Hist",
+            "targets": [{"expr": "mlflow_metric_quantum_corr"}]
+          },
+          {
+            "type": "graph",
+            "title": "TGN Graph Viewer",
+            "datasource": "Prometheus",
+            "targets": [{"expr": "rate(mlflow_run_duration[5m])"}]
+          },
+          {
+            "type": "logs",
+            "title": "MLflow Traces",
+            "datasource": "Loki",
+            "targets": [{"expr": "{app=\"mlflow\"}"}]
+          }
+        ],
+        "time": {"from": "now-1h", "to": "now"},
+        "refresh": "5s"
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-mlflow
+  namespace: jaide-ultimate
+spec:
+  selector:
+    app: grafana-mlflow
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mlflow-sa
+  namespace: jaide-ultimate
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mlflow-role
+  namespace: jaide-ultimate
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mlflow-binding
+  namespace: jaide-ultimate
+subjects:
+  - kind: ServiceAccount
+    name: mlflow-sa
+    namespace: jaide-ultimate
+roleRef:
+  kind: Role
+  name: mlflow-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mlflow-hpa
+  namespace: jaide-ultimate
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mlflow-server
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

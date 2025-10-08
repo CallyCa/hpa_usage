@@ -1,0 +1,608 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autoscaling-config
+  namespace: retrofitlink
+  labels:
+    app: retrofitlink
+    component: autoscaling
+data:
+  # HPA Configuration for Frontend
+  frontend-hpa.yaml: |
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: retrofitlink-frontend-hpa
+      namespace: retrofitlink
+    spec:
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: retrofitlink-frontend
+      minReplicas: 3
+      maxReplicas: 20
+      metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70
+      - type: Resource
+        resource:
+          name: memory
+          target:
+            type: Utilization
+            averageUtilization: 80
+      - type: Pods
+        pods:
+          metric:
+            name: nginx_active_connections
+          target:
+            type: AverageValue
+            averageValue: "100"
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+          - type: Percent
+            value: 10
+            periodSeconds: 60
+          - type: Pods
+            value: 2
+            periodSeconds: 60
+          selectPolicy: Min
+        scaleUp:
+          stabilizationWindowSeconds: 60
+          policies:
+          - type: Percent
+            value: 50
+            periodSeconds: 30
+          - type: Pods
+            value: 4
+            periodSeconds: 30
+          selectPolicy: Max
+
+  # HPA Configuration for Backend API
+  backend-hpa.yaml: |
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: retrofitlink-backend-hpa
+      namespace: retrofitlink
+    spec:
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: retrofitlink-backend
+      minReplicas: 5
+      maxReplicas: 50
+      metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 60
+      - type: Resource
+        resource:
+          name: memory
+          target:
+            type: Utilization
+            averageUtilization: 75
+      - type: Object
+        object:
+          metric:
+            name: requests_per_second
+          describedObject:
+            apiVersion: v1
+            kind: Service
+            name: retrofitlink-backend
+          target:
+            type: AverageValue
+            averageValue: "100"
+      - type: External
+        external:
+          metric:
+            name: sqs_queue_length
+            selector:
+              matchLabels:
+                queue: retrofit-processing
+          target:
+            type: AverageValue
+            averageValue: "10"
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 600
+          policies:
+          - type: Percent
+            value: 15
+            periodSeconds: 90
+          - type: Pods
+            value: 3
+            periodSeconds: 90
+          selectPolicy: Min
+        scaleUp:
+          stabilizationWindowSeconds: 30
+          policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 15
+          - type: Pods
+            value: 8
+            periodSeconds: 15
+          selectPolicy: Max
+
+  # VPA Configuration for Backend
+  backend-vpa.yaml: |
+    apiVersion: autoscaling.k8s.io/v1
+    kind: VerticalPodAutoscaler
+    metadata:
+      name: retrofitlink-backend-vpa
+      namespace: retrofitlink
+    spec:
+      targetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: retrofitlink-backend
+      updatePolicy:
+        updateMode: "Auto"
+      resourcePolicy:
+        containerPolicies:
+        - containerName: backend
+          minAllowed:
+            cpu: 100m
+            memory: 128Mi
+          maxAllowed:
+            cpu: 2
+            memory: 4Gi
+          controlledResources: ["cpu", "memory"]
+          controlledValues: RequestsAndLimits
+
+  # KEDA ScaledObject for Event-driven scaling
+  keda-scaledobject.yaml: |
+    apiVersion: keda.sh/v1alpha1
+    kind: ScaledObject
+    metadata:
+      name: retrofitlink-event-scaler
+      namespace: retrofitlink
+    spec:
+      scaleTargetRef:
+        name: retrofitlink-worker
+      pollingInterval: 30
+      cooldownPeriod: 300
+      minReplicaCount: 2
+      maxReplicaCount: 30
+      triggers:
+      - type: redis
+        metadata:
+          address: redis.retrofitlink.svc.cluster.local:6379
+          listName: retrofit_processing_queue
+          listLength: "5"
+          enableTLS: "false"
+      - type: prometheus
+        metadata:
+          serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
+          metricName: retrofitlink_pending_applications
+          threshold: "10"
+          query: sum(retrofitlink_pending_applications)
+      - type: mongodb
+        metadata:
+          connectionString: mongodb://mongodb.retrofitlink.svc.cluster.local:27017/retrofitlink
+          collection: iotData
+          query: '{"processed": false}'
+          queryValue: "100"
+
+  # Cluster Autoscaler Configuration
+  cluster-autoscaler.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: cluster-autoscaler
+      namespace: kube-system
+      labels:
+        app: cluster-autoscaler
+    spec:
+      selector:
+        matchLabels:
+          app: cluster-autoscaler
+      replicas: 1
+      template:
+        metadata:
+          labels:
+            app: cluster-autoscaler
+        spec:
+          priorityClassName: system-cluster-critical
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+          serviceAccountName: cluster-autoscaler
+          containers:
+          - image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.21.0
+            name: cluster-autoscaler
+            resources:
+              limits:
+                cpu: 100m
+                memory: 300Mi
+              requests:
+                cpu: 100m
+                memory: 300Mi
+            command:
+            - ./cluster-autoscaler
+            - --v=4
+            - --stderrthreshold=info
+            - --cloud-provider=aws
+            - --skip-nodes-with-local-storage=false
+            - --expander=least-waste
+            - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/retrofitlink
+            - --balance-similar-node-groups
+            - --scale-down-enabled=true
+            - --scale-down-delay-after-add=10m
+            - --scale-down-unneeded-time=10m
+            - --scale-down-utilization-threshold=0.5
+            - --max-node-provision-time=15m
+            env:
+            - name: AWS_REGION
+              value: us-west-2
+
+  # Custom Metrics API Configuration
+  custom-metrics-api.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: adapter-config
+      namespace: monitoring
+    data:
+      config.yaml: |
+        rules:
+        # API request rate metrics
+        - seriesQuery: 'http_requests_per_second{namespace!="",pod!=""}'
+          resources:
+            overrides:
+              namespace: {resource: "namespace"}
+              pod: {resource: "pod"}
+          name:
+            matches: "^(.*)_per_second"
+            as: "requests_per_second"
+          metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
+        
+        # Database connection pool metrics
+        - seriesQuery: 'mongodb_connections_active{namespace!="",pod!=""}'
+          resources:
+            overrides:
+              namespace: {resource: "namespace"}
+              pod: {resource: "pod"}
+          name:
+            matches: "^mongodb_connections_(.*)$"
+            as: "db_connections_${1}"
+          metricsQuery: 'avg(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
+        
+        # Redis queue length metrics
+        - seriesQuery: 'redis_list_length{namespace!="",pod!=""}'
+          resources:
+            overrides:
+              namespace: {resource: "namespace"}
+              pod: {resource: "pod"}
+          name:
+            matches: "^redis_list_(.*)$"
+            as: "queue_length_${1}"
+          metricsQuery: 'max(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
+        
+        # Application-specific metrics
+        - seriesQuery: 'retrofitlink_pending_applications{namespace!="",pod!=""}'
+          resources:
+            overrides:
+              namespace: {resource: "namespace"}
+              pod: {resource: "pod"}
+          name:
+            as: "pending_applications"
+          metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scaling-policies
+  namespace: retrofitlink
+  labels:
+    app: retrofitlink
+    component: autoscaling
+data:
+  # Time-based scaling policies
+  time-based-scaling.yaml: |
+    # Business hours scaling (Monday-Friday 8 AM - 6 PM UTC)
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: business-hours-scaling
+    data:
+      schedule: |
+        # Scale up for business hours
+        0 8 * * 1-5 kubectl patch hpa retrofitlink-backend-hpa -p '{"spec":{"minReplicas":10,"maxReplicas":50}}'
+        # Scale down for after hours
+        0 18 * * 1-5 kubectl patch hpa retrofitlink-backend-hpa -p '{"spec":{"minReplicas":3,"maxReplicas":20}}'
+        # Weekend scaling
+        0 0 * * 6,0 kubectl patch hpa retrofitlink-backend-hpa -p '{"spec":{"minReplicas":2,"maxReplicas":15}}'
+
+  # Load-based scaling policies
+  load-based-scaling.yaml: |
+    # High load response policy
+    high_load_policy:
+      triggers:
+        - metric: cpu_utilization
+          threshold: 80
+          duration: 2m
+          action: scale_up
+          factor: 2
+        - metric: memory_utilization
+          threshold: 85
+          duration: 3m
+          action: scale_up
+          factor: 1.5
+        - metric: response_time_p95
+          threshold: 1000ms
+          duration: 1m
+          action: scale_up
+          factor: 1.5
+      
+    # Low load reduction policy
+    low_load_policy:
+      triggers:
+        - metric: cpu_utilization
+          threshold: 20
+          duration: 10m
+          action: scale_down
+          factor: 0.7
+        - metric: memory_utilization
+          threshold: 30
+          duration: 15m
+          action: scale_down
+          factor: 0.8
+        - metric: request_rate
+          threshold: 10
+          duration: 20m
+          action: scale_down
+          factor: 0.6
+
+  # Predictive scaling configuration
+  predictive-scaling.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: predictive-scaling-config
+    data:
+      model_config: |
+        # Machine learning model for predictive scaling
+        models:
+          - name: daily_pattern
+            type: time_series
+            features:
+              - hour_of_day
+              - day_of_week
+              - historical_load
+            target: required_replicas
+            training_window: 30d
+            prediction_horizon: 1h
+          
+          - name: event_driven
+            type: regression
+            features:
+              - api_request_rate
+              - queue_depth
+              - active_users
+            target: resource_utilization
+            training_window: 7d
+            prediction_horizon: 15m
+        
+        scaling_decisions:
+          - condition: predicted_load > current_capacity * 0.8
+            action: scale_up
+            lead_time: 5m
+          - condition: predicted_load < current_capacity * 0.3
+            action: scale_down
+            lead_time: 10m
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaling-controller
+  namespace: retrofitlink
+  labels:
+    app: retrofitlink
+    component: scaling-controller
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: scaling-controller
+  template:
+    metadata:
+      labels:
+        app: scaling-controller
+    spec:
+      serviceAccountName: scaling-controller
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+      - name: controller
+        image: retrofitlink/scaling-controller:latest
+        imagePullPolicy: Always
+        env:
+        - name: KUBERNETES_NAMESPACE
+          value: retrofitlink
+        - name: METRICS_SERVER_URL
+          value: "http://prometheus.monitoring.svc.cluster.local:9090"
+        - name: PREDICTION_MODEL_URL
+          value: "http://ml-service.retrofitlink.svc.cluster.local:8080"
+        - name: SCALING_INTERVAL
+          value: "30s"
+        - name: LOG_LEVEL
+          value: "info"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        ports:
+        - containerPort: 8080
+          name: metrics
+        - containerPort: 8081
+          name: health
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: scaling-policies
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scaling-controller
+  namespace: retrofitlink
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: scaling-controller
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "endpoints"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch", "patch", "update"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list", "watch", "patch", "update"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["*"]
+  verbs: ["get", "list"]
+- apiGroups: ["custom.metrics.k8s.io"]
+  resources: ["*"]
+  verbs: ["get", "list"]
+- apiGroups: ["external.metrics.k8s.io"]
+  resources: ["*"]
+  verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: scaling-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: scaling-controller
+subjects:
+- kind: ServiceAccount
+  name: scaling-controller
+  namespace: retrofitlink
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scaling-controller
+  namespace: retrofitlink
+  labels:
+    app: scaling-controller
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: metrics
+  - port: 8081
+    targetPort: 8081
+    name: health
+  selector:
+    app: scaling-controller
+
+---
+# Pod Disruption Budget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: retrofitlink-backend-pdb
+  namespace: retrofitlink
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: retrofitlink-backend
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: retrofitlink-frontend-pdb
+  namespace: retrofitlink
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: retrofitlink-frontend
+
+---
+# Resource Quotas for the namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: retrofitlink-quota
+  namespace: retrofitlink
+spec:
+  hard:
+    requests.cpu: "20"
+    requests.memory: 40Gi
+    limits.cpu: "50"
+    limits.memory: 100Gi
+    pods: "200"
+    persistentvolumeclaims: "10"
+    services: "20"
+    secrets: "50"
+    configmaps: "50"
+
+---
+# Limit Range for pods
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: retrofitlink-limits
+  namespace: retrofitlink
+spec:
+  limits:
+  - default:
+      cpu: 500m
+      memory: 512Mi
+    defaultRequest:
+      cpu: 100m
+      memory: 128Mi
+    type: Container
+  - max:
+      cpu: 4
+      memory: 8Gi
+    min:
+      cpu: 50m
+      memory: 64Mi
+    type: Container

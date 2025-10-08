@@ -1,0 +1,760 @@
+# SAM Enterprise Kubernetes Deployment
+# Production-ready orchestration with high availability
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sam-enterprise
+  labels:
+    name: sam-enterprise
+    tier: enterprise
+
+---
+# ConfigMap for enterprise configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sam-enterprise-config
+  namespace: sam-enterprise
+data:
+  SAM_MODE: "enterprise"
+  SAM_TIER: "enterprise"
+  SAM_MAX_USERS: "10000"
+  SAM_ENCRYPTION: "true"
+  SAM_SSO_ENABLED: "true"
+  POSTGRES_HOST: "postgres-enterprise-service"
+  REDIS_HOST: "redis-enterprise-service"
+
+---
+# Secret for sensitive configuration
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sam-enterprise-secrets
+  namespace: sam-enterprise
+type: Opaque
+data:
+  postgres-password: c2VjdXJlX3Bvc3RncmVzX3Bhc3N3b3JkX2NoYW5nZV9tZQ==  # base64 encoded
+  redis-password: c2VjdXJlX3JlZGlzX3Bhc3N3b3JkX2NoYW5nZV9tZQ==  # base64 encoded
+  jwt-secret: c2VjdXJlX2p3dF9zZWNyZXRfY2hhbmdlX21l  # base64 encoded
+
+---
+# Persistent Volume for PostgreSQL
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-enterprise-pv
+  namespace: sam-enterprise
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: fast-ssd
+  hostPath:
+    path: /data/postgres-enterprise
+
+---
+# Persistent Volume Claim for PostgreSQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-enterprise-pvc
+  namespace: sam-enterprise
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd
+
+---
+# PostgreSQL Enterprise Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-enterprise
+  namespace: sam-enterprise
+  labels:
+    app: postgres-enterprise
+    tier: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-enterprise
+  template:
+    metadata:
+      labels:
+        app: postgres-enterprise
+        tier: database
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: "sam_enterprise"
+        - name: POSTGRES_USER
+          value: "sam_admin"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sam-enterprise-secrets
+              key: postgres-password
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - sam_admin
+            - -d
+            - sam_enterprise
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - sam_admin
+            - -d
+            - sam_enterprise
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-enterprise-pvc
+
+---
+# PostgreSQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-enterprise-service
+  namespace: sam-enterprise
+  labels:
+    app: postgres-enterprise
+spec:
+  ports:
+  - port: 5432
+    targetPort: 5432
+  selector:
+    app: postgres-enterprise
+  type: ClusterIP
+
+---
+# Redis Enterprise Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-enterprise
+  namespace: sam-enterprise
+  labels:
+    app: redis-enterprise
+    tier: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-enterprise
+  template:
+    metadata:
+      labels:
+        app: redis-enterprise
+        tier: cache
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        command:
+        - redis-server
+        - --requirepass
+        - $(REDIS_PASSWORD)
+        - --appendonly
+        - "yes"
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sam-enterprise-secrets
+              key: redis-password
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-enterprise-service
+  namespace: sam-enterprise
+  labels:
+    app: redis-enterprise
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: redis-enterprise
+  type: ClusterIP
+
+---
+# SAM Chat Enterprise Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sam-chat-enterprise
+  namespace: sam-enterprise
+  labels:
+    app: sam-chat-enterprise
+    tier: application
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: sam-chat-enterprise
+  template:
+    metadata:
+      labels:
+        app: sam-chat-enterprise
+        tier: application
+    spec:
+      containers:
+      - name: sam-chat
+        image: sam-chat:enterprise
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: sam-enterprise-config
+        env:
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: sam-enterprise-secrets
+              key: jwt-secret
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: chat-logs
+          mountPath: /app/logs
+        - name: chat-data
+          mountPath: /app/data
+      volumes:
+      - name: chat-logs
+        emptyDir: {}
+      - name: chat-data
+        emptyDir: {}
+
+---
+# SAM Chat Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: sam-chat-enterprise-service
+  namespace: sam-enterprise
+  labels:
+    app: sam-chat-enterprise
+spec:
+  ports:
+  - port: 8000
+    targetPort: 8000
+  selector:
+    app: sam-chat-enterprise
+  type: ClusterIP
+
+---
+# SAM Coder Enterprise Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sam-coder-enterprise
+  namespace: sam-enterprise
+  labels:
+    app: sam-coder-enterprise
+    tier: application
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: sam-coder-enterprise
+  template:
+    metadata:
+      labels:
+        app: sam-coder-enterprise
+        tier: application
+    spec:
+      containers:
+      - name: sam-coder
+        image: sam-coder:enterprise
+        ports:
+        - containerPort: 8001
+        envFrom:
+        - configMapRef:
+            name: sam-enterprise-config
+        env:
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: sam-enterprise-secrets
+              key: jwt-secret
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8001
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: coder-logs
+          mountPath: /app/logs
+        - name: coder-data
+          mountPath: /app/data
+      volumes:
+      - name: coder-logs
+        emptyDir: {}
+      - name: coder-data
+        emptyDir: {}
+
+---
+# SAM Coder Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: sam-coder-enterprise-service
+  namespace: sam-enterprise
+  labels:
+    app: sam-coder-enterprise
+spec:
+  ports:
+  - port: 8001
+    targetPort: 8001
+  selector:
+    app: sam-coder-enterprise
+  type: ClusterIP
+
+---
+# SAM Auto-Distribution Enterprise Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sam-autodist-enterprise
+  namespace: sam-enterprise
+  labels:
+    app: sam-autodist-enterprise
+    tier: ml
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sam-autodist-enterprise
+  template:
+    metadata:
+      labels:
+        app: sam-autodist-enterprise
+        tier: ml
+    spec:
+      containers:
+      - name: sam-autodist
+        image: sam-autodist:enterprise
+        ports:
+        - containerPort: 8002
+        envFrom:
+        - configMapRef:
+            name: sam-enterprise-config
+        env:
+        - name: SAM_RL_ENABLED
+          value: "true"
+        resources:
+          requests:
+            memory: "8Gi"
+            cpu: "4000m"
+          limits:
+            memory: "16Gi"
+            cpu: "6000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8002
+          initialDelaySeconds: 30
+          periodSeconds: 15
+        volumeMounts:
+        - name: autodist-logs
+          mountPath: /app/logs
+        - name: autodist-data
+          mountPath: /app/data
+        - name: models-storage
+          mountPath: /app/models
+      volumes:
+      - name: autodist-logs
+        emptyDir: {}
+      - name: autodist-data
+        emptyDir: {}
+      - name: models-storage
+        emptyDir: {}
+
+---
+# SAM Auto-Distribution Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: sam-autodist-enterprise-service
+  namespace: sam-enterprise
+  labels:
+    app: sam-autodist-enterprise
+spec:
+  ports:
+  - port: 8002
+    targetPort: 8002
+  selector:
+    app: sam-autodist-enterprise
+  type: ClusterIP
+
+---
+# NGINX Load Balancer
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-enterprise
+  namespace: sam-enterprise
+  labels:
+    app: nginx-enterprise
+    tier: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-enterprise
+  template:
+    metadata:
+      labels:
+        app: nginx-enterprise
+        tier: frontend
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-enterprise-config
+
+---
+# NGINX Service (Load Balancer)
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-enterprise-service
+  namespace: sam-enterprise
+  labels:
+    app: nginx-enterprise
+spec:
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  - name: https
+    port: 443
+    targetPort: 443
+  selector:
+    app: nginx-enterprise
+  type: LoadBalancer
+
+---
+# NGINX ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-enterprise-config
+  namespace: sam-enterprise
+data:
+  nginx.conf: |
+    events {
+        worker_connections 1024;
+    }
+    
+    http {
+        upstream sam-chat-backend {
+            server sam-chat-enterprise-service:8000;
+        }
+        
+        upstream sam-coder-backend {
+            server sam-coder-enterprise-service:8001;
+        }
+        
+        upstream sam-autodist-backend {
+            server sam-autodist-enterprise-service:8002;
+        }
+        
+        server {
+            listen 80;
+            server_name _;
+            
+            location /health {
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+            
+            location /chat/ {
+                proxy_pass http://sam-chat-backend/;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+            
+            location /coder/ {
+                proxy_pass http://sam-coder-backend/;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+            
+            location /autodist/ {
+                proxy_pass http://sam-autodist-backend/;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+            
+            location / {
+                proxy_pass http://sam-chat-backend/;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+        }
+    }
+
+---
+# Horizontal Pod Autoscaler for SAM Chat
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sam-chat-hpa
+  namespace: sam-enterprise
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sam-chat-enterprise
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# Horizontal Pod Autoscaler for SAM Coder
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sam-coder-hpa
+  namespace: sam-enterprise
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sam-coder-enterprise
+  minReplicas: 3
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# Network Policy for Enterprise Security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sam-enterprise-network-policy
+  namespace: sam-enterprise
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: sam-enterprise
+    - podSelector: {}
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: sam-enterprise
+    - podSelector: {}
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+---
+# Resource Quota for Enterprise Namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: sam-enterprise-quota
+  namespace: sam-enterprise
+spec:
+  hard:
+    requests.cpu: "50"
+    requests.memory: 100Gi
+    limits.cpu: "100"
+    limits.memory: 200Gi
+    persistentvolumeclaims: "10"
+    pods: "50"
+    services: "20"
+
+---
+# Limit Range for Enterprise Namespace
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: sam-enterprise-limits
+  namespace: sam-enterprise
+spec:
+  limits:
+  - default:
+      cpu: "2"
+      memory: "4Gi"
+    defaultRequest:
+      cpu: "500m"
+      memory: "1Gi"
+    type: Container
+  - max:
+      cpu: "8"
+      memory: "16Gi"
+    min:
+      cpu: "100m"
+      memory: "128Mi"
+    type: Container

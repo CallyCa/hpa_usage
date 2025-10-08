@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: patientservice
+spec:
+
+  replicas: 1
+  selector:
+    matchLabels:
+      app: patientservice
+  template:
+    metadata:
+      labels:
+        app: patientservice
+    spec:
+      containers:
+        - name: patientservice
+          image: nakulsiwach/patient-service:v3
+          ports:
+            - containerPort: 8081
+          resources:
+            requests:
+              cpu: "100m"    # ✅ Required for HPA to work
+            limits:
+              cpu: "500m"
+          env:
+            - name: SPRING_APPLICATION_NAME
+              value: patientservice
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:mysql://mysql:3306/patientdb
+            - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+              value: http://eureka:8761/eureka
+            - name: LOGGING_LOGSTASH_ENABLED
+              value: "false"
+            - name: EUREKA_INSTANCE_HOSTNAME
+              value: patientservice
+            - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
+              value: "true"
+
+            # Actuator + Prometheus (✅ WORKS for Spring Boot 3+)
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              value: "prometheus,health,info"
+            - name: MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED
+              value: "true"
+            - name: MANAGEMENT_ENDPOINTS_WEB_BASE_PATH
+              value: "/actuator"
+
+
+
+
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: patientservice
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/actuator/prometheus"
+    prometheus.io/port: "8081"
+spec:
+  type: ClusterIP  # internal only
+  selector:
+    app: patientservice
+  ports:
+    - port: 8081
+      targetPort: 8081
+
+
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: patientservice-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: patientservice
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50

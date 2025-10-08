@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-back
+spec:
+  selector:
+    matchLabels:
+      app: my-back
+  template:
+    metadata:
+      labels:
+        app: my-back
+    spec:
+      containers:
+      - name: my-back
+        image: susguzman/so1-s223-back:0.1.1
+        env:
+        - name: ORACLE_USER
+          value: APPUSER
+        - name: ORACLE_PASS
+          valueFrom:
+            secretKeyRef:
+              key: app-user-pass
+              name: db-secrets
+        - name: ORACLE_CONNSTR
+          value: svc-database:1521/xepdb1
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+        ports:
+        - containerPort: 3800
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: svc-back
+spec:
+  type: LoadBalancer
+  selector:
+    app: my-back
+  ports:
+  - port: 3800
+    targetPort: 3800
+---
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-back
+spec:
+  maxReplicas: 5
+  metrics:
+  - resource:
+      name: cpu
+      target:
+        averageUtilization: 50
+        type: Utilization
+    type: Resource
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-back

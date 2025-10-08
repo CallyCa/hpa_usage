@@ -1,0 +1,13 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ashpalhpracticeapi-develop
+  namespace: develop
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: deploylhpracticeapi-develop
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 60

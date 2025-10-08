@@ -1,0 +1,61 @@
+{{- if and .Values.kedaAutoscaling.enabled (not .Values.autoscaling.enabled) }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "fullname" . }}
+  namespace: {{ include  "namespace" . }}
+  labels:
+    {{- include "labels" (dict "context" . "component" .Values.name "name" .Values.name) | nindent 4 }}
+  {{- with .Values.kedaAutoscaling.annotations }}
+  annotations:
+    {{- range $key, $value := . }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  {{- with .Values.kedaAutoscaling.pollingInterval }}
+  pollingInterval: {{ . }}
+  {{- end }}
+  {{- with .Values.kedaAutoscaling.cooldownPeriod }}
+  cooldownPeriod: {{ . }}
+  {{- end }}
+  {{- with .Values.kedaAutoscaling.initialCooldownPeriod }}
+  initialCooldownPeriod: {{ . }}
+  {{- end }}
+  {{- with .Values.kedaAutoscaling.idleReplicaCount }}
+  idleReplicaCount: {{ . }}
+  {{- end }}
+  minReplicaCount: {{ .Values.kedaAutoscaling.minReplicaCount | default 0 }}
+  {{- with .Values.kedaAutoscaling.maxReplicaCount }}
+  maxReplicaCount: {{ . }}
+  {{- end }}
+  scaleTargetRef:
+    {{- include "keda.scaleTargetRef" . | nindent 4 }}
+  {{- with .Values.kedaAutoscaling.fallback }}
+  fallback:
+    failureThreshold: {{ .failureThreshold }}
+    replicas: {{ .replicas }}
+  {{- end }}
+  {{- with .Values.kedaAutoscaling.advanced }}
+  advanced:
+    restoreToOriginalReplicaCount: {{ .restoreToOriginalReplicaCount}}
+    {{- with .horizontalPodAutoscalerConfig}}
+    horizontalPodAutoscalerConfig:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+  {{- if empty (.Values.kedaAutoscaling.triggers) }}
+  triggers: []
+  {{- else }}
+  {{- range .Values.kedaAutoscaling.triggers }}
+  triggers:
+    - type: {{ .type }}
+      authenticationRef:
+        name: {{ template "fullname" $ }}-keda-auth
+      {{- with .metadata }}
+      metadata:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "authgear.nameAdmin" . | quote }}
+  labels:
+    {{- include "authgear.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "authgear.adminSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "authgear.adminSelectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "authgear.nameMain" . | quote }}
+      {{ if .Values.authgear.appCustomResources.path }}
+      volumes:
+      - name: custom-resources
+        {{- toYaml .Values.authgear.appCustomResources.volume | nindent 8 }}
+      {{ end }}
+      containers:
+      - name: authgear-admin-server
+        image: {{ .Values.authgear.mainServer.image | quote }}
+        args: ["authgear", "start", "admin"]
+        {{ if .Values.authgear.appCustomResources.path }}
+        volumeMounts:
+        - name: custom-resources
+          mountPath: {{ .Values.authgear.appCustomResources.path | quote }}
+        {{ end }}
+        env:
+        - name: TRUST_PROXY
+          value: {{ .Values.authgear.mainServer.env.TRUST_PROXY | quote }}
+        - name: LOG_LEVEL
+          value: {{ .Values.authgear.mainServer.env.LOG_LEVEL | quote }}
+        - name: SENTRY_DSN
+          value: {{ .Values.authgear.mainServer.env.SENTRY_DSN | quote }}
+        - name: ADMIN_API_AUTH
+          value: {{ .Values.authgear.mainServer.env.ADMIN_API_AUTH | quote }}
+        - name: CONFIG_SOURCE_TYPE
+          value: {{ .Values.authgear.mainServer.env.CONFIG_SOURCE_TYPE | quote }}
+        - name: CONFIG_SOURCE_KUBE_NAMESPACE
+          value: {{ .Values.authgear.appNamespace | quote }}
+        - name: CUSTOM_RESOURCE_DIRECTORY
+          value: {{ .Values.authgear.appCustomResources.path | quote }}
+        ports:
+        - name: http
+          containerPort: 3002
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+        resources:
+          {{- toYaml .Values.authgear.adminServer.resources | nindent 10 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "authgear.nameAdmin" . | quote }}
+  labels:
+    {{- include "authgear.labels" . | nindent 4 }}
+spec:
+  ports:
+  - port: 80
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "authgear.adminSelectorLabels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "authgear.nameAdmin" . | quote }}
+  namespace: {{ .Values.authgear.appNamespace | quote }}
+  labels:
+    {{- include "authgear.labels" . | nindent 4 }}
+spec:
+  type: ExternalName
+  externalName: {{ include "authgear.nameAdmin" . }}.{{ .Release.Namespace }}.svc.cluster.local
+  ports:
+  - port: 80

@@ -1,0 +1,85 @@
+apiVersion: helm.fluxcd.io/v1
+kind: HelmRelease
+metadata:
+  name: reaction-storefront
+  namespace: production
+spec:
+  releaseName: reaction-storefront
+  chart:
+    git: git@github.com:frasersgroup/reaction-releases.git
+    path: charts/reaction-storefront
+    ref: develop
+  values:
+    config:
+      applePayMerchantId: merchant.production.ems
+      applePayMerchantCertificateBundle: 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
+      applePayMerchantCertificatePassphrase: AgDJdmCQHi9BAFBXQvej6nzEFwme6swXKxpMhfIYeA3WWtduKSO8eV9CF6Iy63IPv7mgmufLBaVmt1JRhCs9ZjmV1iF+DAM8346q/iejzu9Z6+HZnbrm7juONFwzrilULJTng9JwXJYKeOPjTeCLMWqAzrxGz86WvGjXMAW1WJ/FZM3xkZA+OD1ttZYxtTUrZwupyn44Jzrxw/VEwSSwUm00lPWs0NfXBXvvZ8kESCYt4KG+2k94zGY0O3qtd1r+vJZTmz4EokiJbqYxa05Q3MBfwttwtkUNn92NzhMQ8FOls4arqiAD+ZjXpYcz/lNZAqDAKIJtMsNhf+Ru33SP3Oirpp6xC2qVp4AX177ftKIPrlb7ETl8qac7bVvZu7w3JfObdu9YEGCW7+u0z//8vlMVSz5Yf3Uh3qfLQqaUoqaRbNcM/B8Z1zBKHUCH1dJn14Kn+wguaQzdufWW5QBAZySC3SMd1jHOCKYp0s6hmRiTTk7pD9rC0VOjYYZsDlZHAVaa0v/UnN+K35HIPiiF9yS1WoPOYNMnnI8sfjyxJyJX8BpsyRxmK7st4bCYNUvLONY0fJmYGCJQfPEUY6lg4Semyue1auyeAl5eMZZ8BLrYBEgrh7sEtH9wZyW38LuhzMGpaEMJhFz8ldrTPSHpYCY9hwpkPTOYGpe/s8zuWmn1azToFYfQaG82IEWPKcSPhRRIL7sInXb3idHqbuMnZIOKAAGp
+      baseUrl: https://www.ems.com
+      cloudinary:
+        name: eastern
+        domain: res.cloudinary.com
+      #contentSecurityPolicy:
+        #policyReportUri: https://sentry.io/api/1802036/security/
+        #reportOnlyPolicyReportUri: https://sentry.io/api/1802036/security/
+      contentstack:
+        accessToken: cs95495781be2a2d48f640aa0e
+        apiKey: blt7841d2a593726d96
+        environment: production
+      elasticsearchUrl: https://vpc-production-storefront-bqztylrrrcalisngun4njcgjna.us-east-1.es.amazonaws.com:443
+      hydraAdminUrl: http://ory-hydra-admin:4445
+      identityServiceUrl: http://reaction-storefront-identity:4100
+      healthcheck:
+        applePay: 0377a72f-1237-4742-8c38-6ee626e147c8
+        cardAmericanExpress: cc090b27-a644-49ab-a940-4a5f37786104
+        cardDiscoverCard: 49550661-cc32-47f1-b217-bf48fcead434
+        cardMasterCard: f91da11c-5d59-46ec-ac5e-53b54d1dc812
+        cardVisa: 26413c6c-e1a4-46ca-8f26-2870ccc7e4f6
+        orderCompleted: 0ee96746-65ab-4c5c-b8ff-d5a091bb1516
+        payPal: 6bba35cb-e9dc-41b9-8361-c115b694bcf7
+      mapboxToken: pk.eyJ1IjoianBoaWxvIiwiYSI6ImNqeHFlaG1kaDAwNTUzaXA1NmVmbmJpMDEifQ.VCyMGmTZGRtZo_vUrXEutA
+      oauth2:
+        authUrl: https://auth.ems.com/oauth2/auth
+        clientId: ems-production-storefront2
+        clientSecret: AgDKuxGPtjzbLYVBlAxbpZJf1XXeTgVEcbr+AvXKFA8RbzsKtcVcCBt0P5q0ROS0+vVFdwCF1eA9jk1MjAzsOYvPX2DKfmFZnsU1BhypQ97Fx9RtkVcNh3y75gWhzkMGIpQ7QrSjPw1IngmMCdUhgQ6WSzb4aW1FStZ2feIWXstkyk4DsuFr/XpnZA08zDXrPig0Q5xCJcE+zyGONnGm2r8tOMthyEK8M0BlDISXBht1t3OqNJCchOT+1DYXvaNfycH6FntINy/eeNwiIPZcXAT79i27i6LRT0/ch20f/R3LaODzpqJVNCHd39oKBJMesCInkAiuXO0vl3/lPlIMYW1TaClOYSeukGnptDdsZOFe2Khj5dOeXp8qd/82dfJxZIdPRm9paWV5zJOdqLJe4Ougr74o2lg6zMilaF4ul7tf44sSSd48p+VjrLqbkp4Es/ajRZsK4c+4IEvjSWymPaFqzLEbVM8Vwz4+f59Mb6bR8zwFXSBX2uVk15IIoTQlg6PUUVjCMj7X9VVClZwpKMJQC4gK3HQRM8EVw0mARgkQtmk+/JeLvqTUA0A4Jb/xrRm00eO2RT9FsD2kErdu+Udz0t2PO7eowaK3Ij0msXWTlfEo0dpkyel1NJPv2xmVR0+P/PAcSO9W1viEfL61rlRA9Cr8kyNdTTs8mhil0n2XSOhSnxcgD/oQBfV5fw437r5uV8W93K1brchc28w=
+        idpHostUrl: https://api.ems.com/
+        redirectUrl: https://www.ems.com/callback
+        tokenUrl: http://ory-hydra-public:4444/oauth2/token
+      radial:
+        clientId: EMSUS
+        mode: production
+        rdfUrl: https://rdf.radial.com/rdf/service/scripts?clientIdentifier=EMSUS
+      reactionVersionThree: "true"
+      segmentAnalytics:
+        enabled: true
+        writeKey: lP6S7JFlVKryAHeiW7phvWEkwWTVfbUZ
+        serverWriteKey: 4Ycnbe9zJqF5LzjUPfxRvbz0RqTpXu2M
+      sentry:
+        enabled: true
+        clientDsn: https://a3e4a12345714bfd960dc5c83f6b7899@o234104.ingest.sentry.io/1802036
+        serverDsn: https://65c68f214214441aa69dd1e73ff7efb9@o234104.ingest.sentry.io/5777413
+        environment: production
+        key: cfd896342463403298b3256945c1fc8e34a4a7e60a62413295b84a779925c73d
+        clientProject: ems-client
+        serverProject: ems-server
+        sourcemapToken: 13a829e4fb0e11e994f94201c0a8d02b
+      sessionSecret: AgBvu1G5s5Ibj0Bfi8z7UnDDPrRgipa4XIPLIEZr3ddAuhiCRVglER+2BsbPKtmxPLqDvQrjDdOmaNzz/In0DCpaNVT76yVQ1R3oR4AdGAD3P9TxSQSyXLAo3osTDT/FL16pFi/FLnInxzcA730MAuozBIo5gN5ibNbIMS76AZ5g91rcZ7zBdfSgJbw+TImfGdHqAioe/+Rrlhb6MRBQiPgmrLDp3/DKGigWJG20DvKA6HZvULIY8ts8XiVRNEN4JnIdJRoe8EFnLubGt0hxn6uehNjRc7ORT4njOGtaNNzRT+pxkp5g3nTXd+/nuXZu+EHzs/JUtSlPMy5ZVJK1fPHnKl40RYWp0Lb5m1Ef10VmD4HXy1YT36+4NBow9deH0Qey3yZHO+h0YOLupQsSPrtxIbIplApn22DVNytCsfD439L97UnWJ7iq6WNfMETjoZXjp8O6AhFYc61el5I3z94sJseB3k4eJo+qxOXtI7ojpWjBBa+ShyATLsTMvTtXSAl6sarBE/pitWGRpNAYVkbCPnUvUYiQFGs6lsJfewEtOM6cUKoUDbuRPdl2CvADWdaUO2jahTqhq/1x59SEfYocS10gevUWBnHLXa2joS+4K+Qh3hwSrxxNuo38KlITFUqHSCQ++FlE3WCRk4xImWD9xaGQJc7nQmqkKOBalXihKmO++3RUhWXGgyRzXPJ1sCN1xO1OtLr8M9fne8+PHxlF
+    horizontalPodAutoscaler:
+      enabled: true
+      averageUtilization: 70
+      min: 3
+      max: 10
+    image:
+      repository: 816897914983.dkr.ecr.us-east-1.amazonaws.com/reaction-storefront-ems
+      tag: 9df2cdbe
+    ingress:
+      hosts:
+        - host: www.ems.com
+          paths: ['/']
+    maxUnavailable: 1
+    resources:
+      requests:
+        memory: 100Mi
+        cpu: 100m
+      limits:
+        memory: 2Gi
+        cpu: "2"

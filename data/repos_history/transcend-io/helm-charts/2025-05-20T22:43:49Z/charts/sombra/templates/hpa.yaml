@@ -1,0 +1,48 @@
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  namespace: {{ .Values.namespace }}
+  name: {{ include "sombra-chart.fullname" . }}
+  labels:
+    {{- include "sombra-chart.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "sombra-chart.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+    {{- range $name, $value := .Values.autoscaling.externalMetrics }}
+    -  type: External
+       external:
+         metric:
+           name: {{ $value.name }}
+           selector:
+             {{- with $value.selectorLabels }}
+             matchLabels:
+               {{- toYaml . | nindent 15 }}
+             {{- end }}
+         {{- with $value.target }}
+         target:
+           {{- toYaml . | nindent 11 }}
+        {{- end }}
+    {{- end }}
+{{- end }}

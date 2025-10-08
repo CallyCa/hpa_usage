@@ -1,0 +1,40 @@
+{{- if .Values.zsglobal.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "zpa-app-connector-openshift.fullname" . }}
+  labels:
+    {{- include "zpa-app-connector-openshift.labels" . | nindent 4 }}
+  namespace: {{ .Values.zsglobal.namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "zpa-app-connector-openshift.fullname" . }}
+  minReplicas: {{ .Values.zsglobal.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.zsglobal.autoscaling.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.zsglobal.autoscaling.targetCPUUtilizationPercentage }}
+  ## scaler targets to hold average memory around 80%
+  {{- if .Values.zsglobal.autoscaling.memoryAutoScalingEnabled }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization:  {{ .Values.zsglobal.autoscaling.targetMemoryUtilizationPercentage }}
+  {{- end }}
+  behavior:
+    scaleDown:
+      {{- if .Values.zsglobal.autoscaling.scaleDownDisabled }}
+      selectPolicy: Disabled
+      {{- else }}
+      stabilizationWindowSeconds: 300
+      {{- end}}
+{{- end }}

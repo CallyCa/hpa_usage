@@ -1,0 +1,53 @@
+{{- if eq (.Values.dedicatedFrontend.enable | default false) true }}
+{{- if eq (.Values.dedicatedFrontend.scaling.useAutoscaler | default false) true }}
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Values.global.project }}-{{ .Values.global.environment }}-frontend-app-hpa
+  labels:
+    {{- include "common.labels" . | indent 4 }}
+    app.kubernetes.io/component: app
+    deployment: {{ .Values.global.project }}-{{ .Values.global.environment }}-frontend-app
+spec:
+  minReplicas: {{ .Values.dedicatedFrontend.scaling.minReplicas | default 2 }}
+  maxReplicas: {{ .Values.dedicatedFrontend.scaling.maxReplicas | default 7 }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Values.global.project }}-{{ .Values.global.environment }}-frontend-app
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pod
+          value: 2
+          periodSeconds: 30
+        - type: Percent
+          value: 20
+          periodSeconds: 30
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 20
+          periodSeconds: 15
+        - type: Pods
+          value: 2
+          periodSeconds: 15
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+{{- end -}}
+{{- end -}}
+{{/* @todo: Explore other metrics, see https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale-walkthrough/ */}}
+{{/* @todo: Allow better customization. */}}

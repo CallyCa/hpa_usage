@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mercadopago-api-config
+  labels:
+    app: mercadopago-api
+data:
+  MERCADOPAGO_PORT: "3004"
+  WEBHOOK_API_URL: 'http://webhook-api-clusterip.default.svc.cluster.local:9002'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mercadopago-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mercadopago-api
+  template:
+    metadata:
+      labels:
+        app: mercadopago-api
+    spec:
+      containers:
+        - name: mercadopago-api
+          image: negreirosdev/mercadopago-server:latest
+          imagePullPolicy: "IfNotPresent"
+          envFrom:
+            - configMapRef:
+                name: mercadopago-api-config
+          ports:
+            - containerPort: 3004
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "0.5"
+              memory: "1Gi"
+              ephemeral-storage: "2Gi"
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mercadopago-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mercadopago-api
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mercadopago-api-clusterip
+spec:
+  type: NodePort
+  selector:
+    app: mercadopago-api
+  ports:
+    - protocol: TCP
+      port: 3004
+      nodePort: 30003

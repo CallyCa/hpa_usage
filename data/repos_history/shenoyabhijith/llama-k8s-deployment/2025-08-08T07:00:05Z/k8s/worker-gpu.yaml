@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama-worker
+  namespace: llama-deployment
+  labels:
+    app: llama-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: llama-worker
+  template:
+    metadata:
+      labels:
+        app: llama-worker
+    spec:
+      containers:
+        - name: worker
+          image: your-registry/llama-worker:latest
+          imagePullPolicy: Always
+          env:
+            - name: REDIS_URL
+              value: redis://redis:6379/0
+            - name: MODEL_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: llama-config
+                  key: MODEL_NAME
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: llama-secrets
+                  key: HUGGING_FACE_HUB_TOKEN
+          resources:
+            requests:
+              cpu: "1"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "2"
+              memory: "16Gi"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: model-cache
+              mountPath: /root/.cache/huggingface
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: llama-model-cache
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: llama-worker-hpa
+  namespace: llama-deployment
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: llama-worker
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: nvidia.com/gpu
+        target:
+          type: Utilization
+          averageUtilization: 85
+

@@ -1,0 +1,2938 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      k8s.ovn.org/pod-networks: '{"default":{"ip_addresses":["10.128.21.175/23"],"mac_address":"0a:58:0a:80:15:af","gateway_ips":["10.128.20.1"],"ip_address":"10.128.21.175/23","gateway_ip":"10.128.20.1"}}'
+      k8s.v1.cni.cncf.io/network-status: |-
+        [{
+            "name": "ovn-kubernetes",
+            "interface": "eth0",
+            "ips": [
+                "10.128.21.175"
+            ],
+            "mac": "0a:58:0a:80:15:af",
+            "default": true,
+            "dns": {}
+        }]
+      kubernetes.io/limit-ranger: 'LimitRanger plugin set: cpu, memory request for
+        container counter-backend; cpu, memory limit for container counter-backend'
+      openshift.io/scc: restricted-v2
+      seccomp.security.alpha.kubernetes.io/pod: runtime/default
+    creationTimestamp: "2023-06-01T11:29:11Z"
+    generateName: counter-backend-77bdc998f9-
+    labels:
+      app: counter-backend
+      pod-template-hash: 77bdc998f9
+    name: counter-backend-77bdc998f9-kvnqk
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ReplicaSet
+      name: counter-backend-77bdc998f9
+      uid: 52a89e2e-9bd4-465f-b7d6-0c5e7d948c10
+    resourceVersion: "802444983"
+    uid: e7dfb1d0-4552-469b-9f94-6e1cf66486a8
+  spec:
+    containers:
+    - env:
+      - name: PASSPHRASE
+        valueFrom:
+          secretKeyRef:
+            key: passphrase
+            name: counter-backend
+      - name: DB_HOST
+        valueFrom:
+          configMapKeyRef:
+            key: database-host
+            name: counter-backend
+      - name: DB_NAME
+        valueFrom:
+          secretKeyRef:
+            key: postgres-db
+            name: counter-backend
+      - name: DB_USER
+        valueFrom:
+          secretKeyRef:
+            key: database-user
+            name: counter-database
+      - name: DB_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            key: database-password
+            name: counter-database
+      - name: NODE_ENV
+        value: production
+      - name: npm_config_cache
+        value: ./.npm-cache
+      image: ghcr.io/rogertbz/counter-backend:v1
+      imagePullPolicy: Always
+      name: counter-backend
+      ports:
+      - containerPort: 8080
+        protocol: TCP
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1000Mi
+        requests:
+          cpu: 10m
+          memory: 64Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+        runAsNonRoot: true
+        runAsUser: 1019200000
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-zngns
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    imagePullSecrets:
+    - name: default-dockercfg-5sjxb
+    nodeName: ip-10-0-129-235.ec2.internal
+    preemptionPolicy: PreemptLowerPriority
+    priority: -3
+    priorityClassName: sandbox-users-pods
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext:
+      fsGroup: 1019200000
+      seLinuxOptions:
+        level: s0:c139,c9
+      seccompProfile:
+        type: RuntimeDefault
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoSchedule
+      key: node.kubernetes.io/memory-pressure
+      operator: Exists
+    volumes:
+    - name: kube-api-access-zngns
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+        - configMap:
+            items:
+            - key: service-ca.crt
+              path: service-ca.crt
+            name: openshift-service-ca.crt
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:29:12Z"
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:29:14Z"
+      status: "True"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:29:14Z"
+      status: "True"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:29:12Z"
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: cri-o://12c34829697fd2a1b5731365a52b8c3ea8ff3b97727eaffdef503ab20f5ef26f
+      image: ghcr.io/rogertbz/counter-backend:v1
+      imageID: ghcr.io/rogertbz/counter-backend@sha256:9625ead75f120e021ec4757599ccc1a7169b003c50ef7507bbea480e95e6f1cb
+      lastState: {}
+      name: counter-backend
+      ready: true
+      restartCount: 0
+      started: true
+      state:
+        running:
+          startedAt: "2023-06-01T11:29:13Z"
+    hostIP: 10.0.129.235
+    phase: Running
+    podIP: 10.128.21.175
+    podIPs:
+    - ip: 10.128.21.175
+    qosClass: Burstable
+    startTime: "2023-06-01T11:29:12Z"
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      k8s.ovn.org/pod-networks: '{"default":{"ip_addresses":["10.128.7.3/23"],"mac_address":"0a:58:0a:80:07:03","gateway_ips":["10.128.6.1"],"ip_address":"10.128.7.3/23","gateway_ip":"10.128.6.1"}}'
+      k8s.v1.cni.cncf.io/network-status: |-
+        [{
+            "name": "ovn-kubernetes",
+            "interface": "eth0",
+            "ips": [
+                "10.128.7.3"
+            ],
+            "mac": "0a:58:0a:80:07:03",
+            "default": true,
+            "dns": {}
+        }]
+      kubernetes.io/limit-ranger: 'LimitRanger plugin set: cpu, memory request for
+        container counter-backend; cpu, memory limit for container counter-backend'
+      openshift.io/scc: restricted-v2
+      seccomp.security.alpha.kubernetes.io/pod: runtime/default
+    creationTimestamp: "2023-06-01T11:27:57Z"
+    generateName: counter-backend-77bdc998f9-
+    labels:
+      app: counter-backend
+      pod-template-hash: 77bdc998f9
+    name: counter-backend-77bdc998f9-zf8v5
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ReplicaSet
+      name: counter-backend-77bdc998f9
+      uid: 52a89e2e-9bd4-465f-b7d6-0c5e7d948c10
+    resourceVersion: "802441941"
+    uid: df40178a-7cfd-41ce-9738-93f11744891d
+  spec:
+    containers:
+    - env:
+      - name: PASSPHRASE
+        valueFrom:
+          secretKeyRef:
+            key: passphrase
+            name: counter-backend
+      - name: DB_HOST
+        valueFrom:
+          configMapKeyRef:
+            key: database-host
+            name: counter-backend
+      - name: DB_NAME
+        valueFrom:
+          secretKeyRef:
+            key: postgres-db
+            name: counter-backend
+      - name: DB_USER
+        valueFrom:
+          secretKeyRef:
+            key: database-user
+            name: counter-database
+      - name: DB_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            key: database-password
+            name: counter-database
+      - name: NODE_ENV
+        value: production
+      - name: npm_config_cache
+        value: ./.npm-cache
+      image: ghcr.io/rogertbz/counter-backend:v1
+      imagePullPolicy: Always
+      name: counter-backend
+      ports:
+      - containerPort: 8080
+        protocol: TCP
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1000Mi
+        requests:
+          cpu: 10m
+          memory: 64Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+        runAsNonRoot: true
+        runAsUser: 1019200000
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-g5pr4
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    imagePullSecrets:
+    - name: default-dockercfg-5sjxb
+    nodeName: ip-10-0-205-209.ec2.internal
+    preemptionPolicy: PreemptLowerPriority
+    priority: -3
+    priorityClassName: sandbox-users-pods
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext:
+      fsGroup: 1019200000
+      seLinuxOptions:
+        level: s0:c139,c9
+      seccompProfile:
+        type: RuntimeDefault
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoSchedule
+      key: node.kubernetes.io/memory-pressure
+      operator: Exists
+    volumes:
+    - name: kube-api-access-g5pr4
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+        - configMap:
+            items:
+            - key: service-ca.crt
+              path: service-ca.crt
+            name: openshift-service-ca.crt
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:27:57Z"
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:27:59Z"
+      status: "True"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:27:59Z"
+      status: "True"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:27:57Z"
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: cri-o://cdce2a3d791c31dbe4f26abd466e63ea26b4dcebb0ccb13e0ef2951357544967
+      image: ghcr.io/rogertbz/counter-backend:v1
+      imageID: ghcr.io/rogertbz/counter-backend@sha256:9625ead75f120e021ec4757599ccc1a7169b003c50ef7507bbea480e95e6f1cb
+      lastState: {}
+      name: counter-backend
+      ready: true
+      restartCount: 0
+      started: true
+      state:
+        running:
+          startedAt: "2023-06-01T11:27:58Z"
+    hostIP: 10.0.205.209
+    phase: Running
+    podIP: 10.128.7.3
+    podIPs:
+    - ip: 10.128.7.3
+    qosClass: Burstable
+    startTime: "2023-06-01T11:27:57Z"
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      k8s.ovn.org/pod-networks: '{"default":{"ip_addresses":["10.128.14.140/23"],"mac_address":"0a:58:0a:80:0e:8c","gateway_ips":["10.128.14.1"],"ip_address":"10.128.14.140/23","gateway_ip":"10.128.14.1"}}'
+      k8s.v1.cni.cncf.io/network-status: |-
+        [{
+            "name": "ovn-kubernetes",
+            "interface": "eth0",
+            "ips": [
+                "10.128.14.140"
+            ],
+            "mac": "0a:58:0a:80:0e:8c",
+            "default": true,
+            "dns": {}
+        }]
+      kubernetes.io/limit-ranger: 'LimitRanger plugin set: cpu, memory request for
+        container coutner-database; cpu, memory limit for container coutner-database'
+      openshift.io/scc: restricted-v2
+      seccomp.security.alpha.kubernetes.io/pod: runtime/default
+    creationTimestamp: "2023-06-01T10:12:14Z"
+    generateName: counter-database-6b687df44b-
+    labels:
+      app: counter-database
+      pod-template-hash: 6b687df44b
+    name: counter-database-6b687df44b-sn6pk
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ReplicaSet
+      name: counter-database-6b687df44b
+      uid: ee44dcf4-d63e-4ccd-99e9-f46e94027735
+    resourceVersion: "802256205"
+    uid: 938ebfa6-86ad-4987-8d84-15225f3fc2bf
+  spec:
+    containers:
+    - env:
+      - name: POSTGRESQL_USER
+        valueFrom:
+          secretKeyRef:
+            key: database-user
+            name: counter-database
+      - name: POSTGRESQL_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            key: database-password
+            name: counter-database
+      - name: POSTGRESQL_DATABASE
+        valueFrom:
+          secretKeyRef:
+            key: database-name
+            name: counter-database
+      image: quay.io/centos7/postgresql-10-centos7:20221109
+      imagePullPolicy: Always
+      name: coutner-database
+      ports:
+      - containerPort: 5432
+        protocol: TCP
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1000Mi
+        requests:
+          cpu: 10m
+          memory: 64Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+        runAsNonRoot: true
+        runAsUser: 1019200000
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-f57fm
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    imagePullSecrets:
+    - name: default-dockercfg-5sjxb
+    nodeName: ip-10-0-178-128.ec2.internal
+    preemptionPolicy: PreemptLowerPriority
+    priority: -3
+    priorityClassName: sandbox-users-pods
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext:
+      fsGroup: 1019200000
+      seLinuxOptions:
+        level: s0:c139,c9
+      seccompProfile:
+        type: RuntimeDefault
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoSchedule
+      key: node.kubernetes.io/memory-pressure
+      operator: Exists
+    volumes:
+    - name: kube-api-access-f57fm
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+        - configMap:
+            items:
+            - key: service-ca.crt
+              path: service-ca.crt
+            name: openshift-service-ca.crt
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T10:12:14Z"
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T10:12:16Z"
+      status: "True"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T10:12:16Z"
+      status: "True"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T10:12:14Z"
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: cri-o://7e96abfad3915af744934182d02cf93fdff63379e218aa79f9716495262e9ddb
+      image: quay.io/centos7/postgresql-10-centos7:20221109
+      imageID: quay.io/centos7/postgresql-10-centos7@sha256:e4d23ff04ed64531e36064a67903be84ca67a3ee673d099767783fac13d12994
+      lastState: {}
+      name: coutner-database
+      ready: true
+      restartCount: 0
+      started: true
+      state:
+        running:
+          startedAt: "2023-06-01T10:12:16Z"
+    hostIP: 10.0.178.128
+    phase: Running
+    podIP: 10.128.14.140
+    podIPs:
+    - ip: 10.128.14.140
+    qosClass: Burstable
+    startTime: "2023-06-01T10:12:14Z"
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      k8s.ovn.org/pod-networks: '{"default":{"ip_addresses":["10.128.21.101/23"],"mac_address":"0a:58:0a:80:15:65","gateway_ips":["10.128.20.1"],"ip_address":"10.128.21.101/23","gateway_ip":"10.128.20.1"}}'
+      k8s.v1.cni.cncf.io/network-status: |-
+        [{
+            "name": "ovn-kubernetes",
+            "interface": "eth0",
+            "ips": [
+                "10.128.21.101"
+            ],
+            "mac": "0a:58:0a:80:15:65",
+            "default": true,
+            "dns": {}
+        }]
+      kubernetes.io/limit-ranger: 'LimitRanger plugin set: cpu, memory request for
+        container counter-frontend; cpu, memory limit for container counter-frontend'
+      openshift.io/scc: restricted-v2
+      seccomp.security.alpha.kubernetes.io/pod: runtime/default
+    creationTimestamp: "2023-06-01T08:36:49Z"
+    generateName: counter-frontend-5849d6dc87-
+    labels:
+      app: counter-frontend
+      pod-template-hash: 5849d6dc87
+    name: counter-frontend-5849d6dc87-st8sj
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ReplicaSet
+      name: counter-frontend-5849d6dc87
+      uid: 0d53ae4a-cff4-4571-9523-8761e7a00eaf
+    resourceVersion: "802006406"
+    uid: b518808d-c18b-47cf-9c8a-955a93231cd0
+  spec:
+    containers:
+    - env:
+      - name: npm_config_cache
+        value: ./.npm-cache
+      - name: BACKEND_URL
+        valueFrom:
+          configMapKeyRef:
+            key: backend-url
+            name: counter-backend
+      image: ghcr.io/rogertbz/counter-frontend:v1
+      imagePullPolicy: Always
+      name: counter-frontend
+      ports:
+      - containerPort: 3000
+        protocol: TCP
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1000Mi
+        requests:
+          cpu: 10m
+          memory: 64Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+        runAsNonRoot: true
+        runAsUser: 1019200000
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-4l4bv
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    imagePullSecrets:
+    - name: default-dockercfg-5sjxb
+    nodeName: ip-10-0-129-235.ec2.internal
+    preemptionPolicy: PreemptLowerPriority
+    priority: -3
+    priorityClassName: sandbox-users-pods
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext:
+      fsGroup: 1019200000
+      seLinuxOptions:
+        level: s0:c139,c9
+      seccompProfile:
+        type: RuntimeDefault
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoSchedule
+      key: node.kubernetes.io/memory-pressure
+      operator: Exists
+    volumes:
+    - name: kube-api-access-4l4bv
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+        - configMap:
+            items:
+            - key: service-ca.crt
+              path: service-ca.crt
+            name: openshift-service-ca.crt
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T08:36:49Z"
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T08:37:10Z"
+      status: "True"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T08:37:10Z"
+      status: "True"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T08:36:49Z"
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: cri-o://32d250c1562af6ba6d84ce3dcb4312d4ffaf41f6ec220a7d64257bfa7fa2ebc2
+      image: ghcr.io/rogertbz/counter-frontend:v1
+      imageID: ghcr.io/rogertbz/counter-frontend@sha256:a8e7cc27259b176443da5e21ffbe9a1cb924e787071428b42389644ad57fb412
+      lastState: {}
+      name: counter-frontend
+      ready: true
+      restartCount: 0
+      started: true
+      state:
+        running:
+          startedAt: "2023-06-01T08:37:10Z"
+    hostIP: 10.0.129.235
+    phase: Running
+    podIP: 10.128.21.101
+    podIPs:
+    - ip: 10.128.21.101
+    qosClass: Burstable
+    startTime: "2023-06-01T08:36:49Z"
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      k8s.ovn.org/pod-networks: '{"default":{"ip_addresses":["10.128.7.12/23"],"mac_address":"0a:58:0a:80:07:0c","gateway_ips":["10.128.6.1"],"ip_address":"10.128.7.12/23","gateway_ip":"10.128.6.1"}}'
+      k8s.v1.cni.cncf.io/network-status: |-
+        [{
+            "name": "ovn-kubernetes",
+            "interface": "eth0",
+            "ips": [
+                "10.128.7.12"
+            ],
+            "mac": "0a:58:0a:80:07:0c",
+            "default": true,
+            "dns": {}
+        }]
+      kubernetes.io/limit-ranger: 'LimitRanger plugin set: cpu, memory request for
+        container counter-frontend; cpu, memory limit for container counter-frontend'
+      openshift.io/scc: restricted-v2
+      seccomp.security.alpha.kubernetes.io/pod: runtime/default
+    creationTimestamp: "2023-06-01T11:29:39Z"
+    generateName: counter-frontend-5849d6dc87-
+    labels:
+      app: counter-frontend
+      pod-template-hash: 5849d6dc87
+    name: counter-frontend-5849d6dc87-z7llt
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ReplicaSet
+      name: counter-frontend-5849d6dc87
+      uid: 0d53ae4a-cff4-4571-9523-8761e7a00eaf
+    resourceVersion: "802447130"
+    uid: 81cbb2b8-e87f-4611-b8c5-b90fd5f8c120
+  spec:
+    containers:
+    - env:
+      - name: npm_config_cache
+        value: ./.npm-cache
+      - name: BACKEND_URL
+        valueFrom:
+          configMapKeyRef:
+            key: backend-url
+            name: counter-backend
+      image: ghcr.io/rogertbz/counter-frontend:v1
+      imagePullPolicy: Always
+      name: counter-frontend
+      ports:
+      - containerPort: 3000
+        protocol: TCP
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1000Mi
+        requests:
+          cpu: 10m
+          memory: 64Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+        runAsNonRoot: true
+        runAsUser: 1019200000
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-4z54j
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    imagePullSecrets:
+    - name: default-dockercfg-5sjxb
+    nodeName: ip-10-0-205-209.ec2.internal
+    preemptionPolicy: PreemptLowerPriority
+    priority: -3
+    priorityClassName: sandbox-users-pods
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext:
+      fsGroup: 1019200000
+      seLinuxOptions:
+        level: s0:c139,c9
+      seccompProfile:
+        type: RuntimeDefault
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoSchedule
+      key: node.kubernetes.io/memory-pressure
+      operator: Exists
+    volumes:
+    - name: kube-api-access-4z54j
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+        - configMap:
+            items:
+            - key: service-ca.crt
+              path: service-ca.crt
+            name: openshift-service-ca.crt
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:29:39Z"
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:30:02Z"
+      status: "True"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:30:02Z"
+      status: "True"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:29:39Z"
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: cri-o://d4a982e22e60cbed4e1cd729053a5de4c3ca7442824651adbe15b56d17529ebf
+      image: ghcr.io/rogertbz/counter-frontend:v1
+      imageID: ghcr.io/rogertbz/counter-frontend@sha256:a8e7cc27259b176443da5e21ffbe9a1cb924e787071428b42389644ad57fb412
+      lastState: {}
+      name: counter-frontend
+      ready: true
+      restartCount: 0
+      started: true
+      state:
+        running:
+          startedAt: "2023-06-01T11:30:01Z"
+    hostIP: 10.0.205.209
+    phase: Running
+    podIP: 10.128.7.12
+    podIPs:
+    - ip: 10.128.7.12
+    qosClass: Burstable
+    startTime: "2023-06-01T11:29:39Z"
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      kubernetes.io/limit-ranger: 'LimitRanger plugin set: cpu, memory request for
+        container counter-postgresadmin; cpu, memory limit for container counter-postgresadmin'
+      openshift.io/scc: restricted-v2
+      seccomp.security.alpha.kubernetes.io/pod: runtime/default
+    creationTimestamp: "2023-06-01T11:53:18Z"
+    generateName: counter-postgresadmin-66cfbc8877-
+    labels:
+      app: counter-postgresadmin
+      pod-template-hash: 66cfbc8877
+    name: counter-postgresadmin-66cfbc8877-smlzz
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ReplicaSet
+      name: counter-postgresadmin-66cfbc8877
+      uid: f2ae5eaa-c82c-49ca-917a-22f24e3253ce
+    resourceVersion: "802506893"
+    uid: 3bbfe037-ec37-4fb9-8f4c-e3b27595d659
+  spec:
+    containers:
+    - env:
+      - name: npm_config_cache
+        value: ./.npm-cache
+      image: docker.io/thajeztah/pgadmin4:3.6
+      imagePullPolicy: Always
+      name: counter-postgresadmin
+      ports:
+      - containerPort: 8001
+        protocol: TCP
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1000Mi
+        requests:
+          cpu: 10m
+          memory: 64Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+        runAsNonRoot: true
+        runAsUser: 1019200000
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /pgadmin/
+        name: db-data
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-hlcw9
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    imagePullSecrets:
+    - name: default-dockercfg-5sjxb
+    preemptionPolicy: PreemptLowerPriority
+    priority: -3
+    priorityClassName: sandbox-users-pods
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext:
+      fsGroup: 1019200000
+      seLinuxOptions:
+        level: s0:c139,c9
+      seccompProfile:
+        type: RuntimeDefault
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoSchedule
+      key: node.kubernetes.io/memory-pressure
+      operator: Exists
+    volumes:
+    - name: db-data
+      persistentVolumeClaim:
+        claimName: db-volume
+    - name: kube-api-access-hlcw9
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+        - configMap:
+            items:
+            - key: service-ca.crt
+              path: service-ca.crt
+            name: openshift-service-ca.crt
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2023-06-01T11:53:18Z"
+      message: '0/12 nodes are available: persistentvolumeclaim "db-volume" not found.'
+      reason: Unschedulable
+      status: "False"
+      type: PodScheduled
+    phase: Pending
+    qosClass: Burstable
+- apiVersion: v1
+  kind: Service
+  metadata:
+    creationTimestamp: "2023-06-01T07:59:10Z"
+    name: counter-backend
+    namespace: rogertbz-dev
+    resourceVersion: "801912760"
+    uid: 8b88a855-1b9f-4748-8455-b5229dc9aa1e
+  spec:
+    clusterIP: 172.30.216.146
+    clusterIPs:
+    - 172.30.216.146
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      app: counter-backend
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    creationTimestamp: "2023-06-01T09:40:38Z"
+    name: counter-database
+    namespace: rogertbz-dev
+    resourceVersion: "802173907"
+    uid: 6e30cbba-6169-4dd9-8c7e-f7df979bd4d7
+  spec:
+    clusterIP: 172.30.42.210
+    clusterIPs:
+    - 172.30.42.210
+    externalTrafficPolicy: Cluster
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - nodePort: 30773
+      port: 5432
+      protocol: TCP
+      targetPort: 5432
+    selector:
+      app: counter-database
+    sessionAffinity: None
+    type: NodePort
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    creationTimestamp: "2023-06-01T08:37:44Z"
+    name: counter-frontend
+    namespace: rogertbz-dev
+    resourceVersion: "802008004"
+    uid: 2a17d3cd-a371-46ce-a15a-d9b8fe8917e0
+  spec:
+    clusterIP: 172.30.148.75
+    clusterIPs:
+    - 172.30.148.75
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - port: 3000
+      protocol: TCP
+      targetPort: 3000
+    selector:
+      app: counter-frontend
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    creationTimestamp: "2023-06-01T11:52:31Z"
+    name: counter-postgresadmin
+    namespace: rogertbz-dev
+    resourceVersion: "802504755"
+    uid: cc37e802-47a2-46c4-8782-affa94f43b6b
+  spec:
+    clusterIP: 172.30.57.80
+    clusterIPs:
+    - 172.30.57.80
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - port: 8001
+      protocol: TCP
+      targetPort: 8001
+    selector:
+      app: counter-postgresadmin
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      app.openshift.io/route-disabled: "false"
+      image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"html-page:v1","namespace":"rogertbz-dev"},"fieldPath":"spec.template.spec.containers[?(@.name==\"html-page\")].image","pause":"false"}]'
+      openshift.io/generated-by: OpenShiftWebConsole
+      serving.knative.dev/creator: rogertbz
+      serving.knative.dev/lastModifier: rogertbz
+    creationTimestamp: "2023-06-01T06:39:21Z"
+    labels:
+      app.kubernetes.io/component: html-page
+      app.kubernetes.io/instance: html-page
+      app.kubernetes.io/name: html-page
+      app.kubernetes.io/part-of: html-page
+      app.openshift.io/runtime: html-page
+      app.openshift.io/runtime-namespace: rogertbz-dev
+      app.openshift.io/runtime-version: v1
+      serving.knative.dev/route: html-page
+      serving.knative.dev/service: html-page
+    name: html-page
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: serving.knative.dev/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Route
+      name: html-page
+      uid: 23f84e60-6339-41c9-8805-7db5adcd5b47
+    resourceVersion: "801709080"
+    uid: 01649088-4365-43b7-a0f2-bfd9d148f667
+  spec:
+    externalName: kourier-internal.knative-serving-ingress.svc.cluster.local
+    ports:
+    - name: http2
+      port: 80
+      protocol: TCP
+      targetPort: 80
+    sessionAffinity: None
+    type: ExternalName
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      autoscaling.knative.dev/class: kpa.autoscaling.knative.dev
+      autoscaling.knative.dev/target: "100"
+      autoscaling.knative.dev/targetUtilizationPercentage: "70"
+      autoscaling.knative.dev/window: 60s
+      serving.knative.dev/creator: rogertbz
+    creationTimestamp: "2023-06-01T06:39:26Z"
+    labels:
+      app: html-page-00001
+      app.kubernetes.io/component: html-page
+      app.kubernetes.io/instance: html-page
+      app.kubernetes.io/part-of: html-page
+      app.openshift.io/runtime: html-page
+      app.openshift.io/runtime-namespace: rogertbz-dev
+      app.openshift.io/runtime-version: v1
+      networking.internal.knative.dev/serverlessservice: html-page-00001
+      networking.internal.knative.dev/serviceType: Public
+      serving.knative.dev/configuration: html-page
+      serving.knative.dev/configurationGeneration: "1"
+      serving.knative.dev/configurationUID: 5a1d8f20-b0a1-4598-b70d-e52de9846bc8
+      serving.knative.dev/revision: html-page-00001
+      serving.knative.dev/revisionUID: c428b411-5859-4d3d-b19e-d8946519f82f
+      serving.knative.dev/service: html-page
+      serving.knative.dev/serviceUID: 9ea4a2d2-978e-42e7-8f1b-a59fdd9690da
+    name: html-page-00001
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: networking.internal.knative.dev/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ServerlessService
+      name: html-page-00001
+      uid: 08a01a48-971f-42b9-932f-f9feb6f18fff
+    resourceVersion: "801709301"
+    uid: 7c2267d0-5c57-4d82-a1dc-c115eee80ea8
+  spec:
+    clusterIP: 172.30.216.85
+    clusterIPs:
+    - 172.30.216.85
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8012
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 8112
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      autoscaling.knative.dev/class: kpa.autoscaling.knative.dev
+      autoscaling.knative.dev/target: "100"
+      autoscaling.knative.dev/targetUtilizationPercentage: "70"
+      autoscaling.knative.dev/window: 60s
+      serving.knative.dev/creator: rogertbz
+    creationTimestamp: "2023-05-31T08:41:31Z"
+    labels:
+      app: html-page-00001
+      app.kubernetes.io/component: html-page
+      app.kubernetes.io/instance: html-page
+      app.kubernetes.io/part-of: html-page
+      app.openshift.io/runtime: html-page
+      app.openshift.io/runtime-namespace: rogertbz-dev
+      app.openshift.io/runtime-version: v1
+      networking.internal.knative.dev/serverlessservice: html-page-00001
+      networking.internal.knative.dev/serviceType: Private
+      serving.knative.dev/configuration: html-page
+      serving.knative.dev/configurationGeneration: "1"
+      serving.knative.dev/configurationUID: 5a1d8f20-b0a1-4598-b70d-e52de9846bc8
+      serving.knative.dev/revision: html-page-00001
+      serving.knative.dev/revisionUID: c428b411-5859-4d3d-b19e-d8946519f82f
+      serving.knative.dev/service: html-page
+      serving.knative.dev/serviceUID: 9ea4a2d2-978e-42e7-8f1b-a59fdd9690da
+    name: html-page-00001-private
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: networking.internal.knative.dev/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ServerlessService
+      name: html-page-00001
+      uid: 08a01a48-971f-42b9-932f-f9feb6f18fff
+    resourceVersion: "797892429"
+    uid: e272adef-ee9f-409a-84c1-c2d9ef13eb26
+  spec:
+    clusterIP: 172.30.161.225
+    clusterIPs:
+    - 172.30.161.225
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8012
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 8112
+    - name: http-autometric
+      port: 9090
+      protocol: TCP
+      targetPort: http-autometric
+    - name: http-usermetric
+      port: 9091
+      protocol: TCP
+      targetPort: http-usermetric
+    - name: http-queueadm
+      port: 8022
+      protocol: TCP
+      targetPort: 8022
+    - name: http-istio
+      port: 8012
+      protocol: TCP
+      targetPort: 8012
+    selector:
+      serving.knative.dev/revisionUID: c428b411-5859-4d3d-b19e-d8946519f82f
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      service.alpha.openshift.io/serving-cert-secret-name: model-serving-proxy-tls
+      service.alpha.openshift.io/serving-cert-signed-by: openshift-service-serving-signer@1667937354
+      service.beta.openshift.io/serving-cert-signed-by: openshift-service-serving-signer@1667937354
+    creationTimestamp: "2023-05-26T12:58:21Z"
+    labels:
+      app.kubernetes.io/instance: modelmesh-controller
+      app.kubernetes.io/managed-by: modelmesh-controller
+      app.kubernetes.io/name: modelmesh-controller
+      modelmesh-service: modelmesh-serving
+    name: modelmesh-serving
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Namespace
+      name: rogertbz-dev
+      uid: f29240fa-f9aa-4dc8-92a8-a06c7c72d318
+    resourceVersion: "778691118"
+    uid: 8f3bba53-4b6e-4b4d-8d23-1d4a74ad4ba1
+  spec:
+    clusterIP: None
+    clusterIPs:
+    - None
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: grpc
+      port: 8033
+      protocol: TCP
+      targetPort: grpc
+    - name: http
+      port: 8008
+      protocol: TCP
+      targetPort: http
+    - name: https
+      port: 8443
+      protocol: TCP
+      targetPort: https
+    - name: prometheus
+      port: 2112
+      protocol: TCP
+      targetPort: prometheus
+    selector:
+      modelmesh-service: modelmesh-serving
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+    creationTimestamp: "2023-06-01T11:27:57Z"
+    generation: 2
+    name: counter-backend
+    namespace: rogertbz-dev
+    resourceVersion: "802444988"
+    uid: e16635e5-1941-4106-a213-1e94e0815ffc
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 2
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: counter-backend
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: counter-backend
+      spec:
+        containers:
+        - env:
+          - name: PASSPHRASE
+            valueFrom:
+              secretKeyRef:
+                key: passphrase
+                name: counter-backend
+          - name: DB_HOST
+            valueFrom:
+              configMapKeyRef:
+                key: database-host
+                name: counter-backend
+          - name: DB_NAME
+            valueFrom:
+              secretKeyRef:
+                key: postgres-db
+                name: counter-backend
+          - name: DB_USER
+            valueFrom:
+              secretKeyRef:
+                key: database-user
+                name: counter-database
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: database-password
+                name: counter-database
+          - name: NODE_ENV
+            value: production
+          - name: npm_config_cache
+            value: ./.npm-cache
+          image: ghcr.io/rogertbz/counter-backend:v1
+          imagePullPolicy: Always
+          name: counter-backend
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 2
+    conditions:
+    - lastTransitionTime: "2023-06-01T11:27:57Z"
+      lastUpdateTime: "2023-06-01T11:27:59Z"
+      message: ReplicaSet "counter-backend-77bdc998f9" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    - lastTransitionTime: "2023-06-01T11:29:14Z"
+      lastUpdateTime: "2023-06-01T11:29:14Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    observedGeneration: 2
+    readyReplicas: 2
+    replicas: 2
+    updatedReplicas: 2
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+    creationTimestamp: "2023-06-01T10:12:14Z"
+    generation: 1
+    name: counter-database
+    namespace: rogertbz-dev
+    resourceVersion: "802256209"
+    uid: 15b7b98c-271d-4f78-865b-d17b92f323cf
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: counter-database
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: counter-database
+      spec:
+        containers:
+        - env:
+          - name: POSTGRESQL_USER
+            valueFrom:
+              secretKeyRef:
+                key: database-user
+                name: counter-database
+          - name: POSTGRESQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: database-password
+                name: counter-database
+          - name: POSTGRESQL_DATABASE
+            valueFrom:
+              secretKeyRef:
+                key: database-name
+                name: counter-database
+          image: quay.io/centos7/postgresql-10-centos7:20221109
+          imagePullPolicy: Always
+          name: coutner-database
+          ports:
+          - containerPort: 5432
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2023-06-01T10:12:16Z"
+      lastUpdateTime: "2023-06-01T10:12:16Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2023-06-01T10:12:14Z"
+      lastUpdateTime: "2023-06-01T10:12:16Z"
+      message: ReplicaSet "counter-database-6b687df44b" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+    creationTimestamp: "2023-06-01T08:36:49Z"
+    generation: 2
+    name: counter-frontend
+    namespace: rogertbz-dev
+    resourceVersion: "802447135"
+    uid: 8a1977a0-aa40-4bcc-9df5-e55118f07f11
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 2
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: counter-frontend
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: counter-frontend
+      spec:
+        containers:
+        - env:
+          - name: npm_config_cache
+            value: ./.npm-cache
+          - name: BACKEND_URL
+            valueFrom:
+              configMapKeyRef:
+                key: backend-url
+                name: counter-backend
+          image: ghcr.io/rogertbz/counter-frontend:v1
+          imagePullPolicy: Always
+          name: counter-frontend
+          ports:
+          - containerPort: 3000
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 2
+    conditions:
+    - lastTransitionTime: "2023-06-01T08:36:49Z"
+      lastUpdateTime: "2023-06-01T08:37:11Z"
+      message: ReplicaSet "counter-frontend-5849d6dc87" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    - lastTransitionTime: "2023-06-01T11:30:02Z"
+      lastUpdateTime: "2023-06-01T11:30:02Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    observedGeneration: 2
+    readyReplicas: 2
+    replicas: 2
+    updatedReplicas: 2
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "1"
+    creationTimestamp: "2023-06-01T11:52:12Z"
+    generation: 1
+    name: counter-postgresadmin
+    namespace: rogertbz-dev
+    resourceVersion: "802506898"
+    uid: 53ccf38d-93f0-41b6-998a-3c335012b7e5
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: counter-postgresadmin
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: counter-postgresadmin
+      spec:
+        containers:
+        - env:
+          - name: npm_config_cache
+            value: ./.npm-cache
+          image: docker.io/thajeztah/pgadmin4:3.6
+          imagePullPolicy: Always
+          name: counter-postgresadmin
+          ports:
+          - containerPort: 8001
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /pgadmin/
+            name: db-data
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: db-data
+          persistentVolumeClaim:
+            claimName: db-volume
+  status:
+    conditions:
+    - lastTransitionTime: "2023-06-01T11:52:12Z"
+      lastUpdateTime: "2023-06-01T11:52:12Z"
+      message: Deployment does not have minimum availability.
+      reason: MinimumReplicasUnavailable
+      status: "False"
+      type: Available
+    - lastTransitionTime: "2023-06-01T11:52:12Z"
+      lastUpdateTime: "2023-06-01T11:53:18Z"
+      message: ReplicaSet "counter-postgresadmin-66cfbc8877" is progressing.
+      reason: ReplicaSetUpdated
+      status: "True"
+      type: Progressing
+    observedGeneration: 1
+    replicas: 1
+    unavailableReplicas: 1
+    updatedReplicas: 1
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      autoscaling.knative.dev/target: "100"
+      autoscaling.knative.dev/targetUtilizationPercentage: "70"
+      autoscaling.knative.dev/window: 60s
+      deployment.kubernetes.io/revision: "1"
+      serving.knative.dev/creator: rogertbz
+    creationTimestamp: "2023-06-01T06:36:34Z"
+    generation: 2
+    labels:
+      app: html-page-00001
+      app.kubernetes.io/component: html-page
+      app.kubernetes.io/instance: html-page
+      app.kubernetes.io/part-of: html-page
+      app.openshift.io/runtime: html-page
+      app.openshift.io/runtime-namespace: rogertbz-dev
+      app.openshift.io/runtime-version: v1
+      serving.knative.dev/configuration: html-page
+      serving.knative.dev/configurationGeneration: "1"
+      serving.knative.dev/configurationUID: 5a1d8f20-b0a1-4598-b70d-e52de9846bc8
+      serving.knative.dev/revision: html-page-00001
+      serving.knative.dev/revisionUID: c428b411-5859-4d3d-b19e-d8946519f82f
+      serving.knative.dev/service: html-page
+      serving.knative.dev/serviceUID: 9ea4a2d2-978e-42e7-8f1b-a59fdd9690da
+    name: html-page-00001-deployment
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: serving.knative.dev/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Revision
+      name: html-page-00001
+      uid: c428b411-5859-4d3d-b19e-d8946519f82f
+    resourceVersion: "801700995"
+    uid: aac74618-7a19-4e16-8f7e-24f6a4a9de60
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 0
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        serving.knative.dev/revisionUID: c428b411-5859-4d3d-b19e-d8946519f82f
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 0
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          autoscaling.knative.dev/target: "100"
+          autoscaling.knative.dev/targetUtilizationPercentage: "70"
+          autoscaling.knative.dev/window: 60s
+          serving.knative.dev/creator: rogertbz
+        creationTimestamp: null
+        labels:
+          app: html-page-00001
+          app.kubernetes.io/component: html-page
+          app.kubernetes.io/instance: html-page
+          app.kubernetes.io/part-of: html-page
+          app.openshift.io/runtime: html-page
+          app.openshift.io/runtime-namespace: rogertbz-dev
+          app.openshift.io/runtime-version: v1
+          serving.knative.dev/configuration: html-page
+          serving.knative.dev/configurationGeneration: "1"
+          serving.knative.dev/configurationUID: 5a1d8f20-b0a1-4598-b70d-e52de9846bc8
+          serving.knative.dev/revision: html-page-00001
+          serving.knative.dev/revisionUID: c428b411-5859-4d3d-b19e-d8946519f82f
+          serving.knative.dev/service: html-page
+          serving.knative.dev/serviceUID: 9ea4a2d2-978e-42e7-8f1b-a59fdd9690da
+      spec:
+        containers:
+        - env:
+          - name: PORT
+            value: "8080"
+          - name: K_REVISION
+            value: html-page-00001
+          - name: K_CONFIGURATION
+            value: html-page
+          - name: K_SERVICE
+            value: html-page
+          image: image-registry.openshift-image-registry.svc:5000/rogertbz-dev/html-page@sha256:b357ed3a03409593c8ed8185dc350483e6766a138573976dcf1b6550f8f47329
+          imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              httpGet:
+                path: /wait-for-drain
+                port: 8022
+                scheme: HTTP
+          name: html-page
+          ports:
+          - containerPort: 8080
+            name: user-port
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: FallbackToLogsOnError
+        - env:
+          - name: SERVING_NAMESPACE
+            value: rogertbz-dev
+          - name: SERVING_SERVICE
+            value: html-page
+          - name: SERVING_CONFIGURATION
+            value: html-page
+          - name: SERVING_REVISION
+            value: html-page-00001
+          - name: QUEUE_SERVING_PORT
+            value: "8012"
+          - name: QUEUE_SERVING_TLS_PORT
+            value: "8112"
+          - name: CONTAINER_CONCURRENCY
+            value: "0"
+          - name: REVISION_TIMEOUT_SECONDS
+            value: "300"
+          - name: REVISION_RESPONSE_START_TIMEOUT_SECONDS
+            value: "0"
+          - name: REVISION_IDLE_TIMEOUT_SECONDS
+            value: "0"
+          - name: SERVING_POD
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.name
+          - name: SERVING_POD_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.podIP
+          - name: SERVING_LOGGING_CONFIG
+          - name: SERVING_LOGGING_LEVEL
+          - name: SERVING_REQUEST_LOG_TEMPLATE
+            value: '{"httpRequest": {"requestMethod": "{{.Request.Method}}", "requestUrl":
+              "{{js .Request.RequestURI}}", "requestSize": "{{.Request.ContentLength}}",
+              "status": {{.Response.Code}}, "responseSize": "{{.Response.Size}}",
+              "userAgent": "{{js .Request.UserAgent}}", "remoteIp": "{{js .Request.RemoteAddr}}",
+              "serverIp": "{{.Revision.PodIP}}", "referer": "{{js .Request.Referer}}",
+              "latency": "{{.Response.Latency}}s", "protocol": "{{.Request.Proto}}"},
+              "traceId": "{{index .Request.Header "X-B3-Traceid"}}"}'
+          - name: SERVING_ENABLE_REQUEST_LOG
+            value: "false"
+          - name: SERVING_REQUEST_METRICS_BACKEND
+            value: prometheus
+          - name: TRACING_CONFIG_BACKEND
+            value: none
+          - name: TRACING_CONFIG_ZIPKIN_ENDPOINT
+          - name: TRACING_CONFIG_DEBUG
+            value: "false"
+          - name: TRACING_CONFIG_SAMPLE_RATE
+            value: "0.1"
+          - name: USER_PORT
+            value: "8080"
+          - name: SYSTEM_NAMESPACE
+            value: knative-serving
+          - name: METRICS_DOMAIN
+            value: knative.dev/internal/serving
+          - name: SERVING_READINESS_PROBE
+            value: '{"tcpSocket":{"port":8080,"host":"127.0.0.1"},"successThreshold":1}'
+          - name: ENABLE_PROFILING
+            value: "true"
+          - name: SERVING_ENABLE_PROBE_REQUEST_LOG
+            value: "false"
+          - name: METRICS_COLLECTOR_ADDRESS
+          - name: CONCURRENCY_STATE_ENDPOINT
+          - name: CONCURRENCY_STATE_TOKEN_PATH
+            value: /var/run/secrets/tokens/state-token
+          - name: HOST_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: ENABLE_HTTP2_AUTO_DETECTION
+            value: "false"
+          image: registry.redhat.io/openshift-serverless-1/serving-queue-rhel8@sha256:c797d1c797b1edad00fb33b2372f5907eb5b8454138c3c5dc11996de24c70906
+          imagePullPolicy: IfNotPresent
+          name: queue-proxy
+          ports:
+          - containerPort: 8022
+            name: http-queueadm
+            protocol: TCP
+          - containerPort: 9090
+            name: http-autometric
+            protocol: TCP
+          - containerPort: 9091
+            name: http-usermetric
+            protocol: TCP
+          - containerPort: 8008
+            name: profiling-port
+            protocol: TCP
+          - containerPort: 8012
+            name: queue-port
+            protocol: TCP
+          - containerPort: 8112
+            name: https-port
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              httpHeaders:
+              - name: K-Network-Probe
+                value: queue
+              path: /
+              port: 8012
+              scheme: HTTP
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            requests:
+              cpu: 25m
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        enableServiceLinks: false
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 300
+  status:
+    conditions:
+    - lastTransitionTime: "2023-06-01T06:36:34Z"
+      lastUpdateTime: "2023-06-01T06:36:34Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2023-06-01T06:36:34Z"
+      lastUpdateTime: "2023-06-01T06:36:34Z"
+      message: ReplicaSet "html-page-00001-deployment-5bfd4b4ddb" has successfully
+        progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 2
+- apiVersion: apps/v1
+  kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: "2"
+      deployment.kubernetes.io/max-replicas: "3"
+      deployment.kubernetes.io/revision: "1"
+    creationTimestamp: "2023-06-01T11:27:57Z"
+    generation: 2
+    labels:
+      app: counter-backend
+      pod-template-hash: 77bdc998f9
+    name: counter-backend-77bdc998f9
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: counter-backend
+      uid: e16635e5-1941-4106-a213-1e94e0815ffc
+    resourceVersion: "802444986"
+    uid: 52a89e2e-9bd4-465f-b7d6-0c5e7d948c10
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: counter-backend
+        pod-template-hash: 77bdc998f9
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: counter-backend
+          pod-template-hash: 77bdc998f9
+      spec:
+        containers:
+        - env:
+          - name: PASSPHRASE
+            valueFrom:
+              secretKeyRef:
+                key: passphrase
+                name: counter-backend
+          - name: DB_HOST
+            valueFrom:
+              configMapKeyRef:
+                key: database-host
+                name: counter-backend
+          - name: DB_NAME
+            valueFrom:
+              secretKeyRef:
+                key: postgres-db
+                name: counter-backend
+          - name: DB_USER
+            valueFrom:
+              secretKeyRef:
+                key: database-user
+                name: counter-database
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: database-password
+                name: counter-database
+          - name: NODE_ENV
+            value: production
+          - name: npm_config_cache
+            value: ./.npm-cache
+          image: ghcr.io/rogertbz/counter-backend:v1
+          imagePullPolicy: Always
+          name: counter-backend
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 2
+    fullyLabeledReplicas: 2
+    observedGeneration: 2
+    readyReplicas: 2
+    replicas: 2
+- apiVersion: apps/v1
+  kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: "1"
+      deployment.kubernetes.io/max-replicas: "2"
+      deployment.kubernetes.io/revision: "1"
+    creationTimestamp: "2023-06-01T10:12:14Z"
+    generation: 1
+    labels:
+      app: counter-database
+      pod-template-hash: 6b687df44b
+    name: counter-database-6b687df44b
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: counter-database
+      uid: 15b7b98c-271d-4f78-865b-d17b92f323cf
+    resourceVersion: "802256208"
+    uid: ee44dcf4-d63e-4ccd-99e9-f46e94027735
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: counter-database
+        pod-template-hash: 6b687df44b
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: counter-database
+          pod-template-hash: 6b687df44b
+      spec:
+        containers:
+        - env:
+          - name: POSTGRESQL_USER
+            valueFrom:
+              secretKeyRef:
+                key: database-user
+                name: counter-database
+          - name: POSTGRESQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: database-password
+                name: counter-database
+          - name: POSTGRESQL_DATABASE
+            valueFrom:
+              secretKeyRef:
+                key: database-name
+                name: counter-database
+          image: quay.io/centos7/postgresql-10-centos7:20221109
+          imagePullPolicy: Always
+          name: coutner-database
+          ports:
+          - containerPort: 5432
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+- apiVersion: apps/v1
+  kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: "2"
+      deployment.kubernetes.io/max-replicas: "3"
+      deployment.kubernetes.io/revision: "1"
+    creationTimestamp: "2023-06-01T08:36:49Z"
+    generation: 2
+    labels:
+      app: counter-frontend
+      pod-template-hash: 5849d6dc87
+    name: counter-frontend-5849d6dc87
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: counter-frontend
+      uid: 8a1977a0-aa40-4bcc-9df5-e55118f07f11
+    resourceVersion: "802447133"
+    uid: 0d53ae4a-cff4-4571-9523-8761e7a00eaf
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: counter-frontend
+        pod-template-hash: 5849d6dc87
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: counter-frontend
+          pod-template-hash: 5849d6dc87
+      spec:
+        containers:
+        - env:
+          - name: npm_config_cache
+            value: ./.npm-cache
+          - name: BACKEND_URL
+            valueFrom:
+              configMapKeyRef:
+                key: backend-url
+                name: counter-backend
+          image: ghcr.io/rogertbz/counter-frontend:v1
+          imagePullPolicy: Always
+          name: counter-frontend
+          ports:
+          - containerPort: 3000
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 2
+    fullyLabeledReplicas: 2
+    observedGeneration: 2
+    readyReplicas: 2
+    replicas: 2
+- apiVersion: apps/v1
+  kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: "1"
+      deployment.kubernetes.io/max-replicas: "2"
+      deployment.kubernetes.io/revision: "1"
+    creationTimestamp: "2023-06-01T11:52:12Z"
+    generation: 1
+    labels:
+      app: counter-postgresadmin
+      pod-template-hash: 66cfbc8877
+    name: counter-postgresadmin-66cfbc8877
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: counter-postgresadmin
+      uid: 53ccf38d-93f0-41b6-998a-3c335012b7e5
+    resourceVersion: "802506897"
+    uid: f2ae5eaa-c82c-49ca-917a-22f24e3253ce
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: counter-postgresadmin
+        pod-template-hash: 66cfbc8877
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: counter-postgresadmin
+          pod-template-hash: 66cfbc8877
+      spec:
+        containers:
+        - env:
+          - name: npm_config_cache
+            value: ./.npm-cache
+          image: docker.io/thajeztah/pgadmin4:3.6
+          imagePullPolicy: Always
+          name: counter-postgresadmin
+          ports:
+          - containerPort: 8001
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /pgadmin/
+            name: db-data
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: db-data
+          persistentVolumeClaim:
+            claimName: db-volume
+  status:
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    replicas: 1
+- apiVersion: apps/v1
+  kind: ReplicaSet
+  metadata:
+    annotations:
+      autoscaling.knative.dev/target: "100"
+      autoscaling.knative.dev/targetUtilizationPercentage: "70"
+      autoscaling.knative.dev/window: 60s
+      deployment.kubernetes.io/desired-replicas: "0"
+      deployment.kubernetes.io/max-replicas: "0"
+      deployment.kubernetes.io/revision: "1"
+      serving.knative.dev/creator: rogertbz
+    creationTimestamp: "2023-06-01T06:36:34Z"
+    generation: 2
+    labels:
+      app: html-page-00001
+      app.kubernetes.io/component: html-page
+      app.kubernetes.io/instance: html-page
+      app.kubernetes.io/part-of: html-page
+      app.openshift.io/runtime: html-page
+      app.openshift.io/runtime-namespace: rogertbz-dev
+      app.openshift.io/runtime-version: v1
+      pod-template-hash: 5bfd4b4ddb
+      serving.knative.dev/configuration: html-page
+      serving.knative.dev/configurationGeneration: "1"
+      serving.knative.dev/configurationUID: 5a1d8f20-b0a1-4598-b70d-e52de9846bc8
+      serving.knative.dev/revision: html-page-00001
+      serving.knative.dev/revisionUID: c428b411-5859-4d3d-b19e-d8946519f82f
+      serving.knative.dev/service: html-page
+      serving.knative.dev/serviceUID: 9ea4a2d2-978e-42e7-8f1b-a59fdd9690da
+    name: html-page-00001-deployment-5bfd4b4ddb
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: html-page-00001-deployment
+      uid: aac74618-7a19-4e16-8f7e-24f6a4a9de60
+    resourceVersion: "801700993"
+    uid: 31a85e9a-4b09-4665-9901-6ce8c4a0f2a6
+  spec:
+    replicas: 0
+    selector:
+      matchLabels:
+        pod-template-hash: 5bfd4b4ddb
+        serving.knative.dev/revisionUID: c428b411-5859-4d3d-b19e-d8946519f82f
+    template:
+      metadata:
+        annotations:
+          autoscaling.knative.dev/target: "100"
+          autoscaling.knative.dev/targetUtilizationPercentage: "70"
+          autoscaling.knative.dev/window: 60s
+          serving.knative.dev/creator: rogertbz
+        creationTimestamp: null
+        labels:
+          app: html-page-00001
+          app.kubernetes.io/component: html-page
+          app.kubernetes.io/instance: html-page
+          app.kubernetes.io/part-of: html-page
+          app.openshift.io/runtime: html-page
+          app.openshift.io/runtime-namespace: rogertbz-dev
+          app.openshift.io/runtime-version: v1
+          pod-template-hash: 5bfd4b4ddb
+          serving.knative.dev/configuration: html-page
+          serving.knative.dev/configurationGeneration: "1"
+          serving.knative.dev/configurationUID: 5a1d8f20-b0a1-4598-b70d-e52de9846bc8
+          serving.knative.dev/revision: html-page-00001
+          serving.knative.dev/revisionUID: c428b411-5859-4d3d-b19e-d8946519f82f
+          serving.knative.dev/service: html-page
+          serving.knative.dev/serviceUID: 9ea4a2d2-978e-42e7-8f1b-a59fdd9690da
+      spec:
+        containers:
+        - env:
+          - name: PORT
+            value: "8080"
+          - name: K_REVISION
+            value: html-page-00001
+          - name: K_CONFIGURATION
+            value: html-page
+          - name: K_SERVICE
+            value: html-page
+          image: image-registry.openshift-image-registry.svc:5000/rogertbz-dev/html-page@sha256:b357ed3a03409593c8ed8185dc350483e6766a138573976dcf1b6550f8f47329
+          imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              httpGet:
+                path: /wait-for-drain
+                port: 8022
+                scheme: HTTP
+          name: html-page
+          ports:
+          - containerPort: 8080
+            name: user-port
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: FallbackToLogsOnError
+        - env:
+          - name: SERVING_NAMESPACE
+            value: rogertbz-dev
+          - name: SERVING_SERVICE
+            value: html-page
+          - name: SERVING_CONFIGURATION
+            value: html-page
+          - name: SERVING_REVISION
+            value: html-page-00001
+          - name: QUEUE_SERVING_PORT
+            value: "8012"
+          - name: QUEUE_SERVING_TLS_PORT
+            value: "8112"
+          - name: CONTAINER_CONCURRENCY
+            value: "0"
+          - name: REVISION_TIMEOUT_SECONDS
+            value: "300"
+          - name: REVISION_RESPONSE_START_TIMEOUT_SECONDS
+            value: "0"
+          - name: REVISION_IDLE_TIMEOUT_SECONDS
+            value: "0"
+          - name: SERVING_POD
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.name
+          - name: SERVING_POD_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.podIP
+          - name: SERVING_LOGGING_CONFIG
+          - name: SERVING_LOGGING_LEVEL
+          - name: SERVING_REQUEST_LOG_TEMPLATE
+            value: '{"httpRequest": {"requestMethod": "{{.Request.Method}}", "requestUrl":
+              "{{js .Request.RequestURI}}", "requestSize": "{{.Request.ContentLength}}",
+              "status": {{.Response.Code}}, "responseSize": "{{.Response.Size}}",
+              "userAgent": "{{js .Request.UserAgent}}", "remoteIp": "{{js .Request.RemoteAddr}}",
+              "serverIp": "{{.Revision.PodIP}}", "referer": "{{js .Request.Referer}}",
+              "latency": "{{.Response.Latency}}s", "protocol": "{{.Request.Proto}}"},
+              "traceId": "{{index .Request.Header "X-B3-Traceid"}}"}'
+          - name: SERVING_ENABLE_REQUEST_LOG
+            value: "false"
+          - name: SERVING_REQUEST_METRICS_BACKEND
+            value: prometheus
+          - name: TRACING_CONFIG_BACKEND
+            value: none
+          - name: TRACING_CONFIG_ZIPKIN_ENDPOINT
+          - name: TRACING_CONFIG_DEBUG
+            value: "false"
+          - name: TRACING_CONFIG_SAMPLE_RATE
+            value: "0.1"
+          - name: USER_PORT
+            value: "8080"
+          - name: SYSTEM_NAMESPACE
+            value: knative-serving
+          - name: METRICS_DOMAIN
+            value: knative.dev/internal/serving
+          - name: SERVING_READINESS_PROBE
+            value: '{"tcpSocket":{"port":8080,"host":"127.0.0.1"},"successThreshold":1}'
+          - name: ENABLE_PROFILING
+            value: "true"
+          - name: SERVING_ENABLE_PROBE_REQUEST_LOG
+            value: "false"
+          - name: METRICS_COLLECTOR_ADDRESS
+          - name: CONCURRENCY_STATE_ENDPOINT
+          - name: CONCURRENCY_STATE_TOKEN_PATH
+            value: /var/run/secrets/tokens/state-token
+          - name: HOST_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+          - name: ENABLE_HTTP2_AUTO_DETECTION
+            value: "false"
+          image: registry.redhat.io/openshift-serverless-1/serving-queue-rhel8@sha256:c797d1c797b1edad00fb33b2372f5907eb5b8454138c3c5dc11996de24c70906
+          imagePullPolicy: IfNotPresent
+          name: queue-proxy
+          ports:
+          - containerPort: 8022
+            name: http-queueadm
+            protocol: TCP
+          - containerPort: 9090
+            name: http-autometric
+            protocol: TCP
+          - containerPort: 9091
+            name: http-usermetric
+            protocol: TCP
+          - containerPort: 8008
+            name: profiling-port
+            protocol: TCP
+          - containerPort: 8012
+            name: queue-port
+            protocol: TCP
+          - containerPort: 8112
+            name: https-port
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              httpHeaders:
+              - name: K-Network-Probe
+                value: queue
+              path: /
+              port: 8012
+              scheme: HTTP
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            requests:
+              cpu: 25m
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        enableServiceLinks: false
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 300
+  status:
+    observedGeneration: 2
+    replicas: 0
+- apiVersion: autoscaling/v2
+  kind: HorizontalPodAutoscaler
+  metadata:
+    creationTimestamp: "2023-06-01T11:28:56Z"
+    name: counter-backend
+    namespace: rogertbz-dev
+    resourceVersion: "802458130"
+    uid: 6b12768a-6141-4f19-96dc-791985dcd266
+  spec:
+    maxReplicas: 2
+    metrics:
+    - resource:
+        name: cpu
+        target:
+          averageUtilization: 50
+          type: Utilization
+      type: Resource
+    minReplicas: 2
+    scaleTargetRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: counter-backend
+  status:
+    conditions:
+    - lastTransitionTime: "2023-06-01T11:29:11Z"
+      message: recommended size matches current size
+      reason: ReadyForNewScale
+      status: "True"
+      type: AbleToScale
+    - lastTransitionTime: "2023-06-01T11:32:57Z"
+      message: the HPA was able to successfully calculate a replica count from cpu
+        resource utilization (percentage of request)
+      reason: ValidMetricFound
+      status: "True"
+      type: ScalingActive
+    - lastTransitionTime: "2023-06-01T11:32:57Z"
+      message: the desired replica count is less than the minimum replica count
+      reason: TooFewReplicas
+      status: "True"
+      type: ScalingLimited
+    currentMetrics:
+    - resource:
+        current:
+          averageUtilization: 0
+          averageValue: "0"
+        name: cpu
+      type: Resource
+    currentReplicas: 2
+    desiredReplicas: 2
+    lastScaleTime: "2023-06-01T11:29:11Z"
+- apiVersion: autoscaling/v2
+  kind: HorizontalPodAutoscaler
+  metadata:
+    creationTimestamp: "2023-06-01T11:29:24Z"
+    name: counter-frontend
+    namespace: rogertbz-dev
+    resourceVersion: "802462135"
+    uid: 33a9db35-c7a1-4ac8-9d40-46d24d757bb2
+  spec:
+    maxReplicas: 4
+    metrics:
+    - resource:
+        name: cpu
+        target:
+          averageUtilization: 50
+          type: Utilization
+      type: Resource
+    minReplicas: 2
+    scaleTargetRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: counter-frontend
+  status:
+    conditions:
+    - lastTransitionTime: "2023-06-01T11:29:39Z"
+      message: recommended size matches current size
+      reason: ReadyForNewScale
+      status: "True"
+      type: AbleToScale
+    - lastTransitionTime: "2023-06-01T11:29:54Z"
+      message: the HPA was able to successfully calculate a replica count from cpu
+        resource utilization (percentage of request)
+      reason: ValidMetricFound
+      status: "True"
+      type: ScalingActive
+    - lastTransitionTime: "2023-06-01T11:35:39Z"
+      message: the desired replica count is less than the minimum replica count
+      reason: TooFewReplicas
+      status: "True"
+      type: ScalingLimited
+    currentMetrics:
+    - resource:
+        current:
+          averageUtilization: 0
+          averageValue: "0"
+        name: cpu
+      type: Resource
+    currentReplicas: 2
+    desiredReplicas: 2
+    lastScaleTime: "2023-06-01T11:29:39Z"
+- apiVersion: image.openshift.io/v1
+  kind: ImageStream
+  metadata:
+    annotations:
+      openshift.io/image.dockerRepositoryCheck: "2023-06-01T05:43:46Z"
+    creationTimestamp: "2023-06-01T05:43:46Z"
+    generation: 2
+    name: html-page
+    namespace: rogertbz-dev
+    resourceVersion: "801565893"
+    uid: ac875c78-2200-473d-8f7d-f188f6d5af9b
+  spec:
+    lookupPolicy:
+      local: false
+    tags:
+    - annotations:
+        openshift.io/generated-by: OpenShiftWebConsole
+        openshift.io/imported-from: ghcr.io/rogertbz/html-page:v1
+      from:
+        kind: DockerImage
+        name: ghcr.io/rogertbz/html-page:v1
+      generation: 2
+      importPolicy:
+        importMode: Legacy
+      name: v1
+      referencePolicy:
+        type: Local
+  status:
+    dockerImageRepository: image-registry.openshift-image-registry.svc:5000/rogertbz-dev/html-page
+    publicDockerImageRepository: default-route-openshift-image-registry.apps.sandbox-m3.1530.p1.openshiftapps.com/rogertbz-dev/html-page
+    tags:
+    - items:
+      - created: "2023-06-01T05:43:46Z"
+        dockerImageReference: ghcr.io/rogertbz/html-page@sha256:b357ed3a03409593c8ed8185dc350483e6766a138573976dcf1b6550f8f47329
+        generation: 2
+        image: sha256:b357ed3a03409593c8ed8185dc350483e6766a138573976dcf1b6550f8f47329
+      tag: v1
+- apiVersion: route.openshift.io/v1
+  kind: Route
+  metadata:
+    annotations:
+      openshift.io/host.generated: "true"
+    creationTimestamp: "2023-06-01T07:37:39Z"
+    name: counter-backend
+    namespace: rogertbz-dev
+    resourceVersion: "801859784"
+    uid: 24049b70-387d-42ce-b520-e2840bb0b334
+  spec:
+    host: counter-backend-rogertbz-dev.apps.sandbox-m3.1530.p1.openshiftapps.com
+    port:
+      targetPort: 8080
+    tls:
+      insecureEdgeTerminationPolicy: Redirect
+      termination: edge
+    to:
+      kind: Service
+      name: counter-backend
+      weight: 100
+    wildcardPolicy: None
+  status:
+    ingress:
+    - conditions:
+      - lastTransitionTime: "2023-06-01T07:37:39Z"
+        status: "True"
+        type: Admitted
+      host: counter-backend-rogertbz-dev.apps.sandbox-m3.1530.p1.openshiftapps.com
+      routerCanonicalHostname: router-default.apps.sandbox-m3.1530.p1.openshiftapps.com
+      routerName: default
+      wildcardPolicy: None
+- apiVersion: route.openshift.io/v1
+  kind: Route
+  metadata:
+    annotations:
+      openshift.io/host.generated: "true"
+    creationTimestamp: "2023-06-01T08:37:57Z"
+    name: counter-frontend
+    namespace: rogertbz-dev
+    resourceVersion: "802008601"
+    uid: 6f1d3c99-b83c-4d36-9914-3c41dc2f7ab6
+  spec:
+    host: counter-frontend-rogertbz-dev.apps.sandbox-m3.1530.p1.openshiftapps.com
+    port:
+      targetPort: 3000
+    tls:
+      insecureEdgeTerminationPolicy: Redirect
+      termination: edge
+    to:
+      kind: Service
+      name: counter-frontend
+      weight: 100
+    wildcardPolicy: None
+  status:
+    ingress:
+    - conditions:
+      - lastTransitionTime: "2023-06-01T08:37:57Z"
+        status: "True"
+        type: Admitted
+      host: counter-frontend-rogertbz-dev.apps.sandbox-m3.1530.p1.openshiftapps.com
+      routerCanonicalHostname: router-default.apps.sandbox-m3.1530.p1.openshiftapps.com
+      routerName: default
+      wildcardPolicy: None
+- apiVersion: route.openshift.io/v1
+  kind: Route
+  metadata:
+    annotations:
+      openshift.io/host.generated: "true"
+    creationTimestamp: "2023-06-01T11:53:10Z"
+    name: counter-postgresadmin
+    namespace: rogertbz-dev
+    resourceVersion: "802506423"
+    uid: a64092a2-b550-455e-937a-a5391ece5050
+  spec:
+    host: counter-postgresadmin-rogertbz-dev.apps.sandbox-m3.1530.p1.openshiftapps.com
+    port:
+      targetPort: 8001
+    tls:
+      insecureEdgeTerminationPolicy: Redirect
+      termination: edge
+    to:
+      kind: Service
+      name: counter-postgresadmin
+      weight: 100
+    wildcardPolicy: None
+  status:
+    ingress:
+    - conditions:
+      - lastTransitionTime: "2023-06-01T11:53:10Z"
+        status: "True"
+        type: Admitted
+      host: counter-postgresadmin-rogertbz-dev.apps.sandbox-m3.1530.p1.openshiftapps.com
+      routerCanonicalHostname: router-default.apps.sandbox-m3.1530.p1.openshiftapps.com
+      routerName: default
+      wildcardPolicy: None
+- apiVersion: serving.knative.dev/v1
+  kind: Configuration
+  metadata:
+    annotations:
+      app.openshift.io/route-disabled: "false"
+      image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"html-page:v1","namespace":"rogertbz-dev"},"fieldPath":"spec.template.spec.containers[?(@.name==\"html-page\")].image","pause":"false"}]'
+      openshift.io/generated-by: OpenShiftWebConsole
+      serving.knative.dev/creator: rogertbz
+      serving.knative.dev/lastModifier: rogertbz
+      serving.knative.dev/routes: html-page
+    creationTimestamp: "2023-05-31T08:41:31Z"
+    generation: 1
+    labels:
+      app.kubernetes.io/component: html-page
+      app.kubernetes.io/instance: html-page
+      app.kubernetes.io/name: html-page
+      app.kubernetes.io/part-of: html-page
+      app.openshift.io/runtime: html-page
+      app.openshift.io/runtime-namespace: rogertbz-dev
+      app.openshift.io/runtime-version: v1
+      networking.knative.dev/visibility: cluster-local
+      serving.knative.dev/service: html-page
+      serving.knative.dev/serviceUID: 9ea4a2d2-978e-42e7-8f1b-a59fdd9690da
+    name: html-page
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: serving.knative.dev/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Service
+      name: html-page
+      uid: 9ea4a2d2-978e-42e7-8f1b-a59fdd9690da
+    resourceVersion: "801699148"
+    uid: 5a1d8f20-b0a1-4598-b70d-e52de9846bc8
+  spec:
+    template:
+      metadata:
+        annotations:
+          autoscaling.knative.dev/target: "100"
+          autoscaling.knative.dev/targetUtilizationPercentage: "70"
+          autoscaling.knative.dev/window: 60s
+        creationTimestamp: null
+        labels:
+          app.kubernetes.io/component: html-page
+          app.kubernetes.io/instance: html-page
+          app.kubernetes.io/part-of: html-page
+          app.openshift.io/runtime: html-page
+          app.openshift.io/runtime-namespace: rogertbz-dev
+          app.openshift.io/runtime-version: v1
+      spec:
+        containerConcurrency: 0
+        containers:
+        - image: image-registry.openshift-image-registry.svc:5000/rogertbz-dev/html-page:v1
+          imagePullPolicy: Always
+          name: html-page
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          readinessProbe:
+            successThreshold: 1
+            tcpSocket:
+              port: 0
+          resources: {}
+        enableServiceLinks: false
+        timeoutSeconds: 300
+  status:
+    conditions:
+    - lastTransitionTime: "2023-06-01T06:36:00Z"
+      status: "True"
+      type: Ready
+    latestCreatedRevisionName: html-page-00001
+    latestReadyRevisionName: html-page-00001
+    observedGeneration: 1
+- apiVersion: serving.knative.dev/v1
+  kind: Service
+  metadata:
+    annotations:
+      app.openshift.io/route-disabled: "false"
+      image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"html-page:v1","namespace":"rogertbz-dev"},"fieldPath":"spec.template.spec.containers[?(@.name==\"html-page\")].image","pause":"false"}]'
+      openshift.io/generated-by: OpenShiftWebConsole
+      serving.knative.dev/creator: rogertbz
+      serving.knative.dev/lastModifier: rogertbz
+    creationTimestamp: "2023-05-31T08:41:31Z"
+    generation: 1
+    labels:
+      app.kubernetes.io/component: html-page
+      app.kubernetes.io/instance: html-page
+      app.kubernetes.io/name: html-page
+      app.kubernetes.io/part-of: html-page
+      app.openshift.io/runtime: html-page
+      app.openshift.io/runtime-namespace: rogertbz-dev
+      app.openshift.io/runtime-version: v1
+      networking.knative.dev/visibility: cluster-local
+    name: html-page
+    namespace: rogertbz-dev
+    resourceVersion: "801699151"
+    uid: 9ea4a2d2-978e-42e7-8f1b-a59fdd9690da
+  spec:
+    template:
+      metadata:
+        annotations:
+          autoscaling.knative.dev/target: "100"
+          autoscaling.knative.dev/targetUtilizationPercentage: "70"
+          autoscaling.knative.dev/window: 60s
+        creationTimestamp: null
+        labels:
+          app.kubernetes.io/component: html-page
+          app.kubernetes.io/instance: html-page
+          app.kubernetes.io/part-of: html-page
+          app.openshift.io/runtime: html-page
+          app.openshift.io/runtime-namespace: rogertbz-dev
+          app.openshift.io/runtime-version: v1
+      spec:
+        containerConcurrency: 0
+        containers:
+        - image: image-registry.openshift-image-registry.svc:5000/rogertbz-dev/html-page:v1
+          imagePullPolicy: Always
+          name: html-page
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          readinessProbe:
+            successThreshold: 1
+            tcpSocket:
+              port: 0
+          resources: {}
+        enableServiceLinks: false
+        timeoutSeconds: 300
+    traffic:
+    - latestRevision: true
+      percent: 100
+  status:
+    address:
+      url: http://html-page.rogertbz-dev.svc.cluster.local
+    conditions:
+    - lastTransitionTime: "2023-06-01T06:36:00Z"
+      status: "True"
+      type: ConfigurationsReady
+    - lastTransitionTime: "2023-06-01T06:36:00Z"
+      status: "True"
+      type: Ready
+    - lastTransitionTime: "2023-05-31T08:41:36Z"
+      status: "True"
+      type: RoutesReady
+    latestCreatedRevisionName: html-page-00001
+    latestReadyRevisionName: html-page-00001
+    observedGeneration: 1
+    traffic:
+    - latestRevision: true
+      percent: 100
+      revisionName: html-page-00001
+    url: http://html-page.rogertbz-dev.svc.cluster.local
+- apiVersion: serving.knative.dev/v1
+  kind: Route
+  metadata:
+    annotations:
+      app.openshift.io/route-disabled: "false"
+      image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"html-page:v1","namespace":"rogertbz-dev"},"fieldPath":"spec.template.spec.containers[?(@.name==\"html-page\")].image","pause":"false"}]'
+      openshift.io/generated-by: OpenShiftWebConsole
+      serving.knative.dev/creator: rogertbz
+      serving.knative.dev/lastModifier: rogertbz
+    creationTimestamp: "2023-05-31T08:41:31Z"
+    finalizers:
+    - routes.serving.knative.dev
+    generation: 1
+    labels:
+      app.kubernetes.io/component: html-page
+      app.kubernetes.io/instance: html-page
+      app.kubernetes.io/name: html-page
+      app.kubernetes.io/part-of: html-page
+      app.openshift.io/runtime: html-page
+      app.openshift.io/runtime-namespace: rogertbz-dev
+      app.openshift.io/runtime-version: v1
+      networking.knative.dev/visibility: cluster-local
+      serving.knative.dev/service: html-page
+    name: html-page
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: serving.knative.dev/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Service
+      name: html-page
+      uid: 9ea4a2d2-978e-42e7-8f1b-a59fdd9690da
+    resourceVersion: "797892731"
+    uid: 23f84e60-6339-41c9-8805-7db5adcd5b47
+  spec:
+    traffic:
+    - configurationName: html-page
+      latestRevision: true
+      percent: 100
+  status:
+    address:
+      url: http://html-page.rogertbz-dev.svc.cluster.local
+    conditions:
+    - lastTransitionTime: "2023-05-31T08:41:35Z"
+      status: "True"
+      type: AllTrafficAssigned
+    - lastTransitionTime: "2023-05-31T08:41:35Z"
+      message: autoTLS is not enabled
+      reason: TLSNotEnabled
+      status: "True"
+      type: CertificateProvisioned
+    - lastTransitionTime: "2023-05-31T08:41:36Z"
+      status: "True"
+      type: IngressReady
+    - lastTransitionTime: "2023-05-31T08:41:36Z"
+      status: "True"
+      type: Ready
+    observedGeneration: 1
+    traffic:
+    - latestRevision: true
+      percent: 100
+      revisionName: html-page-00001
+    url: http://html-page.rogertbz-dev.svc.cluster.local
+- apiVersion: serving.knative.dev/v1
+  kind: Revision
+  metadata:
+    annotations:
+      autoscaling.knative.dev/target: "100"
+      autoscaling.knative.dev/targetUtilizationPercentage: "70"
+      autoscaling.knative.dev/window: 60s
+      serving.knative.dev/creator: rogertbz
+      serving.knative.dev/routes: html-page
+      serving.knative.dev/routingStateModified: "2023-05-31T08:41:31Z"
+    creationTimestamp: "2023-05-31T08:41:31Z"
+    generation: 1
+    labels:
+      app.kubernetes.io/component: html-page
+      app.kubernetes.io/instance: html-page
+      app.kubernetes.io/part-of: html-page
+      app.openshift.io/runtime: html-page
+      app.openshift.io/runtime-namespace: rogertbz-dev
+      app.openshift.io/runtime-version: v1
+      serving.knative.dev/configuration: html-page
+      serving.knative.dev/configurationGeneration: "1"
+      serving.knative.dev/configurationUID: 5a1d8f20-b0a1-4598-b70d-e52de9846bc8
+      serving.knative.dev/routingState: active
+      serving.knative.dev/service: html-page
+      serving.knative.dev/serviceUID: 9ea4a2d2-978e-42e7-8f1b-a59fdd9690da
+    name: html-page-00001
+    namespace: rogertbz-dev
+    ownerReferences:
+    - apiVersion: serving.knative.dev/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Configuration
+      name: html-page
+      uid: 5a1d8f20-b0a1-4598-b70d-e52de9846bc8
+    resourceVersion: "801699144"
+    uid: c428b411-5859-4d3d-b19e-d8946519f82f
+  spec:
+    containerConcurrency: 0
+    containers:
+    - image: image-registry.openshift-image-registry.svc:5000/rogertbz-dev/html-page:v1
+      imagePullPolicy: Always
+      name: html-page
+      ports:
+      - containerPort: 8080
+        protocol: TCP
+      readinessProbe:
+        successThreshold: 1
+        tcpSocket:
+          port: 0
+      resources: {}
+    enableServiceLinks: false
+    timeoutSeconds: 300
+  status:
+    actualReplicas: 0
+    conditions:
+    - lastTransitionTime: "2023-05-31T08:42:35Z"
+      message: The target is not receiving traffic.
+      reason: NoTraffic
+      severity: Info
+      status: "False"
+      type: Active
+    - lastTransitionTime: "2023-05-31T08:41:35Z"
+      status: "True"
+      type: ContainerHealthy
+    - lastTransitionTime: "2023-06-01T06:36:00Z"
+      status: "True"
+      type: Ready
+    - lastTransitionTime: "2023-06-01T06:36:00Z"
+      status: "True"
+      type: ResourcesAvailable
+    containerStatuses:
+    - imageDigest: image-registry.openshift-image-registry.svc:5000/rogertbz-dev/html-page@sha256:b357ed3a03409593c8ed8185dc350483e6766a138573976dcf1b6550f8f47329
+      name: html-page
+    desiredReplicas: 0
+    observedGeneration: 1
+kind: List
+metadata:
+  resourceVersion: ""
+  selfLink: ""

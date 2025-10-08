@@ -1,0 +1,53 @@
+# vi hpa.yml
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: apache-hpa
+  namespace: apache
+
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: apache-deployment
+    apiVersion: apps/v1
+
+  minReplicas: 1
+  maxReplicas: 5
+
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 5
+
+
+
+# kubectl apply -f hpa.yml
+# kubectl get hpa -n apache
+# kubectl api-resources
+# kubectl scale deployment/apache-deployment -n apache --replicas=1
+# kubectl get pods -n apache
+
+# kubectl run -it load-generator --image=busybox -n apache -- bin/bash
+# Or
+# kubectl run -i --tty load-generator --image=busybox -n apache bin/bash
+#  while true; do wget -q -O- http://apache-service.apache.svc.cluster.local; done
+# ls
+
+# Now open another tab and ssh it.
+# kubectl get hpa -n apache
+# kubectl get pods -n apache
+
+# Now stop the busybox. (CTRL +C)
+# now check utilization.
+# kubectl get pods -n apache
+# kubectl get hpa -n apache
+
+# kubectl scale deployment apache-deployment --replicas=1 -n apache
+# watch kubectl get pods -n apache
+# kubectl delete -f deployment.yml
+# kubectl apply -f deployment.yml
+# kubectl apply -f hpa.yml

@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-web-deployment-autoscaling
+  labels:
+    app: my-k8s-deployment
+spec:
+  selector:
+    matchLabels:
+      project: xyz
+  template:
+    metadata:
+      labels:
+        project: xyz # service will look for those pods labels
+    spec:
+      containers:
+        - name: my-web
+          image: adv4000/k8sphp:latest
+          ports:
+            - containerPort: 80 # port on pod
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-web-deployment-autoscaling
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 50
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-autoscaling-pod-service
+  labels:
+    env: production
+    ownder: adil
+spec:
+  selector:
+    project: xyz
+  ports:
+    - name: my-app-listener
+      protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer

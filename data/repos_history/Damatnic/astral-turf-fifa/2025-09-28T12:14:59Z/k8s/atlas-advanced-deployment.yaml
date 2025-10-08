@@ -1,0 +1,589 @@
+# ==================================================================
+# ATLAS ENTERPRISE MULTI-CLOUD DEPLOYMENT MANIFESTS
+# Production-ready deployment with advanced scaling, security, and monitoring
+# Supports AWS EKS, Azure AKS, Google GKE with edge computing
+# ==================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: astral-turf-production
+  namespace: astral-turf-production
+  labels:
+    app: astral-turf
+    version: v8.0.0
+    tier: frontend
+    atlas.deployment/strategy: blue-green
+    atlas.monitoring/enabled: "true"
+    atlas.scaling/enabled: "true"
+    atlas.cloud/provider: "multi-cloud"
+    atlas.security/level: "enterprise"
+    atlas.edge/enabled: "true"
+  annotations:
+    atlas.deployment/blue-green-config: |
+      {
+        "trafficSplitRatio": "10:90",
+        "canaryDuration": "300s",
+        "automaticPromotion": false,
+        "rollbackOnFailure": true,
+        "healthCheckTimeout": "30s",
+        "performanceThreshold": {
+          "responseTime": "200ms",
+          "errorRate": "0.1%",
+          "throughput": "1000rps"
+        }
+      }
+    atlas.monitoring/dashboard: "https://grafana.astralturf.com/d/astral-turf"
+    atlas.alerts/enabled: "true"
+    atlas.backup/schedule: "0 2 * * *"
+    deployment.kubernetes.io/revision: "1"
+spec:
+  replicas: 8
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 3
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: astral-turf
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: astral-turf
+        tier: frontend
+        version: v8.0.0
+        atlas.monitoring/scrape: "true"
+        atlas.security/profile: "restricted"
+        atlas.backup/include: "true"
+        atlas.edge/node: "true"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+        atlas.deployment/timestamp: "2024-12-28T00:00:00Z"
+        atlas.performance/optimization: "enabled"
+        atlas.security/scan: "continuous"
+        co.elastic.logs/enabled: "true"
+        co.elastic.logs/module: "nginx"
+        fluentd.io/collect: "true"
+    spec:
+      serviceAccountName: astral-turf-service-account
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+        supplementalGroups: [1001]
+        sysctls:
+        - name: net.core.somaxconn
+          value: "65535"
+      initContainers:
+      - name: database-migration
+        image: astralturf/tactical-board:v8.0.0
+        command: ["npx", "prisma", "migrate", "deploy"]
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: astral-turf-secrets
+              key: database-url
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+      - name: cache-warmer
+        image: astralturf/tactical-board:v8.0.0
+        command: ["node", "scripts/cache-warmer.js"]
+        env:
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: astral-turf-secrets
+              key: redis-url
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "100m"
+      containers:
+      - name: astral-turf
+        image: astralturf/tactical-board:v8.0.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
+        - containerPort: 9229
+          name: debug
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        - name: METRICS_PORT
+          value: "8080"
+        - name: DEBUG_PORT
+          value: "9229"
+        - name: NODE_OPTIONS
+          value: "--max-old-space-size=1536 --enable-source-maps --experimental-worker"
+        - name: UV_THREADPOOL_SIZE
+          value: "16"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: astral-turf-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: astral-turf-secrets
+              key: redis-url
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: astral-turf-secrets
+              key: jwt-secret
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: astral-turf-secrets
+              key: openai-api-key
+        - name: ATLAS_DEPLOYMENT_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: ATLAS_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: ATLAS_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: ATLAS_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: ATLAS_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: ATLAS_SERVICE_ACCOUNT
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.serviceAccountName
+        envFrom:
+        - configMapRef:
+            name: astral-turf-config
+            optional: false
+        - secretRef:
+            name: astral-turf-secrets
+            optional: false
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+            ephemeral-storage: "2Gi"
+            nvidia.com/gpu: "0"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+            ephemeral-storage: "4Gi"
+            nvidia.com/gpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 3000
+            scheme: HTTP
+            httpHeaders:
+            - name: X-Health-Check
+              value: "liveness"
+          initialDelaySeconds: 90
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 3000
+            scheme: HTTP
+            httpHeaders:
+            - name: X-Health-Check
+              value: "readiness"
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        startupProbe:
+          httpGet:
+            path: /health/startup
+            port: 3000
+            scheme: HTTP
+            httpHeaders:
+            - name: X-Health-Check
+              value: "startup"
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 20
+          successThreshold: 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+          capabilities:
+            drop: ["ALL"]
+            add: ["NET_BIND_SERVICE"]
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: cache-volume
+          mountPath: /app/cache
+        - name: logs-volume
+          mountPath: /app/logs
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        - name: certs-volume
+          mountPath: /app/certs
+          readOnly: true
+        - name: uploads-volume
+          mountPath: /app/uploads
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 30"]
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "echo 'Container started' > /app/logs/startup.log"]
+      - name: sidecar-prometheus-exporter
+        image: prom/node-exporter:v1.6.1
+        ports:
+        - containerPort: 9100
+          name: node-metrics
+          protocol: TCP
+        args:
+        - --path.procfs=/host/proc
+        - --path.sysfs=/host/sys
+        - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+        - --web.listen-address=:9100
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+      - name: sidecar-fluent-bit
+        image: fluent/fluent-bit:2.2.0
+        ports:
+        - containerPort: 2020
+          name: fluent-metrics
+          protocol: TCP
+        env:
+        - name: FLUENT_ELASTICSEARCH_HOST
+          value: "elasticsearch.logging.svc.cluster.local"
+        - name: FLUENT_ELASTICSEARCH_PORT
+          value: "9200"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: fluent-bit-config
+          mountPath: /fluent-bit/etc
+          readOnly: true
+        - name: logs-volume
+          mountPath: /app/logs
+          readOnly: true
+      volumes:
+      - name: tmp-volume
+        emptyDir:
+          sizeLimit: 1Gi
+          medium: Memory
+      - name: cache-volume
+        emptyDir:
+          sizeLimit: 2Gi
+      - name: logs-volume
+        emptyDir:
+          sizeLimit: 5Gi
+      - name: config-volume
+        configMap:
+          name: astral-turf-config
+          defaultMode: 0444
+      - name: certs-volume
+        secret:
+          secretName: astral-turf-tls-certs
+          defaultMode: 0444
+      - name: uploads-volume
+        emptyDir:
+          sizeLimit: 10Gi
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: fluent-bit-config
+        configMap:
+          name: fluent-bit-config
+      nodeSelector:
+        atlas.nodepool/type: "application"
+        kubernetes.io/arch: "amd64"
+        kubernetes.io/os: "linux"
+        node.kubernetes.io/instance-type: "performance"
+      tolerations:
+      - key: "atlas.nodepool/application"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      - key: "atlas.deployment/critical"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      - key: "nvidia.com/gpu"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: astral-turf
+                tier: frontend
+            topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: astral-turf
+              topologyKey: topology.kubernetes.io/zone
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: astral-turf
+              topologyKey: topology.kubernetes.io/region
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: atlas.instance/type
+                operator: In
+                values: ["optimized", "performance", "gpu-enabled"]
+              - key: atlas.availability/zone
+                operator: In
+                values: ["zone-a", "zone-b", "zone-c"]
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: atlas.instance/spot
+                operator: NotIn
+                values: ["true"]
+          - weight: 50
+            preference:
+              matchExpressions:
+              - key: atlas.network/tier
+                operator: In
+                values: ["premium"]
+      dnsPolicy: ClusterFirst
+      dnsConfig:
+        options:
+        - name: ndots
+          value: "2"
+        - name: edns0
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 60
+      priorityClassName: astral-turf-priority
+      schedulerName: default-scheduler
+      enableServiceLinks: false
+
+---
+
+# Advanced Horizontal Pod Autoscaler with custom metrics
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: astral-turf-advanced-hpa
+  namespace: astral-turf-production
+  labels:
+    app: astral-turf
+    atlas.autoscaling/type: "advanced"
+    atlas.performance/monitoring: "enabled"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: astral-turf-production
+  minReplicas: 6
+  maxReplicas: 100
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "2000"
+  - type: Pods
+    pods:
+      metric:
+        name: response_time_p95
+      target:
+        type: AverageValue
+        averageValue: "200m"
+  - type: External
+    external:
+      metric:
+        name: cloudwatch_sqs_messages_visible
+        selector:
+          matchLabels:
+            queue: astral-turf-processing
+      target:
+        type: AverageValue
+        averageValue: "50"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 10
+        periodSeconds: 15
+      selectPolicy: Max
+
+---
+
+# Vertical Pod Autoscaler for resource optimization
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: astral-turf-vpa
+  namespace: astral-turf-production
+  labels:
+    app: astral-turf
+    atlas.autoscaling/type: "vertical"
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: astral-turf-production
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: astral-turf
+      maxAllowed:
+        cpu: 4
+        memory: 8Gi
+      minAllowed:
+        cpu: 500m
+        memory: 1Gi
+      controlledResources: ["cpu", "memory"]
+
+---
+
+# Pod Disruption Budget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: astral-turf-advanced-pdb
+  namespace: astral-turf-production
+  labels:
+    app: astral-turf
+    atlas.availability/managed: "true"
+spec:
+  minAvailable: 75%
+  selector:
+    matchLabels:
+      app: astral-turf
+      tier: frontend
+  unhealthyPodEvictionPolicy: AlwaysAllow

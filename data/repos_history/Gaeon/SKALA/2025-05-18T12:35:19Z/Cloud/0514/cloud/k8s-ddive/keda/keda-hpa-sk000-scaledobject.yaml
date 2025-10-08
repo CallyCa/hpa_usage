@@ -1,0 +1,50 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: keda-operator
+    app.kubernetes.io/name: keda-hpa-sk000-scaledobject
+    app.kubernetes.io/part-of: sk000-scaledobject
+    app.kubernetes.io/version: 2.16.1
+    scaledobject.keda.sh/name: sk000-scaledobject
+  name: keda-hpa-sk000-scaledobject
+  namespace: skala-practice
+  ownerReferences:
+  - apiVersion: keda.sh/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: ScaledObject
+    name: sk000-scaledobject
+spec:
+  behavior:
+    scaleDown:
+      policies:
+      - periodSeconds: 5
+        type: Percent
+        value: 100
+      selectPolicy: Max
+      stabilizationWindowSeconds: 0
+    scaleUp:
+      policies:
+      - periodSeconds: 5
+        type: Percent
+        value: 100
+      selectPolicy: Max
+      stabilizationWindowSeconds: 0
+  maxReplicas: 10
+  metrics:
+  - external:
+      metric:
+        name: s0-workload-skala-practice
+        selector:
+          matchLabels:
+            scaledobject.keda.sh/name: sk000-scaledobject
+      target:
+        averageValue: "1"
+        type: AverageValue
+    type: External
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sk000-my-app

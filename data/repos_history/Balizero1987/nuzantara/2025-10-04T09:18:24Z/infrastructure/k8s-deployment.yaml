@@ -1,0 +1,620 @@
+# Enhanced Kubernetes manifests for Zantara Bridge
+# Namespace definition
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: zantara-system
+  labels:
+    name: zantara-system
+    environment: production
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/version: v4.1.0
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zantara-bridge-config
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: config
+data:
+  NODE_ENV: "production"
+  PORT: "8080"
+  REGION: "asia-southeast2"
+  AMBARADAM_DRIVE_ID: "0AJC3-SJL03OOUk9PVA"
+  IMPERSONATE_USER: "zero@balizero.com"
+  LOG_LEVEL: "info"
+  METRICS_ENABLED: "true"
+  CACHE_TTL: "300"
+  MAX_RETRIES: "3"
+  REQUEST_TIMEOUT: "30000"
+
+---
+# Secret for sensitive data
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zantara-bridge-secrets
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: secrets
+type: Opaque
+stringData:
+  # These will be populated from Google Secret Manager
+  GOOGLE_SERVICE_ACCOUNT_KEY: ""
+  DATABASE_URL: ""
+  ENCRYPTION_KEY: ""
+
+---
+# ServiceAccount for pod identity
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: zantara-bridge-sa
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: serviceaccount
+  annotations:
+    iam.gke.io/gcp-service-account: zantara-runtime@involuted-box-469105-r0.iam.gserviceaccount.com
+automountServiceAccountToken: true
+
+---
+# Blue deployment (primary)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zantara-bridge-blue
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/version: v4.1.0
+    deployment-color: blue
+spec:
+  replicas: 3
+  revisionHistoryLimit: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 50%
+      maxUnavailable: 25%
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zantara-bridge
+      deployment-color: blue
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zantara-bridge
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/version: v4.1.0
+        deployment-color: blue
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+    spec:
+      serviceAccountName: zantara-bridge-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: zantara-bridge
+        image: asia-southeast2-docker.pkg.dev/involuted-box-469105-r0/zantara-bridge/zantara-bridge:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: DEPLOYMENT_COLOR
+          value: "blue"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        envFrom:
+        - configMapRef:
+            name: zantara-bridge-config
+        - secretRef:
+            name: zantara-bridge-secrets
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+            ephemeral-storage: "1Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+            ephemeral-storage: "2Gi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 3
+          timeoutSeconds: 5
+          failureThreshold: 10
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+          successThreshold: 1
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/cache
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir:
+          sizeLimit: 100Mi
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: zantara-bridge
+                  deployment-color: blue
+              topologyKey: kubernetes.io/hostname
+      tolerations:
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+
+---
+# Green deployment (for blue/green deployments)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zantara-bridge-green
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/version: v4.1.0
+    deployment-color: green
+spec:
+  replicas: 0  # Initially scaled to zero
+  revisionHistoryLimit: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 50%
+      maxUnavailable: 25%
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zantara-bridge
+      deployment-color: green
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zantara-bridge
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/version: v4.1.0
+        deployment-color: green
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+    spec:
+      serviceAccountName: zantara-bridge-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: zantara-bridge
+        image: asia-southeast2-docker.pkg.dev/involuted-box-469105-r0/zantara-bridge/zantara-bridge:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: DEPLOYMENT_COLOR
+          value: "green"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        envFrom:
+        - configMapRef:
+            name: zantara-bridge-config
+        - secretRef:
+            name: zantara-bridge-secrets
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+            ephemeral-storage: "1Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+            ephemeral-storage: "2Gi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 3
+          timeoutSeconds: 5
+          failureThreshold: 10
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+          successThreshold: 1
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/cache
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir:
+          sizeLimit: 100Mi
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: zantara-bridge
+                  deployment-color: green
+              topologyKey: kubernetes.io/hostname
+
+---
+# Service for blue deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: zantara-bridge-blue-service
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: service
+    deployment-color: blue
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: zantara-bridge
+    deployment-color: blue
+
+---
+# Service for green deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: zantara-bridge-green-service
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: service
+    deployment-color: green
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: zantara-bridge
+    deployment-color: green
+
+---
+# Primary service (routes to active deployment)
+apiVersion: v1
+kind: Service
+metadata:
+  name: zantara-bridge-service
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: service
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    cloud.google.com/backend-config: '{"ports": {"80":"zantara-bridge-backendconfig"}}'
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges:
+  - 0.0.0.0/0
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: http
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: zantara-bridge
+    deployment-color: blue  # Default to blue deployment
+
+---
+# HorizontalPodAutoscaler for blue deployment
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zantara-bridge-blue-hpa
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: autoscaler
+    deployment-color: blue
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zantara-bridge-blue
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+      selectPolicy: Max
+
+---
+# HorizontalPodAutoscaler for green deployment
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zantara-bridge-green-hpa
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: autoscaler
+    deployment-color: green
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zantara-bridge-green
+  minReplicas: 0
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+      selectPolicy: Max
+
+---
+# PodDisruptionBudget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zantara-bridge-pdb
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: pdb
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zantara-bridge
+
+---
+# NetworkPolicy for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zantara-bridge-netpol
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: zantara-bridge
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 9090
+  egress:
+  - {}  # Allow all egress (can be restricted based on requirements)
+
+---
+# BackendConfig for Google Cloud Load Balancer
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: zantara-bridge-backendconfig
+  namespace: zantara-system
+  labels:
+    app.kubernetes.io/name: zantara-bridge
+    app.kubernetes.io/component: backend-config
+spec:
+  healthCheck:
+    checkIntervalSec: 10
+    timeoutSec: 5
+    healthyThreshold: 2
+    unhealthyThreshold: 3
+    type: HTTP
+    requestPath: /health
+    port: 8080
+  connectionDraining:
+    drainingTimeoutSec: 60
+  sessionAffinity:
+    affinityType: "CLIENT_IP"
+    affinityCookieTtlSec: 3600
+  timeoutSec: 30
+  logging:
+    enable: true
+    sampleRate: 1.0

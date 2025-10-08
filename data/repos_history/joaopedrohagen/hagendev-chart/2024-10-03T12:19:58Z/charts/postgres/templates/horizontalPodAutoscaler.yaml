@@ -1,0 +1,40 @@
+{{- define "hpa" }}
+{{- $service := .service }}
+{{- $namespace := .namespace }}
+{{- if $service.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $service.name }}
+  namespace: {{ $namespace }}
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $service.name }}
+
+  minReplicas: {{ $service.replicas.min }}
+  maxReplicas: {{ $service.replicas.max }}
+
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ $service.hpaCpu }}
+
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ $service.hpaMemory }}
+{{- end }}
+{{- end }}
+
+{{- range $service := .Values.microservices }}
+  {{- include "hpa" (dict "service" $service "namespace" $.Values.namespace) }}
+{{ end }}

@@ -1,0 +1,28 @@
+{{- if .Values.phpmyadmin.hpa.enabled }}
+{{- with .Values.phpmyadmin.hpa }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "mariadb-phpmyadmin.fullname" $ }}-phpmyadmin
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "mariadb-phpmyadmin.fullname" $ }}-phpmyadmin
+  minReplicas: {{ .minReplicas }}
+  maxReplicas: {{ .maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .averageUtilizationCPU }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .averageUtilizationMemory }}
+{{- end }}
+{{- end }}

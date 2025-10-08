@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-playwright-service-config
+data:
+  PORT: "{{ .Values.playwright_service.service.port }}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-playwright-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: playwright-service
+  template:
+    metadata:
+      labels:
+        app: playwright-service
+    spec:
+      containers:
+        - name: playwright-service
+          image: "{{ .Values.playwright_service.image.repository }}:{{ .Values.playwright_service.image.tag }}"
+          imagePullPolicy: {{ .Values.playwright_service.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.playwright_service.service.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-playwright-service-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-playwright-service
+spec:
+  selector:
+    app: playwright-service
+  ports:
+    - protocol: TCP
+      port: {{ .Values.playwright_service.service.port }}
+      targetPort: {{ .Values.playwright_service.service.port }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name:  {{ .Release.Name }}-playwright-service
+  labels:
+    app: firecrawl-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name:  {{ .Release.Name }}-playwright-service
+  minReplicas: {{ .Values.playwright_service.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.playwright_service.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 90
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 90

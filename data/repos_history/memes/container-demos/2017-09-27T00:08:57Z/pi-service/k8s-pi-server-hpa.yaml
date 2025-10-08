@@ -1,0 +1,13 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: pi-server-hpa
+  namespace: default
+spec:
+  minReplicas: 5
+  maxReplicas: 500
+  scaleTargetRef:
+    apiVersion: extensions/v1beta1
+    kind: Deployment
+    name: pi-server-deployment
+  targetCPUUtilizationPercentage: 30

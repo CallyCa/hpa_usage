@@ -1,0 +1,167 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nova-research-api
+  namespace: nova-deep-research
+  labels:
+    app: nova-research
+    component: api
+spec:
+  replicas: 10  # Increased for load distribution
+  selector:
+    matchLabels:
+      app: nova-research
+      component: api
+  template:
+    metadata:
+      labels:
+        app: nova-research
+        component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: nova-research
+      containers:
+      - name: api
+        image: nova-research:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: nova-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: nova-config
+              key: redis.url
+        - name: LANGGRAPH_URL
+          value: "http://langgraph-service:8123"
+        - name: MODEL_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: nova-config
+              key: model.provider
+        - name: SEARCH_API
+          valueFrom:
+            configMapKeyRef:
+              name: nova-config
+              key: search.api
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nova-secrets
+              key: openai-api-key
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nova-secrets
+              key: anthropic-api-key
+        - name: TAVILY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nova-secrets
+              key: tavily-api-key
+        - name: MAX_WORKERS
+          value: "50"  # Each API instance manages 50 concurrent research tasks
+        - name: SECURITY_JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nova-secrets
+              key: jwt-secret-key
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        volumeMounts:
+        - name: data
+          mountPath: /app/data
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: nova-research-data-pvc
+      - name: logs
+        emptyDir: {}
+      nodeSelector:
+        workload-type: api
+      tolerations:
+      - key: "workload-type"
+        operator: "Equal"
+        value: "api"
+        effect: "NoSchedule"
+
+---
+# Horizontal Pod Autoscaler for massive scale
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nova-research-api-hpa
+  namespace: nova-deep-research
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nova-research-api
+  minReplicas: 10
+  maxReplicas: 500  # Scale up to 500 API instances
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: pending_research_queries
+      target:
+        type: AverageValue
+        averageValue: "10"  # Scale when >10 pending queries per pod
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 20  # Scale down slower
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30  # React quickly to load
+      policies:
+      - type: Percent
+        value: 100  # Double pods quickly
+        periodSeconds: 30
+      - type: Pods
+        value: 20   # Add 20 pods at a time
+        periodSeconds: 30 

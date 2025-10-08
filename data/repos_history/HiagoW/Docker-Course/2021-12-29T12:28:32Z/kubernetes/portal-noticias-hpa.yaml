@@ -1,0 +1,29 @@
+apiVersion: autoscaling/v2beta2
+# Provisiona novos pods com baes na utilização de CPU
+# Precisa de um servidor de métricas: https://github.com/kubernetes-sigs/metrics-server (componentes.yaml)
+# Adicionar --kubelet-insecure-tls
+# OU Se der erro: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.5.2/components.yaml
+# Demora um pouco pra iniciar
+
+# Testa com script stress
+kind: HorizontalPodAutoscaler
+metadata:
+  name: portal-noticias-hpa
+spec:
+  # Referencia ao serviço que tem o Pod, neste caso o deployment
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: portal-noticias-deployment
+  # Min 1 e max 10 replicas
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    # Indica que vai usar recursos, como cpu, para escalonar
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          # Se utilização chegar a 50% (5m, pois foi definido 10m para portal-noticias-deployment), provisiona novo pod
+          type: Utilization
+          averageUtilization: 50

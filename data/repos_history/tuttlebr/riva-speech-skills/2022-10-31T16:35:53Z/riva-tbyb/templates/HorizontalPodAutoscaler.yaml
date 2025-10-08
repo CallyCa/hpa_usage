@@ -1,0 +1,27 @@
+# Creates the horizontal pod autoscaler for the Triton pod deployment.
+# In order to use custom metrics (ie metrics other than CPU usage) with this
+# autoscaler, you must have enabled installation of the prometheus adapter.
+# This autoscaler (and the prometheus adapter) will only be installed in the
+# autoscaling tag is set to true.
+
+{{- if .Values.tags.autoscaling }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: triton-hpa
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/instance: {{ template "riva-server.fullname" . }}
+    chart: {{ template "riva-server.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ template "riva-server.fullname" . }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: {{ template "riva-server.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics: {{ toYaml .Values.autoscaling.metrics | nindent 2}}
+{{- end -}}

@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oracle-service
+  namespace: neo-service-layer
+  labels:
+    app: oracle-service
+    component: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: oracle-service
+  template:
+    metadata:
+      labels:
+        app: oracle-service
+        component: backend
+    spec:
+      containers:
+      - name: oracle-service
+        image: neoservicelayer/oracle-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5010
+          name: http
+        envFrom:
+        - configMapRef:
+            name: neo-service-config
+        env:
+        - name: Oracle__ApiKey
+          valueFrom:
+            secretKeyRef:
+              name: neo-service-secrets
+              key: Oracle__ApiKey
+        - name: Database__Password
+          valueFrom:
+            secretKeyRef:
+              name: neo-service-secrets
+              key: Database__Password
+        - name: Redis__Password
+          valueFrom:
+            secretKeyRef:
+              name: neo-service-secrets
+              key: Redis__Password
+        - name: RabbitMQ__Password
+          valueFrom:
+            secretKeyRef:
+              name: neo-service-secrets
+              key: RabbitMQ__Password
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5010
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 5010
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oracle-service
+  namespace: neo-service-layer
+  labels:
+    app: oracle-service
+spec:
+  selector:
+    app: oracle-service
+  ports:
+    - protocol: TCP
+      port: 5010
+      targetPort: 5010
+      name: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: oracle-service-hpa
+  namespace: neo-service-layer
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: oracle-service
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

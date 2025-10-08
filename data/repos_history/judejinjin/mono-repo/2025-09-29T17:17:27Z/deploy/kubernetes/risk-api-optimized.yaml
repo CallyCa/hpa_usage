@@ -1,0 +1,392 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: risk-api-optimized
+  namespace: default
+  labels:
+    app: risk-api-optimized
+    version: v2.0.0
+    tier: api
+    component: risk-analysis
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: risk-api-optimized
+  template:
+    metadata:
+      labels:
+        app: risk-api-optimized
+        version: v2.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8001"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: risk-api-optimized
+        image: ${ECR_REGISTRY}/risk-api-optimized:${IMAGE_TAG}
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8001
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: ENVIRONMENT
+          value: ${ENVIRONMENT}
+        - name: REDIS_HOST
+          value: "redis-cluster.default.svc.cluster.local"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: connection-string
+        - name: SNOWFLAKE_ACCOUNT
+          valueFrom:
+            secretKeyRef:
+              name: snowflake-credentials
+              key: account
+        - name: SNOWFLAKE_USER
+          valueFrom:
+            secretKeyRef:
+              name: snowflake-credentials
+              key: username
+        - name: SNOWFLAKE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: snowflake-credentials
+              key: password
+        - name: MARKET_DATA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: market-data-credentials
+              key: api-key
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-secrets
+              key: jwt-secret
+        # Performance optimization environment variables
+        - name: CACHE_TTL_DEFAULT
+          value: "300"  # 5 minutes
+        - name: CACHE_MAX_MEMORY
+          value: "256mb"
+        - name: DB_POOL_SIZE
+          value: "20"
+        - name: DB_MAX_OVERFLOW
+          value: "30"
+        - name: ASYNC_WORKERS
+          value: "4"
+        - name: PROFILER_ENABLED
+          value: "true"
+        - name: MONITORING_ENABLED
+          value: "true"
+        # Resource limits
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        # Startup probe for slow initialization
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 10
+        # Volume mounts for performance data
+        volumeMounts:
+        - name: performance-data
+          mountPath: /app/performance
+        - name: cache-data
+          mountPath: /app/cache
+        # Security context
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false  # Allow performance data writes
+      volumes:
+      - name: performance-data
+        emptyDir:
+          sizeLimit: "1Gi"
+      - name: cache-data
+        emptyDir:
+          sizeLimit: "512Mi"
+      # Pod-level security and performance settings
+      securityContext:
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 30
+      # Performance optimization: Use faster DNS
+      dnsPolicy: ClusterFirst
+      dnsConfig:
+        options:
+        - name: ndots
+          value: "2"
+        - name: edns0
+      # Node selection for performance
+      nodeSelector:
+        workload-type: "compute-optimized"
+      # Pod affinity for optimal placement
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - risk-api-optimized
+              topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                - amd64
+      tolerations:
+      - key: "workload-type"
+        operator: "Equal"
+        value: "compute-optimized"
+        effect: "NoSchedule"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: risk-api-optimized-service
+  namespace: default
+  labels:
+    app: risk-api-optimized
+    service: api
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/health"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "10"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-timeout: "5"
+    service.beta.kubernetes.io/aws-load-balancer-healthy-threshold: "2"
+    service.beta.kubernetes.io/aws-load-balancer-unhealthy-threshold: "3"
+spec:
+  type: LoadBalancer
+  selector:
+    app: risk-api-optimized
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8001
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  sessionAffinity: None
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: risk-api-optimized-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: risk-api-optimized
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # Custom metrics for performance-based scaling
+  - type: Pods
+    pods:
+      metric:
+        name: requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "100"
+  - type: Pods
+    pods:
+      metric:
+        name: response_time_95percentile
+      target:
+        type: AverageValue
+        averageValue: "500m"  # 500ms
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      selectPolicy: Min
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: risk-api-optimized-pdb
+  namespace: default
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: risk-api-optimized
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: risk-api-optimized-config
+  namespace: default
+data:
+  # Performance tuning configuration
+  performance.yaml: |
+    cache:
+      redis:
+        max_connections: 50
+        connection_pool_size: 20
+        socket_timeout: 5
+        socket_connect_timeout: 5
+        retry_on_timeout: true
+      memory:
+        max_size_mb: 256
+        ttl_seconds: 300
+        cleanup_interval: 60
+    
+    database:
+      pool_size: 20
+      max_overflow: 30
+      pool_timeout: 30
+      pool_recycle: 3600
+      pool_pre_ping: true
+      query_timeout: 30
+    
+    async:
+      max_workers: 4
+      task_timeout: 300
+      queue_size: 1000
+    
+    profiling:
+      enabled: true
+      sample_rate: 0.1
+      memory_profiling: true
+      function_profiling: true
+    
+    monitoring:
+      enabled: true
+      metrics_interval: 10
+      alert_thresholds:
+        cpu_percent: 80
+        memory_percent: 85
+        response_time_ms: 1000
+        error_rate_percent: 5
+
+  # Logging configuration
+  logging.yaml: |
+    version: 1
+    disable_existing_loggers: false
+    formatters:
+      detailed:
+        format: '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
+      simple:
+        format: '%(levelname)s - %(message)s'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        level: INFO
+        formatter: simple
+        stream: ext://sys.stdout
+      file:
+        class: logging.handlers.RotatingFileHandler
+        level: DEBUG
+        formatter: detailed
+        filename: /app/performance/risk-api.log
+        maxBytes: 10485760  # 10MB
+        backupCount: 5
+    loggers:
+      '':
+        level: INFO
+        handlers: [console, file]
+        propagate: false
+      uvicorn:
+        level: INFO
+        handlers: [console]
+        propagate: false
+      libs.performance:
+        level: DEBUG
+        handlers: [console, file]
+        propagate: false
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: performance-secrets
+  namespace: default
+type: Opaque
+data:
+  # Base64 encoded performance-related secrets
+  redis-password: ""  # Set in deployment
+  profiler-key: ""    # Set in deployment
+  monitoring-token: ""  # Set in deployment

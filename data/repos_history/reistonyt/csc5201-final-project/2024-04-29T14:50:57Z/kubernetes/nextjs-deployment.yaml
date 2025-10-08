@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nextjs-deployment  # Unique name of the Deployment within the namespace
+  labels:
+    app: nextjs  # For resource management; used to organize and select groups of resources
+spec:
+  replicas: 1  # Specifies the desired number of Pods
+  selector:
+    matchLabels:
+      app: nextjs  # Selects Pods with this label for Deployment management
+  template:  # Template for creating new Pods
+    metadata:
+      labels:
+        app: nextjs  # Labels applied to Pods created from this template; must match selector above
+    spec:
+      containers:
+        - name: nextjs  # Name of the container within the Pod; for identification within the Pod
+          image: reistonyt/csc5201-final-project:nextjs  # The Docker image for the container
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000  # The port that the container listens on
+          resources:
+          envFrom:
+            - secretRef:
+                name: app-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nextjs  # The name of the Service
+spec:
+  type: ClusterIP  # The type of Service; ClusterIP exposes the Service on an internal IP in the cluster
+  selector:
+    app: nextjs  # Selects Pods with this label for traffic routing
+  ports:
+    - protocol: TCP  # The protocol used by the Service (TCP/UDP)
+      port: 3000  # The port the Service listens on
+      targetPort: 3000  # The port on the Pod to forward traffic to

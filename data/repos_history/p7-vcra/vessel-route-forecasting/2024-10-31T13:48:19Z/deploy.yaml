@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vrf
+  labels:
+    app: vrf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vrf
+  template:
+    metadata:
+      labels:
+        app: vrf
+    spec:
+      strategy:
+        type: Recreate
+      containers:
+        - name: vrf-container
+          image: ghcr.io/p7-vcra/vessel-route-forecasting/vrf:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          # resources:
+          #   limits:
+          #     nvidia.com/gpu: 1 # Specify GPU resources for this container
+          volumeMounts:
+            - name: app-volume
+              mountPath: /app
+          command: ['python', 'src/app.py', '--port', '8080']
+      volumes:
+        - name: app-volume
+          hostPath:
+            path: /home/ubuntu/vcra/vessel-route-forecasting
+            type: Directory
+      imagePullSecrets:
+        - name: ghcr-secret-2
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vrf-service
+spec:
+  selector:
+    app: vrf
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+      nodePort: 30000
+  type: NodePort # This exposes your app externally

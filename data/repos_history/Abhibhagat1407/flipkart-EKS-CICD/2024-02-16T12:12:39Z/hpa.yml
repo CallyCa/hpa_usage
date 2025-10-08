@@ -1,0 +1,39 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: flipkart-clone
+spec:
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: ContainerResource
+      containerResource:
+        name: cpu
+        container: flipkart-clone
+        target:
+          type: Utilization
+          averageUtilization: 50
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: ReplicaSet
+    name: flipkart-clone
+  behavior:
+    scaleDown:
+      policies:
+      - type: Pods
+        value: 2
+        periodSeconds: 120
+      - type: Percent
+        value: 25
+        periodSeconds: 120
+      stabilizationWindowSeconds: 300 # Adjust the value as per your requirement
+    scaleUp:
+      stabilizationWindowSeconds: 0 # Adjust the value as per your requirement
+      selectPolicy: Max
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 2
+        periodSeconds: 15

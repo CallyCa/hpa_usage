@@ -1,0 +1,98 @@
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: tracking-client
+  labels:
+    app: tracking-client
+spec:
+  ports:
+  - port: 8080
+    name: http
+    targetPort: 8080
+  selector:
+    app: tracking-client
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tracking-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tracking-client
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
+        readiness.status.sidecar.istio.io/applicationPorts: "8080"
+        readiness.status.sidecar.istio.io/initialDelaySeconds: "20"
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+      labels:
+        app: tracking-client
+        version: v1
+    spec:
+      containers:
+      - image: tracking-client
+        imagePullPolicy: IfNotPresent
+        name: tracking-client
+        ports:
+        - containerPort: 8080
+        env:
+          - name: DEBUG
+            value: "false"
+          - name: TRACKING
+            value: "tracking.apps.svc.cluster.local:50051"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            ephemeral-storage: 5000Ki
+            cpu: 50m
+            memory: 128Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 5
+      #serviceAccount: app-sa
+      #serviceAccountName: app-sa
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tracking-client
+  namespace: apps
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tracking-client
+  minReplicas: 1
+  maxReplicas: 25
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50

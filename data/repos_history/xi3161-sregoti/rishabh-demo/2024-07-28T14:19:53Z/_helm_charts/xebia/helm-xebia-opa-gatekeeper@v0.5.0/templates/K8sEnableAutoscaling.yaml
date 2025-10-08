@@ -1,0 +1,39 @@
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8senableautoscaling
+  annotations:
+    description: All deployments should have autoscaling
+    category: Resilience
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sEnableAutoscaling
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8senableautoscaling
+        import future.keywords.in
+
+        violation[{"msg": msg}] {
+          not any_match
+          msg := "Cluster does not have any hpa"
+        }
+       
+        violation[{"msg": msg}] {
+          input.review.object.kind in ["Deployment", "StatefulSet"]
+          hpas := data.inventory.namespace[input.review.object.metadata.namespace][otherapiversion]["HorizontalPodAutoscaler"]
+          satisfied = [good | hpa = hpas[_]; good = checkEqual(hpa)]
+          not any(satisfied)
+          msg := sprintf("%v %v does not have any hpa specified", [input.review.object.kind, input.review.object.metadata.name])
+        }
+
+        any_match {
+          hpa := data.inventory.namespace[input.review.object.metadata.namespace][otherapiversion]["HorizontalPodAutoscaler"][_]
+        }
+        
+        checkEqual(hpa) = true {
+          hpa.spec.scaleTargetRef.name == input.review.object.metadata.name
+          hpa.metadata.namespace == input.review.object.metadata.namespace
+        }

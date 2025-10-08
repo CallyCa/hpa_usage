@@ -1,0 +1,20 @@
+# Horizontal Pod Autoscaler Example: Automatically adjusts the number of replicas based on CPU usage
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nginx-hpa # Name of the Horizontal Pod Autoscaler
+  namespace: nginx-namespace # HPA belongs to nginx-namespace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nginx-deployment # Target the nginx-deployment
+  minReplicas: 2 # Minimum number of replicas
+  maxReplicas: 10 # Maximum number of replicas
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu # Metric based on CPU usage
+      target:
+        type: Utilization
+        averageUtilization: 50 # Target average CPU utilization of 50%

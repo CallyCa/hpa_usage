@@ -1,0 +1,87 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+    name: html-gateway
+    labels:
+        app: html-gateway
+spec:
+    replicas: 2
+    selector:
+        matchLabels:
+            app: html-gateway
+    revisionHistoryLimit: 5
+    minReadySeconds: 10
+    strategy:
+        type: RollingUpdate
+        rollingUpdate:
+            maxSurge: 2
+            maxUnavailable: 0
+    template:
+        metadata:
+            labels:
+                app: html-gateway
+        spec:
+            containers:
+                - name: html-gateway
+                  image: gcr.io/just-strength-233319/github_kuberton_html-gateway:latest
+                  imagePullPolicy: Always
+                  ports:
+                      - containerPort: 3000
+                        protocol: TCP
+                  env:
+                    - name: API_PAYMENT_URL
+                      value: "34.76.106.184"
+                  # readinessProbe:
+                  #     httpGet:
+                  #         path: /health
+                  #         port: 8080
+                  #     initialDelaySeconds: 10
+                  #     periodSeconds: 10
+                  #     timeoutSeconds: 5
+                  # livenessProbe:
+                  #     httpGet:
+                  #         path: /health
+                  #         port: 8080
+                  #     initialDelaySeconds: 10
+                  #     periodSeconds: 10
+                  #     timeoutSeconds: 5
+                  resources:
+                      limits:
+                          memory: '528M'
+            dnsPolicy: ClusterFirst
+            restartPolicy: Always
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: html-gateway
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1beta1
+    kind: Deployment
+    name: html-gateway
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: html-gateway
+  labels:
+    app: html-gateway
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 3000
+  selector:
+    app: html-gateway
+  type: LoadBalancer
+  # loadBalancerIP: 35.206.133.145
+  sessionAffinity: ClientIP

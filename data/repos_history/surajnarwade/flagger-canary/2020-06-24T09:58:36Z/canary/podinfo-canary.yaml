@@ -1,0 +1,92 @@
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: podinfo
+  namespace: test
+spec:
+  provider: nginx
+  # deployment reference
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  # ingress reference
+  ingressRef:
+    apiVersion: networking.k8s.io/v1beta1
+    kind: Ingress
+    name: podinfo
+  # HPA reference (optional)
+  # autoscalerRef:
+  #   apiVersion: autoscaling/v2beta1
+  #   kind: HorizontalPodAutoscaler
+  #   name: podinfo
+  # the maximum time in seconds for the canary deployment
+  # to make progress before it is rollback (default 600s)
+  progressDeadlineSeconds: 60
+  service:
+    # ClusterIP port number
+    port: 80
+    # container port number or name
+    targetPort: 9898
+  analysis:
+    # schedule interval (default 60s)
+    interval: 30s
+    # max number of failed metric checks before rollback
+    threshold: 3
+    # max traffic percentage routed to canary
+    # percentage (0-100)
+    maxWeight: 50
+    # canary increment step
+    # percentage (0-100)
+    stepWeight: 10
+    # NGINX Prometheus checks
+    metrics:
+    # - name: request-success-rate
+    #   # minimum req success rate (non 5xx responses)
+    #   # percentage (0-100)
+    #   thresholdRange:
+    #     min: 99
+    #   interval: 1m
+    #   templateRef: 
+    # - name: error-rate
+    #   templateRef:
+    #     name: error-rate
+    #     namespace: test
+    #   thresholdRange:
+    #     max: 1
+    #   interval: 30s
+    - name: error-rate-nginx
+      templateRef:
+        name: error-rate
+        namespace: ingress-nginx
+      thresholdRange:
+        max: 1
+      interval: 1m
+    # - name: latency
+    #   templateRef:
+    #     name: latency
+    #     namespace: test
+    #   thresholdRange:
+    #     max: 0.5
+    #   interval: 30s
+    # testing (optional)
+    # webhooks:
+    #   - name: confirm
+    #     type: confirm-rollout
+    #     url: http://flagger-loadtester.test/gate/check
+
+      # - name: acceptance-test
+      #   type: pre-rollout
+      #   url: http://flagger-loadtester.test/
+      #   timeout: 50s
+      #   metadata:
+      #     type: bash
+      #     cmd: "curl -sd 'test' http://podinfo-canary/token | grep token"
+        
+
+
+      # - name: load-test
+      #   url: http://flagger-loadtester.test/
+      #   timeout: 5s
+      #   metadata:
+      #     cmd: "hey -z 1m -q 10 -c 2 http://app.example.com/"

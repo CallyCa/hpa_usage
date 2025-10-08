@@ -1,0 +1,118 @@
+{{- if .Values.hpa }}
+
+{{- if .Values.hpa.admin.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: admin-server-hpa
+  namespace: {{ .Values.global.namespaces.nginx }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: admin-server
+  minReplicas: {{ .Values.hpa.admin.minReplicas }}
+  maxReplicas: {{ .Values.hpa.admin.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.admin.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.admin.targetMemoryUtilizationPercentage }}
+{{- end }}
+
+{{- if .Values.hpa.map.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: map-server-hpa
+  namespace: {{ .Values.global.namespaces.nginx }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: map-server
+  minReplicas: {{ .Values.hpa.map.minReplicas }}
+  maxReplicas: {{ .Values.hpa.map.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.map.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.map.targetMemoryUtilizationPercentage }}
+{{- end }}
+
+{{- if .Values.hpa.reservation.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: reservation-server-hpa
+  namespace: {{ .Values.global.namespaces.nginx }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: reservation-server
+  minReplicas: {{ .Values.hpa.reservation.minReplicas }}
+  maxReplicas: {{ .Values.hpa.reservation.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.reservation.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.reservation.targetMemoryUtilizationPercentage }}
+{{- end }}
+
+{{- if .Values.hpa.rds.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rds-server-hpa
+  namespace: {{ .Values.global.namespaces.nginx }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rds-server
+  minReplicas: {{ .Values.hpa.rds.minReplicas }}
+  maxReplicas: {{ .Values.hpa.rds.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.rds.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.rds.targetMemoryUtilizationPercentage }}
+{{- end }}
+
+{{- end }} 

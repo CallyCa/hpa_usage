@@ -1,0 +1,69 @@
+cluster:
+  name: "kiwix-prod"
+
+externalServices:
+  prometheus:
+    host: "https://prometheus-prod-24-prod-eu-west-2.grafana.net"
+    basicAuth:
+      username: "1172000"
+
+  loki:
+    host: "https://logs-prod-012.grafana.net"
+    basicAuth:
+      username: "685075"
+
+metrics:
+  kube-state-metrics:
+    enabled: true
+
+  node-exporter:
+    enabled: true
+    metricsTuning:
+      includeMetrics:
+        - node_md_.*
+
+  kubelet:
+    enabled: true
+
+  cadvisor:
+    enabled: true
+
+  cost:
+    enabled: true
+
+  podMonitors:
+    enabled: true
+
+  serviceMonitors:
+    enabled: true
+
+logs:
+  enabled: true
+
+  pod_logs:
+    enabled: true
+
+  cluster_events:
+    enabled: true
+
+kube-state-metrics:
+  enabled: true
+  image:
+    tag: v2.14.0
+
+prometheus-node-exporter:
+  enabled: true
+  extraArgs:
+    - --collector.mdadm
+
+prometheus-operator-crds:
+  enabled: true
+
+opencost:
+  enabled: true
+  opencost:
+    exporter:
+      defaultClusterId: "kiwix-prod"
+    prometheus:
+      external:
+        url: "https://prometheus-prod-24-prod-eu-west-2.grafana.net/api/prom"

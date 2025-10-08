@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  labels:
+    app: app
+spec:
+  replicas: 2 # минимально для отказоустойчивости, масштабируемость через HPA, но в теории можно оставить и 1
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+    spec:
+      containers:
+        - name: app
+          image: reistry.ru/app:latest
+          resources:
+            requests:
+              cpu: "100m"       # задал в среднем лимит
+              memory: "128Mi"
+            limits:
+              cpu: "500m"       # максимальный лимит
+              memory: "256Mi"
+          readinessProbe:      # даю 10сек на подумать, затем каждый 5сек проверять
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15 # даю 15 минут подумать, затем через 5 секунд будет ребут если ошибка
+            periodSeconds: 5
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: app
+  minReplicas: 2 # возможно хватит 1 пода, надо смотреть
+  maxReplicas: 4 #4 пода максимум, они справляются.
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75 #может и 50%, пока трудно спрогнозировать, надо тестить

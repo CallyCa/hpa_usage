@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otcco-ui
+  namespace: otcrelease
+  labels:
+    app.kubernetes.io/name: otcco-ui
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0     #更新时候最大无效pod数量
+      maxSurge: 1           #更新时候每次最多增加pod数量
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otcco-ui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otcco-ui
+    spec:
+      volumes:
+      - name: config-volume
+        secret:
+          secretName: otc-co-bucket-secret
+          items:
+          - key: config_json
+            path: sa_credentials.json
+      containers:
+        - name: gcs-k8s-nginx
+          #resources:          ##CPU内存限制
+          #  limits:
+          #    cpu: 500m
+          #  requests:
+          #    cpu: 250m
+          image: gcr.io/rd-test-64435/sg_nginx:v22.2.24.1
+          imagePullPolicy: Always
+          volumeMounts:
+          - name: config-volume
+            mountPath: /etc/gcp
+            readOnly: true
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:   #表示container是否处于live状态。如果LivenessProbe失败，LivenessProbe将会通知kubelet对应的container不健康了。
+                         #随后kubelet将kill掉container，并根据RestarPolicy进行进一步的操作。默认情况下LivenessProbe在第一次检测之前初始化值为Success，
+                         #如果container没有提供LivenessProbe，则也认为是Success；
+            httpGet:
+                path: /favicon.ico    #如果没有心跳检测接口就为/,当前心跳检测文件为根目录下的favicon.ico，请注意保持该文件，如果没有将会一直重启pod
+                scheme: HTTP
+                port: 8080
+            initialDelaySeconds: 180   ##启动后延时多久开始运行检测
+            periodSeconds: 120
+            timeoutSeconds: 5
+          env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /etc/gcp/sa_credentials.json
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+          lifecycle:
+            postStart:
+              exec:
+                command: ["sh", "-c", "gcsfuse -o allow_other --implicit-dirs otc-co /etc/nginx/conf.d && ln -s /etc/nginx/conf.d/ui /usr/share/nginx/ui && sleep 5 && nginx -s reload"]
+            preStop:
+              exec:
+                command: ["sh", "-c", "fusermount -u /etc/nginx/conf.d"]
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: otcco-ui-svc
+  namespace: otcrelease
+  labels:
+    app.kubernetes.io/name: otcco-ui
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: otcco-ui
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-otcco
+  namespace: otcrelease
+spec:
+  maxReplicas: 10
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: otcco-ui
+  targetCPUUtilizationPercentage: 95
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: vpa-otcco
+  namespace: otcrelease
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: otcco-ui
+  updatePolicy:
+    updateMode: "Off"

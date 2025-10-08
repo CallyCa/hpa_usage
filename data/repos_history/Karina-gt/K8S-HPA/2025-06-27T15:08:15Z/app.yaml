@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-hpa
+  labels:
+    app: myapp-hpa
+spec:
+  selector:
+    matchLabels:
+      app: myapp-hpa
+  template:
+    metadata:
+      labels:
+        app: myapp-hpa
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+        resources:
+          requests:
+            cpu: 100m
+          limits:
+            cpu: 200m
+        ports:
+        - containerPort: 80
+
+      - name: stress
+        image: polinux/stress
+        command: ["stress"]
+        args: ["--cpu", "1"]
+        resources:
+          requests:
+            cpu: 100m
+          limits:
+            cpu: 200m
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-hpa-service
+spec:
+  selector:
+    app: myapp-hpa
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: myapp-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: myapp-hpa
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60

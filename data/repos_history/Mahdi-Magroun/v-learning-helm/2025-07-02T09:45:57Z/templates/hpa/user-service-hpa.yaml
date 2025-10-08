@@ -1,0 +1,44 @@
+{{- if and .Values.hpa.enabled .Values.userService.enabled .Values.hpa.userService.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: user-service-hpa
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: user-service
+    component: hpa
+    {{- include "v-learning.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: user-service
+  minReplicas: {{ .Values.hpa.userService.minReplicas | default .Values.hpa.default.minReplicas }}
+  maxReplicas: {{ .Values.hpa.userService.maxReplicas | default .Values.hpa.default.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.userService.targetCPUUtilizationPercentage | default .Values.hpa.default.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.hpa.userService.targetMemoryUtilizationPercentage | default .Values.hpa.default.targetMemoryUtilizationPercentage }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.hpa.userService.scaleDown.stabilizationWindowSeconds | default .Values.hpa.default.scaleDown.stabilizationWindowSeconds }}
+      policies:
+      - type: Percent
+        value: {{ .Values.hpa.userService.scaleDown.percentValue | default .Values.hpa.default.scaleDown.percentValue }}
+        periodSeconds: {{ .Values.hpa.userService.scaleDown.periodSeconds | default .Values.hpa.default.scaleDown.periodSeconds }}
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.hpa.userService.scaleUp.stabilizationWindowSeconds | default .Values.hpa.default.scaleUp.stabilizationWindowSeconds }}
+      policies:
+      - type: Percent
+        value: {{ .Values.hpa.userService.scaleUp.percentValue | default .Values.hpa.default.scaleUp.percentValue }}
+        periodSeconds: {{ .Values.hpa.userService.scaleUp.periodSeconds | default .Values.hpa.default.scaleUp.periodSeconds }}
+{{- end }}

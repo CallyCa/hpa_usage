@@ -1,0 +1,91 @@
+{{- if and .Values.canary.enabled (or .Values.istio.enabled .Values.linkerd.enabled .Values.gatewayApi.enabled ) }}
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "labels" . | nindent 4 }}
+spec:
+  {{- if .Values.istio.enabled }}
+  provider: istio
+  {{- else if .Values.linkerd.enabled }}
+  provider: linkerd
+  {{- else if .Values.gatewayApi.enabled }}
+  {{- if .Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1" }}
+  provider: gatewayapi:v1
+  {{- else }}
+  provider: gatewayapi:v1beta1
+  {{- end }}
+  {{- end }}
+  targetRef:
+    apiVersion: apps/v1
+    {{- if .Values.statefulSet.enabled }}
+    kind: StatefulSet
+    {{- else }}
+    kind: Deployment
+    {{- end }}
+    name: {{ .Release.Name }}
+  progressDeadlineSeconds: {{ .Values.canary.progressDeadlineSeconds }}
+  {{- if not (eq .Values.autoscaling.minReplicaCount .Values.autoscaling.maxReplicaCount) }}
+  autoscalerRef:
+    {{- if .Capabilities.APIVersions.Has "autoscaling/v2" }}
+    apiVersion: autoscaling/v2
+    {{- else }}
+    apiVersion: autoscaling/v2beta2
+    {{- end }}
+    kind: HorizontalPodAutoscaler
+    name: {{ .Release.Name }}
+  {{- end }}
+  service:
+    port: {{ .Values.service.port }}
+    targetPort: {{ .Values.container.port }}
+    timeout: {{ .Values.service.timeout }}
+    {{- if .Values.istio.enabled }}
+    gateways:
+      - {{ .Values.istio.ingress.gateway }}
+    hosts:
+      - {{ .Values.istio.ingress.host | quote }}
+    match:
+      - uri:
+          prefix: {{ .Values.istio.ingress.uriPrefix }}
+    rewrite:
+      uri: /
+    trafficPolicy:
+      tls:
+        mode: {{ .Values.istio.tlsMode }}
+    {{- end }}
+    {{- if .Values.gatewayApi.enabled }}
+    {{- if .Values.gatewayApi.host }}
+    hosts:
+      - {{ .Values.gatewayApi.host | quote }}
+    {{- end }}
+    {{- if .Values.gatewayApi.pathPrefix }}
+    match:
+      - uri:
+          prefix: {{ .Values.gatewayApi.pathPrefix | quote }}
+    {{- if .Values.gatewayApi.stripPathPrefix }}
+    rewrite:
+      uri: /
+    {{- end }}
+    {{- end }}
+    gatewayRefs:
+      - name: {{ .Values.gatewayApi.gatewayRef.name }}
+        {{- if .Values.gatewayApi.gatewayRef.namespace }}
+        namespace: {{ .Values.gatewayApi.gatewayRef.namespace }}
+        {{- end }}
+    {{- end }}
+  skipAnalysis: {{ .Values.canary.analysis.skip }}
+  analysis:
+    interval: {{ .Values.canary.analysis.interval }}
+    threshold: {{ .Values.canary.analysis.threshold }}
+    maxWeight: {{ .Values.canary.analysis.maxWeight }}
+    stepWeight: {{ .Values.canary.analysis.stepWeight }}
+    stepWeightPromotion: {{ .Values.canary.analysis.stepWeightPromotion }}
+    metrics:
+      {{- toYaml .Values.canary.analysis.metrics | nindent 6 }}
+    webhooks:
+      {{- toYaml .Values.canary.analysis.webhooks | nindent 6 }}
+    alerts:
+      {{- toYaml .Values.canary.analysis.alerts | nindent 6 }}
+{{- end }}

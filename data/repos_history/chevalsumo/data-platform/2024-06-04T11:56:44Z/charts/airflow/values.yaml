@@ -1,0 +1,5 @@
+airflow:
+  extraPipPackages:
+    - "boto3=1.34.118"
+    - "apache-airflow-providers-amazon"
+

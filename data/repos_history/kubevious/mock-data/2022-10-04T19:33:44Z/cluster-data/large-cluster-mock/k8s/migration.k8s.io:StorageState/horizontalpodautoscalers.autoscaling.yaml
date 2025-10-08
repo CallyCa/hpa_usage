@@ -1,0 +1,20 @@
+apiVersion: migration.k8s.io/v1alpha1
+kind: StorageState
+metadata:
+    creationTimestamp: '2021-01-20T17:15:27Z'
+    generation: 1
+    name: horizontalpodautoscalers.autoscaling
+    resourceVersion: '275528050'
+    selfLink: >-
+        /apis/migration.k8s.io/v1alpha1/storagestates/horizontalpodautoscalers.autoscaling
+    uid: da7f2a6e-992f-408e-860e-e1986f4dbdcb
+spec:
+    resource:
+        group: autoscaling
+        resource: horizontalpodautoscalers
+status:
+    currentStorageVersionHash: oQlkt7f5j/A=
+    lastHeartbeatTime: '2021-08-03T01:13:05Z'
+    persistedStorageVersionHashes:
+        - oQlkt7f5j/A=
+

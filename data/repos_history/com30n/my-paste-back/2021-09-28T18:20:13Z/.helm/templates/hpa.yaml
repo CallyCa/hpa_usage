@@ -1,0 +1,14 @@
+{{- if and .Values.app.enabled .Values.app.hpa -}}
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "commonApp.app.fullname" . }}
+spec:
+  maxReplicas: {{ .Values.app.hpa.maxReplicas }}
+  minReplicas: {{ .Values.app.hpa.minReplicas }}
+  scaleTargetRef:
+    apiVersion: extensions/v1beta1
+    kind: Deployment
+    name: {{ template "commonApp.app.fullname" . }}
+  {{ .Values.app.hpa.resourceName }}: {{ .Values.app.hpa.averageUtilization }}
+{{- end -}}

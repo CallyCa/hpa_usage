@@ -1,0 +1,160 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neo-network
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neo-config
+  namespace: neo-network
+data:
+  mainnet.json: |
+    {
+      "ApplicationConfiguration": {
+        "Network": "mainnet",
+        "AddressVersion": 53,
+        "Storage": {
+          "Engine": "rocksdb",
+          "Path": "/var/lib/neo/chain"
+        },
+        "P2P": {
+          "Port": 10332,
+          "MaxConnections": 100
+        },
+        "RPC": {
+          "Enabled": true,
+          "Port": 10334
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: neo-data-pvc
+  namespace: neo-network
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neo-node
+  namespace: neo-network
+  labels:
+    app: neo-node
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: neo-node
+  template:
+    metadata:
+      labels:
+        app: neo-node
+    spec:
+      containers:
+      - name: neo-node
+        image: neo-cpp:latest
+        imagePullPolicy: Always
+        ports:
+        - name: p2p
+          containerPort: 10332
+          protocol: TCP
+        - name: rpc
+          containerPort: 10334
+          protocol: TCP
+        - name: websocket
+          containerPort: 10333
+          protocol: TCP
+        env:
+        - name: NEO_NETWORK
+          value: "mainnet"
+        - name: NEO_LOG_LEVEL
+          value: "info"
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2"
+          limits:
+            memory: "8Gi"
+            cpu: "4"
+        volumeMounts:
+        - name: neo-data
+          mountPath: /var/lib/neo
+        - name: neo-config
+          mountPath: /etc/neo
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 10334
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 10334
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: neo-data
+        persistentVolumeClaim:
+          claimName: neo-data-pvc
+      - name: neo-config
+        configMap:
+          name: neo-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neo-node-service
+  namespace: neo-network
+spec:
+  selector:
+    app: neo-node
+  ports:
+  - name: p2p
+    port: 10332
+    targetPort: 10332
+    protocol: TCP
+  - name: rpc
+    port: 10334
+    targetPort: 10334
+    protocol: TCP
+  - name: websocket
+    port: 10333
+    targetPort: 10333
+    protocol: TCP
+  type: LoadBalancer
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: neo-node-hpa
+  namespace: neo-network
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: neo-node
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: business-intelligence
+  namespace: strategic-ai
+  labels:
+    app: business-intelligence
+    component: bi
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: business-intelligence
+  template:
+    metadata:
+      labels:
+        app: business-intelligence
+        component: bi
+    spec:
+      containers:
+      - name: business-intelligence
+        image: strategic-ai/business-intelligence:latest
+        ports:
+        - containerPort: 8001
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: REDIS_URL
+          value: "redis://redis-service:6379"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: database-secret
+              key: url
+        - name: MARKET_DATA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-keys-secret
+              key: market-data-key
+        - name: FINANCIAL_DATA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-keys-secret
+              key: financial-data-key
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+        - name: data-volume
+          mountPath: /app/data
+      volumes:
+      - name: config-volume
+        configMap:
+          name: business-intelligence-config
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: bi-data-pvc
+      imagePullSecrets:
+      - name: registry-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: business-intelligence-service
+  namespace: strategic-ai
+  labels:
+    app: business-intelligence
+spec:
+  selector:
+    app: business-intelligence
+  ports:
+  - protocol: TCP
+    port: 8001
+    targetPort: 8001
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: business-intelligence-config
+  namespace: strategic-ai
+data:
+  config.yaml: |
+    market_analysis:
+      data_sources:
+        - "finage_api"
+        - "finnhub_api"
+        - "alpha_vantage_api"
+        - "marketstack_api"
+      update_frequency: "real_time"
+      analysis_depth: 5
+      confidence_threshold: 0.7
+    competitive_analysis:
+      monitoring_frequency: "daily"
+      analysis_horizon: 3
+      patent_analysis: true
+      market_research: true
+    optimization:
+      algorithm: "hungarian"
+      iterations: 1000
+      convergence_threshold: 0.001
+    performance:
+      cache_ttl: 3600
+      max_concurrent_requests: 100
+      timeout: 30
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: bi-data-pvc
+  namespace: strategic-ai
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: fast-ssd
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: business-intelligence-hpa
+  namespace: strategic-ai
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: business-intelligence
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

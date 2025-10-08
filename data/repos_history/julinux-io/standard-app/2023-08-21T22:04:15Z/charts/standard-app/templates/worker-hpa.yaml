@@ -1,0 +1,26 @@
+{{- $root := . -}}
+{{- $def := .Values.workerDefault -}}
+{{- range $id, $val := .Values.workers -}}
+{{- $hpa := hasKey . "hpa" | ternary .hpa (dict) }}
+{{- $enabled := (hasKey $hpa "enabled") | ternary $hpa.enabled $def.hpa.enabled }}
+{{- $metrics := (hasKey $hpa "metrics") | ternary $hpa.metrics $def.hpa.metrics }}
+{{- if and $enabled $metrics }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "util.v1.autoname" $root }}-worker-{{ $id }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+{{ include "standard-app.v1.resource-labels" $root | indent 4 }}
+spec:
+  minReplicas: {{ $hpa.minReplicas | default $def.hpa.minReplicas }}
+  maxReplicas: {{ $hpa.maxReplicas | default $def.hpa.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "util.v1.autoname" $root }}-worker-{{ $id }}
+  metrics:
+{{ toYaml $metrics | indent 4 }}
+{{- end }}
+{{- end }}

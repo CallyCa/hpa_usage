@@ -1,0 +1,690 @@
+# TorchServe Configuration for GameForge AI Platform
+# Production-ready PyTorch model serving with GPU optimization and horizontal scaling
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: torchserve-inference
+  namespace: gameforge
+  labels:
+    app: torchserve
+    component: inference-server
+    version: "0.8.2"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: torchserve
+      component: inference-server
+  template:
+    metadata:
+      labels:
+        app: torchserve
+        component: inference-server
+        version: "0.8.2"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: "/metrics"
+    spec:
+      # GPU node selection
+      nodeSelector:
+        accelerator: nvidia
+        gpu-type: "tesla"
+        workload-type: "inference"
+      
+      # High priority for inference workloads
+      priorityClassName: high-priority-training
+      
+      # Service account
+      serviceAccountName: torchserve-service-account
+      
+      # Affinity rules for GPU distribution
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: accelerator
+                operator: In
+                values: ["nvidia"]
+              - key: gpu-memory
+                operator: In
+                values: ["16gb", "32gb", "40gb"]
+        
+        # Spread across nodes for high availability
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values: ["torchserve"]
+              topologyKey: kubernetes.io/hostname
+      
+      # Init container for model preparation
+      initContainers:
+      - name: model-downloader
+        image: curlimages/curl:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Downloading models..."
+          mkdir -p /models/gameforge-ai
+          # Download pre-trained models for GameForge
+          # Replace with actual model URLs
+          curl -L -o /models/gameforge-ai/asset-generator.mar "https://models.gameforge.local/asset-generator.mar" || echo "Model download skipped for demo"
+          curl -L -o /models/gameforge-ai/game-optimizer.mar "https://models.gameforge.local/game-optimizer.mar" || echo "Model download skipped for demo"
+          echo "Model download completed"
+        volumeMounts:
+        - name: model-store
+          mountPath: /models
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+      
+      containers:
+      - name: torchserve
+        image: pytorch/torchserve:0.8.2-gpu
+        imagePullPolicy: Always
+        
+        # GPU resource allocation
+        resources:
+          requests:
+            cpu: "2"
+            memory: "8Gi"
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "4"
+            memory: "16Gi"
+            nvidia.com/gpu: "1"
+        
+        # Environment variables
+        env:
+        - name: TS_CONFIG_FILE
+          value: "/config/config.properties"
+        - name: TS_MODEL_STORE
+          value: "/models"
+        - name: TS_LOAD_MODELS
+          value: "gameforge-ai=asset-generator.mar,gameforge-optimizer=game-optimizer.mar"
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: "0"
+        - name: TS_METRICS_CONFIG
+          value: "/config/metrics.yaml"
+        - name: TS_ENABLE_METRICS_API
+          value: "true"
+        - name: TS_METRICS_MODE
+          value: "prometheus"
+        
+        # Command override for custom configuration
+        command:
+        - torchserve
+        args:
+        - --start
+        - --model-store=/models
+        - --ts-config=/config/config.properties
+        - --enable-model-api
+        - --enable-metrics-api
+        
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Startup probe for slow model loading
+        startupProbe:
+          httpGet:
+            path: /ping
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 12  # 2 minutes for model loading
+        
+        # Ports
+        ports:
+        - containerPort: 8080
+          name: inference
+          protocol: TCP
+        - containerPort: 8081
+          name: management
+          protocol: TCP
+        - containerPort: 8082
+          name: metrics
+          protocol: TCP
+        
+        # Volume mounts
+        volumeMounts:
+        - name: model-store
+          mountPath: /models
+        - name: config
+          mountPath: /config
+        - name: logs
+          mountPath: /logs
+        - name: tmp
+          mountPath: /tmp
+        
+        # Security context
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      
+      # Volumes
+      volumes:
+      - name: model-store
+        persistentVolumeClaim:
+          claimName: torchserve-model-store
+      - name: config
+        configMap:
+          name: torchserve-config
+      - name: logs
+        emptyDir: {}
+      - name: tmp
+        emptyDir:
+          sizeLimit: 2Gi
+      
+      # Security context
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      
+      # GPU tolerations
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "ai-workload"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+
+---
+# TorchServe CPU Deployment for Light Models
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: torchserve-cpu
+  namespace: gameforge
+  labels:
+    app: torchserve-cpu
+    component: cpu-inference
+    version: "0.8.2"
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: torchserve-cpu
+      component: cpu-inference
+  template:
+    metadata:
+      labels:
+        app: torchserve-cpu
+        component: cpu-inference
+        version: "0.8.2"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: "/metrics"
+    spec:
+      # CPU-optimized nodes
+      nodeSelector:
+        node-type: cpu-optimized
+      
+      # Medium priority for CPU inference
+      priorityClassName: medium-priority-inference
+      
+      # Service account
+      serviceAccountName: torchserve-service-account
+      
+      containers:
+      - name: torchserve-cpu
+        image: pytorch/torchserve:0.8.2-cpu
+        imagePullPolicy: Always
+        
+        # CPU resource allocation
+        resources:
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+        
+        # Environment variables
+        env:
+        - name: TS_CONFIG_FILE
+          value: "/config/config-cpu.properties"
+        - name: TS_MODEL_STORE
+          value: "/models"
+        - name: TS_LOAD_MODELS
+          value: "lightweight-ai=lightweight-model.mar"
+        - name: TS_METRICS_CONFIG
+          value: "/config/metrics.yaml"
+        - name: TS_ENABLE_METRICS_API
+          value: "true"
+        - name: TS_METRICS_MODE
+          value: "prometheus"
+        
+        # Command
+        command:
+        - torchserve
+        args:
+        - --start
+        - --model-store=/models
+        - --ts-config=/config/config-cpu.properties
+        - --enable-model-api
+        - --enable-metrics-api
+        
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Ports
+        ports:
+        - containerPort: 8080
+          name: inference
+          protocol: TCP
+        - containerPort: 8081
+          name: management
+          protocol: TCP
+        - containerPort: 8082
+          name: metrics
+          protocol: TCP
+        
+        # Volume mounts
+        volumeMounts:
+        - name: model-store
+          mountPath: /models
+        - name: config
+          mountPath: /config
+        - name: logs
+          mountPath: /logs
+        
+        # Security context
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      
+      # Volumes
+      volumes:
+      - name: model-store
+        persistentVolumeClaim:
+          claimName: torchserve-model-store
+      - name: config
+        configMap:
+          name: torchserve-config
+      - name: logs
+        emptyDir: {}
+      
+      # Security context
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+
+---
+# TorchServe GPU Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: torchserve-gpu
+  namespace: gameforge
+  labels:
+    app: torchserve
+    component: gpu-inference
+spec:
+  type: ClusterIP
+  selector:
+    app: torchserve
+    component: inference-server
+  ports:
+  - name: inference
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: management
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+  - name: metrics
+    port: 8082
+    targetPort: 8082
+    protocol: TCP
+
+---
+# TorchServe CPU Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: torchserve-cpu
+  namespace: gameforge
+  labels:
+    app: torchserve-cpu
+    component: cpu-inference
+spec:
+  type: ClusterIP
+  selector:
+    app: torchserve-cpu
+    component: cpu-inference
+  ports:
+  - name: inference
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: management
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+  - name: metrics
+    port: 8082
+    targetPort: 8082
+    protocol: TCP
+
+---
+# TorchServe Load Balancer Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: torchserve-loadbalancer
+  namespace: gameforge
+  labels:
+    app: torchserve
+    component: loadbalancer
+spec:
+  type: LoadBalancer
+  selector:
+    app: torchserve
+  ports:
+  - name: inference
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: management
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+
+---
+# TorchServe Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: torchserve-config
+  namespace: gameforge
+data:
+  config.properties: |
+    # TorchServe GPU Configuration
+    inference_address=http://0.0.0.0:8080
+    management_address=http://0.0.0.0:8081
+    metrics_address=http://0.0.0.0:8082
+    
+    # GPU-specific settings
+    number_of_netty_threads=8
+    netty_client_threads=8
+    default_workers_per_model=2
+    max_workers=8
+    batch_size=8
+    max_batch_delay=100
+    response_timeout=300
+    unregister_model_timeout=300
+    decode_input_request=true
+    
+    # GPU memory management
+    gpu_memory_fraction=0.8
+    
+    # Model management
+    model_store=/models
+    model_snapshot={"name":"startup.cfg","modelCount":2,"models":{"gameforge-ai":{"1.0":{"defaultVersion":true,"marName":"asset-generator.mar","minWorkers":1,"maxWorkers":4,"batchSize":4,"maxBatchDelay":100,"responseTimeout":300}},"gameforge-optimizer":{"1.0":{"defaultVersion":true,"marName":"game-optimizer.mar","minWorkers":1,"maxWorkers":2,"batchSize":2,"maxBatchDelay":50,"responseTimeout":200}}}}
+    
+    # Logging
+    default_response_timeout=300
+    vmargs=-Dlog4j2.formatMsgNoLookups=true -Xmx4g -XX:MaxDirectMemorySize=2g
+    
+    # CORS settings for web integration
+    cors_allowed_origin=*
+    cors_allowed_methods=GET,POST,PUT,DELETE
+    cors_allowed_headers=*
+    
+    # Metrics
+    metrics_config=/config/metrics.yaml
+    enable_metrics_api=true
+    metrics_mode=prometheus
+  
+  config-cpu.properties: |
+    # TorchServe CPU Configuration
+    inference_address=http://0.0.0.0:8080
+    management_address=http://0.0.0.0:8081
+    metrics_address=http://0.0.0.0:8082
+    
+    # CPU-specific settings
+    number_of_netty_threads=4
+    netty_client_threads=4
+    default_workers_per_model=4
+    max_workers=16
+    batch_size=16
+    max_batch_delay=50
+    response_timeout=120
+    unregister_model_timeout=120
+    decode_input_request=true
+    
+    # Model management
+    model_store=/models
+    model_snapshot={"name":"startup.cfg","modelCount":1,"models":{"lightweight-ai":{"1.0":{"defaultVersion":true,"marName":"lightweight-model.mar","minWorkers":2,"maxWorkers":8,"batchSize":16,"maxBatchDelay":50,"responseTimeout":120}}}}
+    
+    # CPU optimization
+    vmargs=-Dlog4j2.formatMsgNoLookups=true -Xmx2g -XX:+UseG1GC
+    
+    # CORS settings
+    cors_allowed_origin=*
+    cors_allowed_methods=GET,POST,PUT,DELETE
+    cors_allowed_headers=*
+    
+    # Metrics
+    metrics_config=/config/metrics.yaml
+    enable_metrics_api=true
+    metrics_mode=prometheus
+  
+  metrics.yaml: |
+    # TorchServe Metrics Configuration
+    metrics:
+      counter:
+        - name: "Requests2XX"
+          unit: "Count"
+          dimensions: ["Level", "Hostname"]
+        - name: "Requests4XX" 
+          unit: "Count"
+          dimensions: ["Level", "Hostname"]
+        - name: "Requests5XX"
+          unit: "Count"
+          dimensions: ["Level", "Hostname"]
+      
+      gauge:
+        - name: "CPUUtilization"
+          unit: "Percent"
+          dimensions: ["Level", "Hostname"]
+        - name: "MemoryUtilization"
+          unit: "Percent"
+          dimensions: ["Level", "Hostname", "Level"]
+        - name: "DiskUtilization"
+          unit: "Percent"
+          dimensions: ["Level", "Hostname"]
+        - name: "GPUUtilization"
+          unit: "Percent"
+          dimensions: ["Level", "Hostname", "DeviceId"]
+        - name: "GPUMemoryUtilization"
+          unit: "Percent"
+          dimensions: ["Level", "Hostname", "DeviceId"]
+      
+      histogram:
+        - name: "InferenceLatency"
+          unit: "Milliseconds"
+          dimensions: ["Level", "Hostname", "ModelName", "ModelVersion"]
+        - name: "InitializeCallLatency"
+          unit: "Milliseconds"
+          dimensions: ["Level", "Hostname", "ModelName", "ModelVersion"]
+        - name: "PreprocessCallLatency"
+          unit: "Milliseconds"
+          dimensions: ["Level", "Hostname", "ModelName", "ModelVersion"]
+        - name: "InferenceCallLatency"
+          unit: "Milliseconds"
+          dimensions: ["Level", "Hostname", "ModelName", "ModelVersion"]
+        - name: "PostprocessCallLatency"
+          unit: "Milliseconds"
+          dimensions: ["Level", "Hostname", "ModelName", "ModelVersion"]
+
+---
+# Model Store PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: torchserve-model-store
+  namespace: gameforge
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 200Gi
+  storageClassName: fast-ssd
+
+---
+# TorchServe Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: torchserve-service-account
+  namespace: gameforge
+
+---
+# TorchServe HPA for GPU instances
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: torchserve-gpu-hpa
+  namespace: gameforge
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: torchserve-inference
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: torchserve_inference_requests_total
+      target:
+        type: AverageValue
+        averageValue: "100"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 300
+
+---
+# TorchServe HPA for CPU instances
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: torchserve-cpu-hpa
+  namespace: gameforge
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: torchserve-cpu
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 180
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 180

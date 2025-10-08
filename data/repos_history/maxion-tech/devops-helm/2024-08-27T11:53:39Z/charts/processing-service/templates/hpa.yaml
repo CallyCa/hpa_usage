@@ -1,0 +1,51 @@
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "processing-service.fullname" . }}
+  labels:
+    {{- include "processing-service.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "processing-service.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+
+     {{- if .Values.autoscaling.targetContainerMemoryUtilizationPercentage }}
+    - type: ContainerResource
+      containerResource:
+        name: memory
+        container: {{ include "processing-service.fullname" . }}
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetContainerMemoryUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetContainerCPUUtilizationPercentage }}
+    - type: ContainerResource
+      containerResource:
+        name: cpu
+        container: {{ include "processing-service.fullname" . }}
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetContainerCPUUtilizationPercentage }}
+    {{- end }}
+{{- end }}

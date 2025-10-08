@@ -1,0 +1,239 @@
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security-demo
+  labels:
+    name: security-demo
+    purpose: educational-vulnerability-demo
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vulnerable-app-config
+  namespace: security-demo
+data:
+  FLASK_ENV: "development"
+  FLASK_DEBUG: "true"
+  DATABASE_PATH: "/app/data/users.db"
+
+---
+# Secret for sensitive configuration (even though this is a demo)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vulnerable-app-secrets
+  namespace: security-demo
+type: Opaque
+data:
+  # Base64 encoded values (these are dummy values for demo)
+  secret-key: ZGVtby1zZWNyZXQta2V5LWRvLW5vdC11c2UtaW4tcHJvZA== # demo-secret-key-do-not-use-in-prod
+
+---
+# PersistentVolumeClaim for SQLite database
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vulnerable-app-pvc
+  namespace: security-demo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+  #storageClassName: standard # Adjust based on your cluster's storage class
+
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vulnerable-app
+  namespace: security-demo
+  labels:
+    app: vulnerable-app
+    version: v1.0
+    component: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vulnerable-app
+  template:
+    metadata:
+      labels:
+        app: vulnerable-app
+        version: v1.0
+        component: web
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "50005"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: vulnerable-app
+        image: krol/vulnerable-app:febraban # Replace with your actual image
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 50005
+          name: http
+          protocol: TCP
+        env:
+        - name: FLASK_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: vulnerable-app-config
+              key: FLASK_ENV
+        - name: FLASK_DEBUG
+          valueFrom:
+            configMapKeyRef:
+              name: vulnerable-app-config
+              key: FLASK_DEBUG
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vulnerable-app-secrets
+              key: secret-key
+        volumeMounts:
+        - name: data
+          mountPath: /app/data
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 50005
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 50005
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /
+            port: 50005
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: vulnerable-app-pvc
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: vulnerable-app-service
+  namespace: security-demo
+  labels:
+    app: vulnerable-app
+    component: web
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5000
+    targetPort: 50005
+    protocol: TCP
+    name: http
+  selector:
+    app: vulnerable-app
+
+---
+# ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vulnerable-app-sa
+  namespace: security-demo
+
+---
+# NetworkPolicy (restrictive for demo environment)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vulnerable-app-netpol
+  namespace: security-demo
+spec:
+  podSelector:
+    matchLabels:
+      app: vulnerable-app
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx # Adjust based on your ingress namespace
+    - podSelector: {} # Allow from pods in the same namespace
+    ports:
+    - protocol: TCP
+      port: 5000
+  egress:
+  - {} # Allow all egress (for demonstration purposes)
+
+---
+# HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vulnerable-app-hpa
+  namespace: security-demo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vulnerable-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# PodDisruptionBudget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vulnerable-app-pdb
+  namespace: security-demo
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: vulnerable-app

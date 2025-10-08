@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meecha-app
+  namespace: meecha
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: meecha-app
+  template:
+    metadata:
+      labels:
+        app: meecha-app
+    spec:
+      containers:
+        - name: meecha-app
+          image: mattuu0/meecha-app:latest
+          ports:
+            - containerPort: 8090
+          env:
+            - name: GRPC_ADDR
+              valueFrom:
+                secretKeyRef:
+                  name: meechasecret
+                  key: GrpcServer
+
+            - name: SessionSecret
+              valueFrom:
+                secretKeyRef:
+                  name: meechasecret
+                  key: SessionSecret
+
+            - name: DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: meechasecret
+                  key: AppdbDSN
+
+            - name: JWT_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: meechasecret
+                  key: JwtPublicKey
+
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: meechasecret
+                  key: RedisHost
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: meecha-app-svc
+  namespace: meecha
+spec:
+  type: LoadBalancer
+  selector:
+    app: meecha-app
+  ports:
+  - port: 8090
+    targetPort: 8090

@@ -1,0 +1,276 @@
+# Autoscraper Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autoscraper-service
+  namespace: remotehive
+  labels:
+    app: autoscraper-service
+    tier: service
+    version: "1.0"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: autoscraper-service
+      tier: service
+  template:
+    metadata:
+      labels:
+        app: autoscraper-service
+        tier: service
+        version: "1.0"
+    spec:
+      initContainers:
+      - name: wait-for-redis
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          until nc -z redis 6379; do
+            echo "Waiting for Redis..."
+            sleep 2
+          done
+          echo "Redis is ready!"
+      containers:
+      - name: autoscraper-service
+        image: remotehive/autoscraper-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8001
+          name: http
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: remotehive-config
+              key: ENVIRONMENT
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: remotehive-config
+              key: LOG_LEVEL
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: REDIS_URL
+        - name: SCRAPER_CONCURRENT_JOBS
+          valueFrom:
+            configMapKeyRef:
+              name: remotehive-config
+              key: SCRAPER_CONCURRENT_JOBS
+        - name: SCRAPER_DELAY_BETWEEN_REQUESTS
+          valueFrom:
+            configMapKeyRef:
+              name: remotehive-config
+              key: SCRAPER_DELAY_BETWEEN_REQUESTS
+        - name: SCRAPER_MAX_RETRIES
+          valueFrom:
+            configMapKeyRef:
+              name: remotehive-config
+              key: SCRAPER_MAX_RETRIES
+        - name: DATABASE_URL
+          value: "sqlite:///app/data/autoscraper.db"
+        - name: BACKEND_API_URL
+          value: "http://backend-api:8000"
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: remotehive-secrets
+              key: JWT_SECRET_KEY
+        volumeMounts:
+        - name: autoscraper-storage
+          mountPath: /app/data
+        - name: logs
+          mountPath: /app/logs
+        - name: playwright-cache
+          mountPath: /home/appuser/.cache/ms-playwright
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: autoscraper-storage
+        persistentVolumeClaim:
+          claimName: autoscraper-pvc
+      - name: logs
+        persistentVolumeClaim:
+          claimName: logs-pvc
+      - name: playwright-cache
+        emptyDir:
+          sizeLimit: 2Gi
+      restartPolicy: Always
+---
+# Autoscraper Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: autoscraper-service
+  namespace: remotehive
+  labels:
+    app: autoscraper-service
+    tier: service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8001
+    targetPort: 8001
+    protocol: TCP
+    name: http
+  selector:
+    app: autoscraper-service
+    tier: service
+---
+# Autoscraper Service Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: autoscraper-service-hpa
+  namespace: remotehive
+  labels:
+    app: autoscraper-service
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: autoscraper-service
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 85
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      selectPolicy: Max
+---
+# Autoscraper Service Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: autoscraper-service-pdb
+  namespace: remotehive
+  labels:
+    app: autoscraper-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: autoscraper-service
+      tier: service
+---
+# Autoscraper CronJob for Scheduled Scraping
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: autoscraper-scheduled
+  namespace: remotehive
+  labels:
+    app: autoscraper-service
+    component: scheduler
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: autoscraper-service
+            component: scheduler
+        spec:
+          containers:
+          - name: autoscraper-job
+            image: remotehive/autoscraper-service:latest
+            command:
+            - python
+            - -c
+            - |
+              import requests
+              import os
+              
+              # Trigger scraping job
+              api_url = os.getenv('AUTOSCRAPER_SERVICE_URL', 'http://autoscraper-service:8001')
+              response = requests.post(f'{api_url}/api/v1/scraper/trigger-all')
+              
+              if response.status_code == 200:
+                  print('Scheduled scraping triggered successfully')
+              else:
+                  print(f'Failed to trigger scraping: {response.status_code}')
+                  exit(1)
+            env:
+            - name: AUTOSCRAPER_SERVICE_URL
+              value: "http://autoscraper-service:8001"
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+          restartPolicy: OnFailure
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1

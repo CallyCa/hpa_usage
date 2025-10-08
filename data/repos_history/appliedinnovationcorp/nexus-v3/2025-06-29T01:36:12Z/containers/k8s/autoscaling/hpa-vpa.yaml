@@ -1,0 +1,364 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nexus-v3-hpa
+  namespace: nexus-v3-prod
+  labels:
+    app.kubernetes.io/name: nexus-v3
+    app.kubernetes.io/component: autoscaling
+  annotations:
+    autoscaling.alpha.kubernetes.io/conditions: |
+      [
+        {
+          "type": "AbleToScale",
+          "status": "True",
+          "reason": "ReadyForNewScale"
+        }
+      ]
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nexus-v3
+  minReplicas: 2
+  maxReplicas: 20
+  
+  # Scaling behavior configuration
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+      selectPolicy: Max
+  
+  # Metrics configuration
+  metrics:
+    # CPU utilization
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    
+    # Memory utilization
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    
+    # Custom metrics - Request rate
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"
+    
+    # Custom metrics - Response time
+    - type: Pods
+      pods:
+        metric:
+          name: http_request_duration_p95
+        target:
+          type: AverageValue
+          averageValue: "500m"
+    
+    # External metrics - Queue depth
+    - type: External
+      external:
+        metric:
+          name: queue_depth
+          selector:
+            matchLabels:
+              queue: nexus-v3-queue
+        target:
+          type: AverageValue
+          averageValue: "10"
+
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: nexus-v3-vpa
+  namespace: nexus-v3-prod
+  labels:
+    app.kubernetes.io/name: nexus-v3
+    app.kubernetes.io/component: autoscaling
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nexus-v3
+  
+  # Update policy
+  updatePolicy:
+    updateMode: "Auto"  # Auto, Off, Initial, or Recreate
+    minReplicas: 2
+  
+  # Resource policy
+  resourcePolicy:
+    containerPolicies:
+      - containerName: nexus-v3
+        minAllowed:
+          cpu: 100m
+          memory: 128Mi
+        maxAllowed:
+          cpu: 2000m
+          memory: 4Gi
+        controlledResources:
+          - cpu
+          - memory
+        controlledValues: RequestsAndLimits
+        
+      - containerName: istio-proxy
+        minAllowed:
+          cpu: 10m
+          memory: 32Mi
+        maxAllowed:
+          cpu: 100m
+          memory: 128Mi
+        controlledResources:
+          - cpu
+          - memory
+        controlledValues: RequestsAndLimits
+
+---
+# Custom Resource for Predictive Autoscaling
+apiVersion: autoscaling.nexus-v3.io/v1alpha1
+kind: PredictiveAutoscaler
+metadata:
+  name: nexus-v3-predictive
+  namespace: nexus-v3-prod
+  labels:
+    app.kubernetes.io/name: nexus-v3
+    app.kubernetes.io/component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nexus-v3
+  
+  # Prediction configuration
+  prediction:
+    algorithm: "linear_regression"
+    lookbackWindow: "7d"
+    predictionWindow: "1h"
+    updateInterval: "5m"
+  
+  # Scaling configuration
+  scaling:
+    minReplicas: 2
+    maxReplicas: 50
+    scaleUpCooldown: "3m"
+    scaleDownCooldown: "10m"
+  
+  # Metrics for prediction
+  metrics:
+    - name: cpu_utilization
+      weight: 0.4
+    - name: memory_utilization
+      weight: 0.3
+    - name: request_rate
+      weight: 0.2
+    - name: queue_depth
+      weight: 0.1
+
+---
+# Multi-dimensional Pod Autoscaler (MDPA)
+apiVersion: autoscaling.nexus-v3.io/v1alpha1
+kind: MultiDimensionalPodAutoscaler
+metadata:
+  name: nexus-v3-mdpa
+  namespace: nexus-v3-prod
+  labels:
+    app.kubernetes.io/name: nexus-v3
+    app.kubernetes.io/component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nexus-v3
+  
+  # Scaling dimensions
+  dimensions:
+    - name: performance
+      metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 70
+        - type: Resource
+          resource:
+            name: memory
+            target:
+              type: Utilization
+              averageUtilization: 80
+      weight: 0.6
+      
+    - name: business
+      metrics:
+        - type: Pods
+          pods:
+            metric:
+              name: active_users
+            target:
+              type: AverageValue
+              averageValue: "100"
+        - type: Pods
+          pods:
+            metric:
+              name: transactions_per_second
+            target:
+              type: AverageValue
+              averageValue: "50"
+      weight: 0.4
+  
+  # Scaling behavior
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+
+---
+# Cluster Autoscaler configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-autoscaler-status
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: nexus-v3
+    app.kubernetes.io/component: autoscaling
+data:
+  nodes.max: "100"
+  nodes.min: "3"
+  scale-down-enabled: "true"
+  scale-down-delay-after-add: "10m"
+  scale-down-unneeded-time: "10m"
+  scale-down-utilization-threshold: "0.5"
+  skip-nodes-with-local-storage: "false"
+  skip-nodes-with-system-pods: "false"
+
+---
+# Pod Disruption Budget for autoscaling
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nexus-v3-pdb
+  namespace: nexus-v3-prod
+  labels:
+    app.kubernetes.io/name: nexus-v3
+    app.kubernetes.io/component: autoscaling
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nexus-v3
+  unhealthyPodEvictionPolicy: AlwaysAllow
+
+---
+# ServiceMonitor for autoscaling metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nexus-v3-autoscaling-metrics
+  namespace: nexus-v3-prod
+  labels:
+    app.kubernetes.io/name: nexus-v3
+    app.kubernetes.io/component: autoscaling
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nexus-v3
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+      honorLabels: true
+  namespaceSelector:
+    matchNames:
+      - nexus-v3-prod
+
+---
+# PrometheusRule for autoscaling alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nexus-v3-autoscaling-alerts
+  namespace: nexus-v3-prod
+  labels:
+    app.kubernetes.io/name: nexus-v3
+    app.kubernetes.io/component: autoscaling
+spec:
+  groups:
+    - name: nexus-v3.autoscaling
+      rules:
+        - alert: HPAMaxReplicasReached
+          expr: kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler="nexus-v3-hpa"} >= kube_horizontalpodautoscaler_spec_max_replicas{horizontalpodautoscaler="nexus-v3-hpa"}
+          for: 5m
+          labels:
+            severity: warning
+            component: autoscaling
+          annotations:
+            summary: "HPA has reached maximum replicas"
+            description: "HPA {{ $labels.horizontalpodautoscaler }} has reached maximum replicas of {{ $value }}"
+        
+        - alert: HPAMinReplicasReached
+          expr: kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler="nexus-v3-hpa"} <= kube_horizontalpodautoscaler_spec_min_replicas{horizontalpodautoscaler="nexus-v3-hpa"}
+          for: 10m
+          labels:
+            severity: warning
+            component: autoscaling
+          annotations:
+            summary: "HPA has reached minimum replicas"
+            description: "HPA {{ $labels.horizontalpodautoscaler }} has been at minimum replicas of {{ $value }} for 10 minutes"
+        
+        - alert: VPARecommendationHigh
+          expr: kube_vpa_status_recommendation{resource="cpu",unit="core"} > 2
+          for: 5m
+          labels:
+            severity: info
+            component: autoscaling
+          annotations:
+            summary: "VPA recommends high CPU allocation"
+            description: "VPA recommends {{ $value }} cores for {{ $labels.verticalpodautoscaler }}"
+        
+        - alert: AutoscalingThrashing
+          expr: increase(kube_horizontalpodautoscaler_status_current_replicas[10m]) > 5
+          for: 2m
+          labels:
+            severity: critical
+            component: autoscaling
+          annotations:
+            summary: "HPA is thrashing"
+            description: "HPA {{ $labels.horizontalpodautoscaler }} has scaled {{ $value }} times in 10 minutes"

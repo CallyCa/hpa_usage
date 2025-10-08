@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+bases:
+- ../../base
+
+configMapGenerator:
+  - name: iron-bank-config
+    behavior: merge
+    envs:
+      - config/application.properties
+
+secretGenerator:
+  - name: iron-bank-secret
+    envs:
+      - secret/application.properties
+generatorOptions:
+  disableNameSuffixHash: false
+  labels:
+    type: generated
+  annotations:
+    note: generated
+
+patchesStrategicMerge:
+  - deployment.yaml

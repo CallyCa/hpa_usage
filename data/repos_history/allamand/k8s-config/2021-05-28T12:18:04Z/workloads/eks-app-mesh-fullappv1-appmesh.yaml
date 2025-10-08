@@ -1,0 +1,608 @@
+apiVersion: appmesh.k8s.aws/v1beta2
+kind: Mesh
+metadata:
+  name: my-mesh
+spec:
+  namespaceSelector:
+    matchLabels:
+      mesh: my-mesh
+      gateway: ingress-gateway
+  egressFilter:
+    type: 'ALLOW_ALL'
+
+---
+apiVersion: appmesh.k8s.aws/v1beta2
+kind: VirtualNode
+metadata:
+  name: frontend-v1
+  namespace: my-apps
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend-v1
+  listeners:
+    - portMapping:
+        port: 8080
+        protocol: http
+  backends:
+    - virtualService:
+        virtualServiceRef:
+          name: backend
+  serviceDiscovery:
+    dns:
+      hostname: frontend-v1.my-apps.svc.cluster.local
+
+---
+apiVersion: appmesh.k8s.aws/v1beta2
+kind: VirtualRouter
+metadata:
+  namespace: my-apps
+  name: frontend-virtual-router
+spec:
+  listeners:
+    - portMapping:
+        port: 8080
+        protocol: http
+  routes:
+    - name: frontend-route
+      httpRoute:
+        match:
+          prefix: /
+        action:
+          weightedTargets:
+            - virtualNodeRef:
+                name: frontend-v1
+              weight: 1
+---
+apiVersion: appmesh.k8s.aws/v1beta2
+kind: VirtualService
+metadata:
+  name: frontend
+  namespace: my-apps
+spec:
+  awsName: frontend.my-apps.svc.cluster.local
+  provider:
+    virtualRouter:
+      virtualRouterRef:
+        name: frontend-virtual-router
+---
+# Virtual Gateway Resources
+---
+apiVersion: appmesh.k8s.aws/v1beta2
+kind: VirtualGateway
+metadata:
+  name: ingress-gateway
+  namespace: my-apps
+spec:
+  namespaceSelector:
+    matchLabels:
+      gateway: ingress-gateway
+  podSelector:
+    matchLabels:
+      app: ingress-gateway
+  listeners:
+    - portMapping:
+        port: 8080
+        protocol: http
+---
+apiVersion: appmesh.k8s.aws/v1beta2
+kind: GatewayRoute
+metadata:
+  name: gateway-route-headers
+  namespace: my-apps
+  gateway: ingress-gateway
+spec:
+  httpRoute:
+    match:
+      prefix: '/'
+    action:
+      target:
+        virtualService:
+          virtualServiceRef:
+            name: frontend
+
+# Backend Services
+---
+apiVersion: appmesh.k8s.aws/v1beta2
+kind: VirtualNode
+metadata:
+  name: backend-v1
+  namespace: my-apps
+spec:
+  podSelector:
+    matchLabels:
+      app: backend-v1
+  listeners:
+    - portMapping:
+        port: 8080
+        protocol: http
+  serviceDiscovery:
+    dns:
+      hostname: backend-v1.my-apps.svc.cluster.local
+
+---
+apiVersion: appmesh.k8s.aws/v1beta2
+kind: VirtualNode
+metadata:
+  name: backend-v2
+  namespace: my-apps
+spec:
+  podSelector:
+    matchLabels:
+      app: backend-v2
+  listeners:
+    - portMapping:
+        port: 8080
+        protocol: http
+  serviceDiscovery:
+    dns:
+      hostname: backend-v2.my-apps.svc.cluster.local
+---
+apiVersion: appmesh.k8s.aws/v1beta2
+kind: VirtualNode
+metadata:
+  name: backend-v3
+  namespace: my-apps
+spec:
+  podSelector:
+    matchLabels:
+      app: backend-v3
+  listeners:
+    - portMapping:
+        port: 8080
+        protocol: http
+  serviceDiscovery:
+    dns:
+      hostname: backend-v3.my-apps.svc.cluster.local
+---
+apiVersion: appmesh.k8s.aws/v1beta2
+kind: VirtualRouter
+metadata:
+  namespace: my-apps
+  name: backend-virtual-router
+spec:
+  listeners:
+    - portMapping:
+        port: 8080
+        protocol: http
+  routes:
+    - name: backend-route
+      httpRoute:
+        match:
+          prefix: /
+        action:
+          weightedTargets:
+            - virtualNodeRef:
+                name: backend-v1
+              weight: 1
+            - virtualNodeRef:
+                name: backend-v2
+              weight: 1
+            - virtualNodeRef:
+                name: backend-v3
+              weight: 1
+---
+apiVersion: appmesh.k8s.aws/v1beta2
+kind: VirtualService
+metadata:
+  name: backend
+  namespace: my-apps
+spec:
+  awsName: backend.my-apps.svc.cluster.local
+  provider:
+    virtualRouter:
+      virtualRouterRef:
+        name: backend-virtual-router
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: my-apps
+  labels:
+    app: frontend
+    service: frontend
+spec:
+  ports:
+    - port: 8080
+      name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-v1
+  namespace: my-apps
+  labels:
+    app: frontend-v1
+    service: frontend
+spec:
+  ports:
+    - port: 8080
+      name: http
+  selector:
+    app: frontend-v1
+---
+#apiVersion: v1
+#kind: ServiceAccount
+#metadata:
+#  name: demo-frontend
+#  namespace: my-apps
+#  labels:
+#    account: frontend
+#---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-v1
+  namespace: my-apps
+  labels:
+    app: frontend-v1
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend-v1
+      version: v1
+  minReadySeconds: 5
+  strategy:
+    rollingUpdate:
+      maxSurge: 50%
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: frontend-v1
+        version: v1
+    spec:
+      serviceAccountName: demo-frontend
+      nodeSelector:
+        node.k8s.aws/capacity-type: 'spot'
+      tolerations:
+        - key: 'karpenter.com/taint'
+          operator: 'Exists'
+          effect: 'NoSchedule'
+      containers:
+        - name: frontend
+          image: 382076407153.dkr.ecr.eu-west-1.amazonaws.com/frontendv1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: 500m
+            requests:
+              cpu: 200m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: my-apps
+  labels:
+    app: backend
+    service: backend
+spec:
+  ports:
+    - port: 8080
+      name: http
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-v1
+  namespace: my-apps
+  labels:
+    app: backend-v1
+    service: backend
+spec:
+  ports:
+    - port: 8080
+      name: http
+  selector:
+    app: backend-v1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-v2
+  namespace: my-apps
+  labels:
+    app: backend-v2
+    service: backend
+spec:
+  ports:
+    - port: 8080
+      name: http
+  selector:
+    app: backend-v2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-v3
+  namespace: my-apps
+  labels:
+    app: backend-v3
+    service: backend
+spec:
+  ports:
+    - port: 8080
+      name: http
+  selector:
+    app: backend-v3
+---
+#apiVersion: v1
+#kind: ServiceAccount
+#metadata:
+#  name: backend
+#  namespace: my-apps
+#  labels:
+#    account: backend
+#---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-v1
+  namespace: my-apps
+  labels:
+    app: backend
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-v1
+      version: v1
+  minReadySeconds: 5
+  strategy:
+    rollingUpdate:
+      maxSurge: 50%
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: backend-v1
+        version: v1
+    spec:
+      serviceAccountName: backend
+      nodeSelector:
+        node.k8s.aws/capacity-type: 'spot'
+      tolerations:
+        - key: 'karpenter.com/taint'
+          operator: 'Exists'
+          effect: 'NoSchedule'
+      containers:
+        - name: backendv1
+          image: 382076407153.dkr.ecr.eu-west-1.amazonaws.com/backendv1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: 500m
+            requests:
+              cpu: 200m
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-v2
+  namespace: my-apps
+  labels:
+    app: backend
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-v2
+      version: v2
+  minReadySeconds: 5
+  strategy:
+    rollingUpdate:
+      maxSurge: 50%
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: backend-v2
+        version: v2
+    spec:
+      serviceAccountName: backend
+      nodeSelector:
+        node.k8s.aws/capacity-type: 'spot'
+      tolerations:
+        - key: 'karpenter.com/taint'
+          operator: 'Exists'
+          effect: 'NoSchedule'
+      containers:
+        - name: backendv2
+          image: 382076407153.dkr.ecr.eu-west-1.amazonaws.com/backendv2
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: 500m
+            requests:
+              cpu: 200m
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-v3
+  namespace: my-apps
+  labels:
+    app: backend
+    version: v3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-v3
+      version: v3
+  minReadySeconds: 5
+  strategy:
+    rollingUpdate:
+      maxSurge: 50%
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: backend-v3
+        version: v3
+    spec:
+      serviceAccountName: backend
+      nodeSelector:
+        node.k8s.aws/capacity-type: 'spot'
+      tolerations:
+        - key: 'karpenter.com/taint'
+          operator: 'Exists'
+          effect: 'NoSchedule'
+      containers:
+        - name: backendv3
+          image: 382076407153.dkr.ecr.eu-west-1.amazonaws.com/backendv3
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: 500m
+            requests:
+              cpu: 200m
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress-gateway
+  namespace: my-apps
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: 'nlb'
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 8080
+      name: http
+  selector:
+    app: ingress-gateway
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-gateway
+  namespace: my-apps
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ingress-gateway
+  minReadySeconds: 5
+  strategy:
+    rollingUpdate:
+      maxSurge: 50%
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: ingress-gateway
+    spec:
+      serviceAccountName: ingress-gateway
+      nodeSelector:
+        node.k8s.aws/capacity-type: 'spot'
+      tolerations:
+        - key: 'karpenter.com/taint'
+          operator: 'Exists'
+          effect: 'NoSchedule'
+      containers:
+        - name: envoy
+          image: 840364872350.dkr.ecr.eu-west-1.amazonaws.com/aws-appmesh-envoy:v1.12.5.0-prod
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: 500m
+            requests:
+              cpu: 200m
+# Horizontal Pod Autoscalers
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ingress-gateway
+  namespace: my-apps
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ingress-gateway
+  minReplicas: 3
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend-v1
+  namespace: my-apps
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend-v1
+  minReplicas: 1
+  maxReplicas: 200
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-v1
+  namespace: my-apps
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend-v1
+  minReplicas: 1
+  maxReplicas: 50
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-v2
+  namespace: my-apps
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend-v2
+  minReplicas: 1
+  maxReplicas: 49
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-v3
+  namespace: my-apps
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend-v3
+  minReplicas: 1
+  maxReplicas: 50
+  targetCPUUtilizationPercentage: 50

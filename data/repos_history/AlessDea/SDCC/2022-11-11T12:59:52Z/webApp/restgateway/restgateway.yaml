@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restgateway-deployment
+  labels: 
+    app: restgateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: restgateway
+  template:
+    metadata:
+      labels:
+        app: restgateway
+    spec:
+      containers:
+      - name: restgateway
+        image: restgateway-image
+        imagePullPolicy: Never
+        resources:
+          limits:
+            cpu: 50m
+          requests:
+            cpu: 20m
+        ports:
+        - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: restgateway-service
+spec:
+  selector:
+    app: restgateway
+  type: LoadBalancer
+  ports:
+    - protocol: TCP
+      port: 5000       # porta su cui è in ascolto il Service
+      targetPort: 5000 # porta su cui è in ascolto il container
+                       # deve matchare con la containerPort
+      nodePort: 30001
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: restgateway-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: restgateway-deployment
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: 
+          type: Utilization
+          averageUtilization: 50

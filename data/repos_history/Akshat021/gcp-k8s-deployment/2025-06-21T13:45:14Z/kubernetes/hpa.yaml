@@ -1,0 +1,23 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: testing-hpa
+  namespace: test-auto-scalling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: test-server
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: External
+    external:
+      metric:
+        name: "loadbalancing.googleapis.com|https|request_count" # The Cloud Monitoring metric
+        selector:
+          matchLabels:
+            resource.labels.forwarding_rule_name: k8s2-fr-kxyz6mx0-test-auto-scalli-test-autoscalling-in-pmorncl4
+      target:
+        type: AverageValue
+        averageValue: "1" 

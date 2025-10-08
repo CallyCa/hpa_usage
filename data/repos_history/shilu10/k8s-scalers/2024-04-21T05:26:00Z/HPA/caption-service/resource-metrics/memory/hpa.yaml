@@ -1,0 +1,40 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: caption-service-hpa-mem
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: caption-deployment
+
+  minReplicas: 2
+  maxReplicas: 10
+
+  scaleUp:
+    stabilizationWindowSeconds: 0
+    selectPolicy: Max
+    policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+
+  scaleDown:
+    stabilizationWindowSeconds: 300
+    selectPolicy: Min
+    policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: AverageValue
+        AverageValue: 200Mi

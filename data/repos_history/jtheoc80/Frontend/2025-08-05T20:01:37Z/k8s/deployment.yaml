@@ -1,0 +1,164 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: valve-chain
+  labels:
+    name: valve-chain
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: valve-chain
+data:
+  REACT_APP_API_BASE_URL: "https://api.valvechain.com"
+  REACT_APP_ENVIRONMENT: "production"
+  REACT_APP_CHAIN_ID: "1"
+  REACT_APP_DEFAULT_LANGUAGE: "en"
+  REACT_APP_SUPPORTED_LANGUAGES: "en,ar,es,de,zh"
+  REACT_APP_ENABLE_MOCK_DATA: "false"
+  REACT_APP_ENABLE_DEBUG_LOGGING: "false"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: frontend-secrets
+  namespace: valve-chain
+type: Opaque
+data:
+  # Base64 encoded values - replace with actual values
+  REACT_APP_PO_CONTRACT_ADDRESS: WW91ciBjb250cmFjdCBhZGRyZXNz
+  REACT_APP_ETHEREUM_RPC_URL: WW91ciBFdGhlcmV1bSBSUEMgVVJM
+  REACT_APP_WALLET_CONNECT_PROJECT_ID: WW91ciBXYWxsZXRDb25uZWN0IElE
+  REACT_APP_INFURA_API_KEY: WW91ciBJbmZ1cmEgQVBJIGtleQ==
+  REACT_APP_SENTRY_DSN: WW91ciBTZW50cnkgRFNO
+  REACT_APP_ANALYTICS_ID: WW91ciBBbmFseXRpY3MgSUQ=
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: valve-chain
+  labels:
+    app: frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: ghcr.io/jtheoc80/frontend:main
+        ports:
+        - containerPort: 80
+        envFrom:
+        - configMapRef:
+            name: frontend-config
+        - secretRef:
+            name: frontend-secrets
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      imagePullSecrets:
+      - name: ghcr-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: valve-chain
+  labels:
+    app: frontend
+spec:
+  selector:
+    app: frontend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-ingress
+  namespace: valve-chain
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  tls:
+  - hosts:
+    - valvechain.com
+    - www.valvechain.com
+    secretName: frontend-tls
+  rules:
+  - host: valvechain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+  - host: www.valvechain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend-hpa
+  namespace: valve-chain
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

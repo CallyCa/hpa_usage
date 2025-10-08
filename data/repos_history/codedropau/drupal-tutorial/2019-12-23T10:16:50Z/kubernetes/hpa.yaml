@@ -1,0 +1,21 @@
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: drupal
+spec:
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - resource:
+        name: cpu
+        # @todo, List reason why.
+        targetAverageUtilization: 300
+      type: Resource
+    - resource:
+        name: memory
+        targetAverageUtilization: 90
+      type: Resource
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: drupal

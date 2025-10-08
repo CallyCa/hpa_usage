@@ -1,0 +1,24 @@
+{{- range $name, $worker := .Values.deployments.workers }}
+kind: HorizontalPodAutoscaler
+apiVersion: autoscaling/v1
+
+metadata:
+  name: "{{ $.Release.Name }}-worker-{{ $name }}"
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/component: {{ $name }}
+
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    apiVersion: apps/v1
+    name: "{{ $.Release.Name }}-worker-{{ $name }}"
+
+  minReplicas: {{ $worker.replicas.min }}
+  maxReplicas: {{ $worker.replicas.max }}
+
+  targetCPUUtilizationPercentage: 90
+
+---
+{{- end }}

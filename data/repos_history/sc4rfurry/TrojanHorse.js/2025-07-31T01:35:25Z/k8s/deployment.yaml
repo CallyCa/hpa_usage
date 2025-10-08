@@ -1,0 +1,357 @@
+---
+# Redis for distributed processing and caching
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trojanhorse-redis
+  namespace: trojanhorse-enterprise
+  labels:
+    app: trojanhorse
+    component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trojanhorse
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: trojanhorse
+        component: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: redis-pvc
+
+---
+# PostgreSQL for analytics and audit logs
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trojanhorse-postgres
+  namespace: trojanhorse-enterprise
+  labels:
+    app: trojanhorse
+    component: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trojanhorse
+      component: postgres
+  template:
+    metadata:
+      labels:
+        app: trojanhorse
+        component: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: trojanhorse
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: trojanhorse-secrets
+              key: postgres-user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: trojanhorse-secrets
+              key: postgres-password
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+
+---
+# TrojanHorse Core API
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trojanhorse-api
+  namespace: trojanhorse-enterprise
+  labels:
+    app: trojanhorse
+    component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: trojanhorse
+      component: api
+  template:
+    metadata:
+      labels:
+        app: trojanhorse
+        component: api
+    spec:
+      containers:
+      - name: trojanhorse-api
+        image: trojanhorse/enterprise:latest
+        ports:
+        - containerPort: 3000
+          name: http
+        - containerPort: 8080
+          name: websocket
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: REDIS_URL
+          value: "redis://trojanhorse-redis:6379"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: trojanhorse-secrets
+              key: database-url
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: trojanhorse-secrets
+              key: jwt-secret
+        - name: ENTERPRISE_LICENSE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: trojanhorse-secrets
+              key: enterprise-license
+        # API Keys
+        - name: ALIENVAULT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: trojanhorse-api-keys
+              key: alienvault
+        - name: ABUSEIPDB_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: trojanhorse-api-keys
+              key: abuseipdb
+        - name: VIRUSTOTAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: trojanhorse-api-keys
+              key: virustotal
+        - name: CROWDSEC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: trojanhorse-api-keys
+              key: crowdsec
+        # SIEM Configuration
+        - name: SPLUNK_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: trojanhorse-siem
+              key: splunk-token
+        - name: QRADAR_SEC_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: trojanhorse-siem
+              key: qradar-token
+        - name: ELASTIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: trojanhorse-siem
+              key: elastic-key
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: config
+        configMap:
+          name: trojanhorse-config
+      - name: logs
+        persistentVolumeClaim:
+          claimName: logs-pvc
+
+---
+# Worker Nodes for Distributed Processing
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trojanhorse-workers
+  namespace: trojanhorse-enterprise
+  labels:
+    app: trojanhorse
+    component: workers
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: trojanhorse
+      component: workers
+  template:
+    metadata:
+      labels:
+        app: trojanhorse
+        component: workers
+    spec:
+      containers:
+      - name: trojanhorse-worker
+        image: trojanhorse/worker:latest
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: REDIS_URL
+          value: "redis://trojanhorse-redis:6379"
+        - name: WORKER_TYPE
+          value: "threat-analysis"
+        - name: MAX_CONCURRENT_TASKS
+          value: "10"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - node
+            - -e
+            - "process.exit(0)"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+
+---
+# Analytics Dashboard
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trojanhorse-dashboard
+  namespace: trojanhorse-enterprise
+  labels:
+    app: trojanhorse
+    component: dashboard
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: trojanhorse
+      component: dashboard
+  template:
+    metadata:
+      labels:
+        app: trojanhorse
+        component: dashboard
+    spec:
+      containers:
+      - name: trojanhorse-dashboard
+        image: trojanhorse/dashboard:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: API_ENDPOINT
+          value: "http://trojanhorse-api:3000"
+        - name: WEBSOCKET_ENDPOINT
+          value: "ws://trojanhorse-api:8080"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+---
+# Horizontal Pod Autoscaler for API
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: trojanhorse-api-hpa
+  namespace: trojanhorse-enterprise
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: trojanhorse-api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# Horizontal Pod Autoscaler for Workers
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: trojanhorse-workers-hpa
+  namespace: trojanhorse-enterprise
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: trojanhorse-workers
+  minReplicas: 5
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75 

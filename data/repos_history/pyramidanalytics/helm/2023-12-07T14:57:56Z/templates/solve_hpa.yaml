@@ -1,0 +1,21 @@
+{{- if .Values.solve.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: solve-scaled
+  namespace: {{ .Release.Namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: solve-service
+  minReplicas: {{.Values.solve.autoscaling.minReplicas}}
+  maxReplicas: {{.Values.solve.autoscaling.maxReplicas}}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{.Values.solve.autoscaling.targetCpuUtilization}}
+{{- end }}

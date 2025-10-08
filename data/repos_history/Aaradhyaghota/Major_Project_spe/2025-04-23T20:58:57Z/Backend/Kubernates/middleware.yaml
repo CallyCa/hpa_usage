@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: middleware
+spec:
+  selector:
+    matchLabels:
+      app: middleware
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: middleware
+    spec:
+      containers:
+        - name: middleware
+          image: aaradhyaghota/middleware:latest
+          ports:
+            - containerPort: 5001
+          env:
+            - name: MYSQL_HOST
+              value: "phishing-mysql"
+            - name: MYSQL_USER
+              value: "root"
+            - name: MYSQL_PASSWORD
+              value: "root"
+            - name: MYSQL_DATABASE
+              value: "phishing_db"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: middleware
+spec:
+  ports:
+    - port: 5001
+      targetPort: 5001
+  selector:
+    app: middleware

@@ -1,0 +1,28 @@
+{{- if .Values.privateapi.php.autoscaling.enabled }}
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "bazo.privateapi.php.name" . }}
+  labels:
+    {{- include "bazo.privateapi.labelsPHP" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "bazo.privateapi.php.name" . }}
+  minReplicas: {{ .Values.privateapi.php.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.privateapi.php.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.privateapi.php.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: {{ .Values.privateapi.php.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.privateapi.php.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        targetAverageUtilization: {{ .Values.privateapi.php.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

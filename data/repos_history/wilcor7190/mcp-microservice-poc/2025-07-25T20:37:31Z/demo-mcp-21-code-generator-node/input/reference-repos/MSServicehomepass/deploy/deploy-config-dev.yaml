@@ -1,0 +1,264 @@
+---
+kind: Template
+apiVersion: template.openshift.io/v1
+metadata:
+  name: template-ocp
+  labels:
+    version: OCP4-1
+  annotations:
+    iconClass: icon-nestjs
+message: |-
+  Se han creado los siguientes servicios en su proyecto: ${NAME}.
+objects:
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: '${NAME}'
+    namespace: '${NAMESPACE}'
+    annotations:
+      description: ${DESCRIPTION}
+  spec:
+    ports:
+      - name: ${PORT}-tcp
+        port: ${{PORT}}
+        protocol: TCP
+        targetPort: ${{PORT}}
+    type: ClusterIP
+    selector:
+      name: '${NAME}'
+
+- kind: ConfigMap
+  apiVersion: v1
+  metadata:
+    name: '${NAME}'
+    namespace: '${NAMESPACE}'
+  data: ${{DATA_CONFIGMAP}}
+- kind: DeploymentConfig
+  apiVersion: apps.openshift.io/v1
+  metadata:
+    name: '${NAME}'
+    namespace: '${NAMESPACE}'
+    annotations:
+      description: ${DESCRIPTION}
+      template.alpha.openshift.io/wait-for-ready: 'true'
+    labels:
+        app: '${NAME}'
+        legado: ${LEGADO}
+        proyecto: ${PROYECTO}
+        subproyecto: ${SUBPROYECTO}
+        tecnologia: ${TECNOLOGIA}
+  spec:
+    replicas: '${{MIN_REPLICAS}}'
+    strategy:
+      type: Rolling
+      activeDeadlineSeconds: 21600
+      resources: {}
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: "${MAX_SURGE}"
+        maxUnavailable: "${MAX_UNAVAILABLE}"
+        timeoutSeconds: 300
+        updatePeriodSeconds: 1
+    triggers:
+    - type: ImageChange
+      imageChangeParams:
+        automatic: true
+        containerNames:
+          - ${NAME}
+        from:
+          kind: ImageStreamTag
+          name: '${NAME}:${VERSION}'
+    - type: ConfigChange
+    selector:
+      name: '${NAME}'
+    template:
+      metadata:
+        name: '${NAME}'
+        labels:
+          name: '${NAME}'
+      spec:
+        automountServiceAccountToken: false
+        containers:
+        - name: ${NAME}
+          image: ""
+          ports:
+            - containerPort: ${{PORT}}
+              protocol: "TCP"
+          resources:
+            limits:
+              cpu: "${CPU_LIMIT}"
+              memory: "${MEMORY_LIMIT}"
+            requests:
+              cpu: "${CPU_REQUEST}"
+              memory: "${MEMORY_REQUEST}"
+          envFrom:
+            - configMapRef:
+                name: '${NAME}'
+            - secretRef:
+                name: '${NAME}'
+          readinessProbe:
+            tcpSocket:
+              port: ${{PORT}}
+            initialDelaySeconds: 15
+            timeoutSeconds: 1
+            periodSeconds: 20
+            successThreshold: 1
+            failureThreshold: 5
+
+- apiVersion: autoscaling/v2
+  kind: HorizontalPodAutoscaler
+  metadata:
+    name: ${NAME}
+    namespace: '${NAMESPACE}'
+  spec:
+    minReplicas: ${{MIN_REPLICAS}} 
+    maxReplicas: ${{MAX_REPLICAS}}
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 120
+      scaleDown:
+        stabilizationWindowSeconds: 120
+    scaleTargetRef:
+      apiVersion: apps.openshift.io/v1 
+      kind: DeploymentConfig 
+      name: ${NAME}
+    metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: ${{CPU_TARGET_AVERAGE_UTILIZATION}}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: ${{MEMORY_TARGET_AVERAGE_UTILIZATION}}
+
+parameters:
+- name: NAME
+  description: El nombre asignado a todos los objetos frontend definidos en esta plantilla.
+  required: true
+  value: msservicehomepass
+- name: NAMESPACE 
+  description: Nombre del namespace
+  required: true
+  value: ecommercev9dev
+- name: VERSION 
+  description: versión de la aplicación, actualmente se define versión latest para todos los despliegues, en futuro se utilizará un método de versionamiento. 
+  required: true
+  value: latest
+- name: MEMORY_LIMIT
+  description: Cantidad máxima de memoria que puede utilizar el contenedor.
+  required: true
+  value: 500Mi
+- name: CPU_LIMIT
+  description: Cantidad máxima de procesador que puede utilizar el contenedor.
+  required: true
+  value: 200m
+- name: MIN_REPLICAS
+  description: Cantidad minima de pods.
+  required: true
+  value: '1'
+- name: MAX_REPLICAS
+  description: Cantidad maxima de pods.
+  required: true
+  value: '1'
+- name: CPU_TARGET_AVERAGE_UTILIZATION 
+  description: El porcentaje de la CPU solicitada que cada pod debería usar idealmente.
+  required: true
+  value: '80'
+- name: MEMORY_TARGET_AVERAGE_UTILIZATION
+  description: El porcentaje de memoria solicitada que cada pod debería usar idealmente.
+  required: true
+  value: '95'
+- name: MAX_SURGE
+  description: Número máximo de pods que se pueden programar por encima del número original de pods.
+  required: true
+  value: 20%
+- name: MAX_UNAVAILABLE
+  description: número máximo de pods que pueden no estar disponibles durante la actualización.
+  required: true
+  value: 0%
+- name: MEMORY_REQUEST
+  description: Cantidad máxima de memoria que puede utilizar el contenedor.
+  required: true
+  value: 10Mi
+- name: CPU_REQUEST
+  description: Cantidad máxima de procesador que puede utilizar el contenedor.
+  required: true
+  value: 10m
+- name: DESCRIPTION
+  description: Descripción de la aplicación. 
+  required: true
+  value: Esta plantilla define los recursos necesarios para una aplicación NestJS, incluida una configuración de compilación y una configuración de implementación de la aplicación. No incluye una base de datos.
+- name: PORT
+  description: Puerto a usar para la exposición de la aplicación. 
+  required: true
+  value: "8080"
+- name: PROYECTO
+  description: Etiqueta del nombre de proyecto 
+  required: true
+  value: 'ecommercev9dev' 
+- name: SUBPROYECTO
+  description: Etiqueta del nombre de sub-proyecto, si no aplica se define el mismo nombre del proyecto. 
+  required: true
+  value: 'ecommercev9dev' 
+- name: LEGADO
+  description: Etiqueta de legados definidos para el proyecto, estos van separados por guion bajo "_" (LEGADOA_LEGADOB). 
+  required: true
+  value: MONGO_MER_MGLDPROD
+- name: TECNOLOGIA
+  description: Etiqueta de la tecnología a usar, los valores validos serán= SpringBoot-Maven, NodeJS, NestJS. 
+  required: true
+  value: NestJS
+- name: DATA_CONFIGMAP
+  description: "Variables de entorno a usar en deployment. Ejm.= {'ENV_1': 'Valor_1', 'ENV_2': 'Valor_2', ....}"
+  required: true
+  value: |
+    {
+      "ELASTIC_APM_SERVICE_NAME": "msservicehomepass",
+      "ELASTIC_APM_SERVER_URL": "http://100.69.7.130:8200",
+      "ELASTIC_APM_ENVIRONMENT": "ecommercev9dev",
+      "ELASTIC_APM_CAPTURE_BODY": "all",
+      "ELASTIC_APM_CAPTURE_HEADERS": "true",
+      "ELASTIC_APM_LOG_LEVEL": "off",
+      "ELASTIC_APM_ACTIVE": "true",
+      "API_MAPPING": "/MSServicehomepass",
+      "API_VERSION": "V1",
+      "HTTP_TIMEOUT": "10000",
+      "HTTP_HEADERS_TIMEOUT": "120000",
+      "CONTROLLER_MESSAGE": "/Message",
+      "MONGO": "mongodb+srv://bd_user:bd_password@clu-mongo-ecom-dev01-pl-1.qremx.mongodb.net/DBCOMServicehomepass_DE",
+      "LOG_LEVEL": "ALL",
+      "CONTROLLER_COVERAGE_DETAILSADDRESS": "/Coverage/detailAddress",
+      "CONTROLLER_COVERAGE_NEIGHBORHOODBYDANE": "/Coverage/neighborhoodbydane",
+      "CONTROLLER_COVERAGE_ADDRESSCOMPLEMENT": "/Coverage/addresscomplement",
+      "CONTROLLER_COVERAGE_STRUCTURES": "/Coverage/structures",
+      "CONTROLLER_COVERAGE_PUTCLIENTHOMEPASS": "/Coverage/putClientHomepass",
+      "CONTROLLER_COVERAGE_HOMEPASS": "/Coverage/homepass",
+      "APIDIRTAB": "http://172.24.216.142:8102/CMatricesAs400Services-war/location/address/consultaDireccionExactaTabulada",
+      "APIDIR": "http://172.24.216.142:8102/CMatricesAs400Services-war/location/address/consultaDireccion",
+      "APIDIRGEN": "http://172.24.216.142:8102/CMatricesAs400Services-war/location/address/consultaDireccionGeneral",
+      "CONTROLLER_JOB": "/coverage/Job",
+      "APISOLINS": "http://100.123.17.209:8100/CMatricesAs400Services-war/location/address/putCrearSolicitudInspira",
+      "APISOLBYID": "http://100.123.17.209:8100/CMatricesAs400Services-war/location/address/buscarSolicitudPorIdSolicitud",
+      "ORDBCONN": "bogexavm1-devqa-scan.claro.co:1525/SRV_MGLDBQA.bogexaqapri1.cesdevqavcn1.oraclevcn.com",
+      "PARAMETER_DEFAULT_NEIGHBORHOODS": "CK",
+      "PERFORM_JOB": "performJob",
+      "CRON_PERFORM_GET_STATE_HOMEPASS": "0 8 * * MON",
+      "CONTROLLER_ERROR": "/coverage/errors",
+      "CONTROLLER_API_CAPACITY": "http://msappointadmin.ecommercev9dev.svc:8080/V1/Capacity",
+      "CONTROLLER_API_CREATE_ORDER": "http://msappointadmin.ecommercev9dev.svc:8080/V1/createorder",
+      "CCMM_NODE_ACTIVO": "ACT",
+      "CCMM_NODE_INACTIVO": "NAC",
+      "NODE_ACTIVO": "ACT",
+      "NODE_INACTIVO": "NAC",
+      "ULTIMOS_DIAS_CONSULTA": "10",
+      "CONTROLLER_CREAR_SOLICITUD_INSPIRA_ENDPOINT": "http://100.123.17.209:8100/CMatricesAs400Services-war/location/address/putCrearSolicitudInspira",
+      "CONTROLLER_TRACIBILITY": "/Coverage/tracibility",
+      "LOG_TRAZABILITY": "true",
+      "MONGO_REPLICA_SET": "true",
+      "DATABASE_TIMEOUT": "10000"
+    }

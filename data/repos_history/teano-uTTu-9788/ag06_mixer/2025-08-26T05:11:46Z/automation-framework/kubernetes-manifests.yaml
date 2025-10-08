@@ -1,0 +1,376 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aioke-enterprise
+  labels:
+    app: aioke-advanced-enterprise
+    environment: production
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aioke-config
+  namespace: aioke-enterprise
+data:
+  PYTHON_VERSION: "3.11"
+  FLASK_ENV: "production"
+  LOG_LEVEL: "INFO"
+  ENABLE_METRICS: "true"
+  ENABLE_TRACING: "true"
+
+---
+# Secret for sensitive data
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aioke-secrets
+  namespace: aioke-enterprise
+type: Opaque
+stringData:
+  api-key: "your-api-key-here"
+  database-url: "postgresql://user:pass@postgres:5432/aioke"
+
+---
+# Deployment for main application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aioke-enterprise
+  namespace: aioke-enterprise
+  labels:
+    app: aioke-enterprise
+    version: v3.0.0
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: aioke-enterprise
+  template:
+    metadata:
+      labels:
+        app: aioke-enterprise
+        version: v3.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: aioke-enterprise
+        image: aioke-advanced-enterprise:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: aioke-config
+        - secretRef:
+            name: aioke-secrets
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        volumeMounts:
+        - name: app-logs
+          mountPath: /app/logs
+      volumes:
+      - name: app-logs
+        emptyDir: {}
+
+---
+# Service for internal communication
+apiVersion: v1
+kind: Service
+metadata:
+  name: aioke-enterprise
+  namespace: aioke-enterprise
+  labels:
+    app: aioke-enterprise
+spec:
+  type: ClusterIP
+  selector:
+    app: aioke-enterprise
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+
+---
+# Ingress for external access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aioke-enterprise
+  namespace: aioke-enterprise
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+spec:
+  tls:
+  - hosts:
+    - api.aioke-enterprise.com
+    secretName: aioke-tls
+  rules:
+  - host: api.aioke-enterprise.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: aioke-enterprise
+            port:
+              number: 8080
+
+---
+# HorizontalPodAutoscaler for auto-scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: aioke-enterprise
+  namespace: aioke-enterprise
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: aioke-enterprise
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+
+---
+# PodDisruptionBudget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aioke-enterprise
+  namespace: aioke-enterprise
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: aioke-enterprise
+
+---
+# NetworkPolicy for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aioke-enterprise
+  namespace: aioke-enterprise
+spec:
+  podSelector:
+    matchLabels:
+      app: aioke-enterprise
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: aioke-enterprise
+    - podSelector:
+        matchLabels:
+          app: nginx-ingress
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+    - protocol: TCP
+      port: 6379  # Redis
+
+---
+# ServiceMonitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: aioke-enterprise
+  namespace: aioke-enterprise
+  labels:
+    app: aioke-enterprise
+spec:
+  selector:
+    matchLabels:
+      app: aioke-enterprise
+  endpoints:
+  - port: http
+    interval: 30s
+    path: /metrics
+
+---
+# StatefulSet for Borg Scheduler component
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: borg-scheduler
+  namespace: aioke-enterprise
+spec:
+  serviceName: borg-scheduler
+  replicas: 1
+  selector:
+    matchLabels:
+      app: borg-scheduler
+  template:
+    metadata:
+      labels:
+        app: borg-scheduler
+    spec:
+      containers:
+      - name: borg-scheduler
+        image: aioke-advanced-enterprise:latest
+        command: ["python", "-c", "from advanced_enterprise_patterns import BorgScheduler; BorgScheduler().run()"]
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+  volumeClaimTemplates:
+  - metadata:
+      name: borg-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 10Gi
+
+---
+# DaemonSet for Dapr Sidecars
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dapr-sidecar
+  namespace: aioke-enterprise
+spec:
+  selector:
+    matchLabels:
+      app: dapr-sidecar
+  template:
+    metadata:
+      labels:
+        app: dapr-sidecar
+    spec:
+      containers:
+      - name: dapr-sidecar
+        image: aioke-advanced-enterprise:latest
+        command: ["python", "-c", "from advanced_enterprise_patterns import DaprSidecar; DaprSidecar('node').run()"]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+---
+# Job for database migrations
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: database-migration
+  namespace: aioke-enterprise
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: migration
+        image: aioke-advanced-enterprise:latest
+        command: ["python", "migrate.py"]
+        envFrom:
+        - secretRef:
+            name: aioke-secrets
+
+---
+# CronJob for scheduled tasks
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: airflow-scheduler
+  namespace: aioke-enterprise
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: airflow-task
+            image: aioke-advanced-enterprise:latest
+            command: ["python", "-c", "from advanced_enterprise_patterns import AirflowDAG; AirflowDAG('scheduled').execute()"]
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi

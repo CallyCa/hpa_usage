@@ -1,0 +1,77 @@
+{{- if .Values.apiGateway.autoscaling.enabled }}
+apiVersion: {{ include "forensic-platform.hpa.apiVersion" . }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "forensic-platform.apiGateway.fullname" . }}
+  labels:
+    {{- include "forensic-platform.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "forensic-platform.apiGateway.fullname" . }}
+  minReplicas: {{ .Values.apiGateway.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.apiGateway.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.apiGateway.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.apiGateway.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.apiGateway.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.apiGateway.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+---
+{{- if .Values.aiService.autoscaling.enabled }}
+apiVersion: {{ include "forensic-platform.hpa.apiVersion" . }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "forensic-platform.aiService.fullname" . }}
+  labels:
+    {{- include "forensic-platform.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "forensic-platform.aiService.fullname" . }}
+  minReplicas: {{ .Values.aiService.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.aiService.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.aiService.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.aiService.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.aiService.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.aiService.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.aiService.autoscaling.targetGPUUtilizationPercentage }}
+    - type: External
+      external:
+        metric:
+          name: gpu_utilization
+          selector:
+            matchLabels:
+              app: ai-service
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.aiService.autoscaling.targetGPUUtilizationPercentage }}
+    {{- end }}
+{{- end }}

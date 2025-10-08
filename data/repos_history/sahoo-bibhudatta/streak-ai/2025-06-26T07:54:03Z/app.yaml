@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streak-ai
+  namespace: workspace 
+spec:
+  selector:
+    matchLabels:
+      app: streak-ai
+  template:
+    metadata:
+      labels:
+        app: streak-ai
+    spec:
+      containers:
+      - name: streak-ai
+        image: 'localhost:5001/streakai:r1'
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5000
+        resources:
+          requests:
+              memory: 100Mi
+              cpu: 100m
+          limits:
+              memory: 250Mi
+              cpu: 200m
+      restartPolicy: Always
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: streak-ai-service
+  namespace: workspace
+spec:
+  selector:
+    app: streak-ai
+  ports:
+  - name: http
+    port: 80
+    targetPort: 5000
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: streak-ai-hpa
+  namespace: workspace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: streak-ai
+  minReplicas: 3
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: streak-ai-ingress
+  namespace: workspace
+spec:
+  ingressClassName: nginx
+  rules:
+   - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: streak-ai-service
+            port:
+              number: 80
+              
+      # - path: /add
+      #   pathType: Prefix
+      #   backend:
+      #     service:
+      #       name: streak-ai-service
+      #       port:
+      #         number: 80
+

@@ -1,0 +1,1118 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nova-forge-governance
+  labels:
+    name: nova-forge-governance
+    component: policy-engine
+    layer: infrastructure
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opa-server-cluster
+  namespace: nova-forge-governance
+  labels:
+    app: opa-server
+    component: policy-engine
+    layer: infrastructure
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: opa-server
+  template:
+    metadata:
+      labels:
+        app: opa-server
+        component: policy-engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8181"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: opa-server
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - opa-server
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: opa-server
+        image: openpolicyagent/opa:latest-envoy
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8181
+          name: http-api
+          protocol: TCP
+        - containerPort: 8282
+          name: diagnostic
+          protocol: TCP
+        - containerPort: 9191
+          name: envoy-ext-authz
+          protocol: TCP
+        env:
+        - name: OPA_LOG_LEVEL
+          value: "info"
+        - name: OPA_LOG_FORMAT
+          value: "json"
+        - name: OPA_CONFIG_FILE
+          value: "/config/opa-config.yaml"
+        - name: OPA_BUNDLE_PREFIX
+          value: "/bundles"
+        - name: OPA_DECISION_LOG_CONSOLE
+          value: "true"
+        - name: OPA_STATUS_CONSOLE
+          value: "true"
+        args:
+        - "run"
+        - "--server"
+        - "--config-file=/config/opa-config.yaml"
+        - "--addr=0.0.0.0:8181"
+        - "--diagnostic-addr=0.0.0.0:8282"
+        - "--set=plugins.envoy_ext_authz_grpc.addr=0.0.0.0:9191"
+        - "--set=plugins.envoy_ext_authz_grpc.enable_reflection=true"
+        - "--set=decision_logs.console=true"
+        - "--set=status.console=true"
+        - "--set=bundles.authz.resource=/bundles/authz.tar.gz"
+        - "--set=bundles.authz.service=bundle-server"
+        - "--log-level=info"
+        - "--log-format=json"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+            ephemeral-storage: "1Gi"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+            ephemeral-storage: "5Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http-api
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health?bundle=true
+            port: http-api
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http-api
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 30
+        volumeMounts:
+        - name: opa-config
+          mountPath: /config
+          readOnly: true
+        - name: opa-policies
+          mountPath: /policies
+          readOnly: true
+        - name: opa-bundles
+          mountPath: /bundles
+        - name: opa-data
+          mountPath: /data
+        - name: tmp-volume
+          mountPath: /tmp
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      - name: bundle-server
+        image: nginx:alpine
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: bundle-http
+          protocol: TCP
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /bundles/
+            port: bundle-http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /bundles/
+            port: bundle-http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: opa-bundles
+          mountPath: /usr/share/nginx/html/bundles
+          readOnly: true
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - CHOWN
+            - SETGID
+            - SETUID
+      - name: policy-manager
+        image: nova-forge/opa-policy-manager:v1.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 9000
+          name: manager-api
+          protocol: TCP
+        env:
+        - name: OPA_SERVER_URL
+          value: "http://localhost:8181"
+        - name: BUNDLE_SERVER_URL
+          value: "http://localhost:8080"
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: opa-secrets
+              key: redis-url
+        - name: GIT_REPO_URL
+          valueFrom:
+            secretKeyRef:
+              name: opa-secrets
+              key: git-repo-url
+        - name: GIT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: opa-secrets
+              key: git-token
+        - name: WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: opa-secrets
+              key: webhook-url
+        - name: POLICY_VALIDATION_ENABLED
+          value: "true"
+        - name: AUTO_DEPLOY_ENABLED
+          value: "true"
+        - name: BACKUP_ENABLED
+          value: "true"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: manager-cache
+          mountPath: /app/cache
+        - name: git-credentials
+          mountPath: /app/git-credentials
+          readOnly: true
+      volumes:
+      - name: opa-config
+        configMap:
+          name: opa-config
+      - name: opa-policies
+        configMap:
+          name: opa-policies
+      - name: opa-bundles
+        persistentVolumeClaim:
+          claimName: opa-bundles-pvc
+      - name: opa-data
+        persistentVolumeClaim:
+          claimName: opa-data-pvc
+      - name: nginx-config
+        configMap:
+          name: nginx-bundle-server-config
+      - name: tmp-volume
+        emptyDir:
+          sizeLimit: 512Mi
+      - name: manager-cache
+        emptyDir:
+          sizeLimit: 256Mi
+      - name: git-credentials
+        secret:
+          secretName: git-credentials
+      nodeSelector:
+        workload-type: governance
+      tolerations:
+      - key: "governance-workload"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opa-gatekeeper
+  namespace: nova-forge-governance
+  labels:
+    app: opa-gatekeeper
+    component: policy-engine
+    layer: infrastructure
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: opa-gatekeeper
+  template:
+    metadata:
+      labels:
+        app: opa-gatekeeper
+        component: policy-engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8888"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: opa-gatekeeper
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: gatekeeper-controller
+        image: openpolicyagent/gatekeeper:release-3.14
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8443
+          name: webhook-api
+          protocol: TCP
+        - containerPort: 8888
+          name: metrics
+          protocol: TCP
+        - containerPort: 9090
+          name: healthz
+          protocol: TCP
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: CONTAINER_NAME
+          value: "gatekeeper-controller"
+        - name: WATCH_NAMESPACE
+          value: ""
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: ENABLE_MUTATION
+          value: "true"
+        - name: ENABLE_EXTERNAL_DATA
+          value: "true"
+        - name: METRICS_BACKEND
+          value: "prometheus"
+        args:
+        - --port=8443
+        - --logtostderr
+        - --log-denies=true
+        - --emit-admission-events=true
+        - --log-level=INFO
+        - --constraint-violations-limit=20
+        - --audit-interval=60
+        - --enable-external-data=true
+        - --metrics-backend=prometheus
+        - --disable-cert-rotation=false
+        - --max-serving-threads=100
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+            ephemeral-storage: "1Gi"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+            ephemeral-storage: "5Gi"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: healthz
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: healthz
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: gatekeeper-webhook-server-cert
+          mountPath: /tmp/k8s-webhook-server/serving-certs
+          readOnly: true
+        - name: gatekeeper-config
+          mountPath: /config
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: gatekeeper-webhook-server-cert
+        secret:
+          secretName: gatekeeper-webhook-server-cert
+      - name: gatekeeper-config
+        configMap:
+          name: gatekeeper-config
+      nodeSelector:
+        workload-type: governance
+      tolerations:
+      - key: "governance-workload"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa-server-service
+  namespace: nova-forge-governance
+  labels:
+    app: opa-server
+    component: policy-engine
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8181"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: opa-server
+  ports:
+  - name: http-api
+    port: 8181
+    targetPort: 8181
+    protocol: TCP
+  - name: diagnostic
+    port: 8282
+    targetPort: 8282
+    protocol: TCP
+  - name: envoy-ext-authz
+    port: 9191
+    targetPort: 9191
+    protocol: TCP
+  - name: bundle-http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: manager-api
+    port: 9000
+    targetPort: 9000
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa-gatekeeper-service
+  namespace: nova-forge-governance
+  labels:
+    app: opa-gatekeeper
+    component: policy-engine
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8888"
+spec:
+  selector:
+    app: opa-gatekeeper
+  ports:
+  - name: webhook-api
+    port: 443
+    targetPort: 8443
+    protocol: TCP
+  - name: metrics
+    port: 8888
+    targetPort: 8888
+    protocol: TCP
+  - name: healthz
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: opa-server
+  namespace: nova-forge-governance
+  labels:
+    app: opa-server
+    component: policy-engine
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: opa-gatekeeper
+  namespace: nova-forge-governance
+  labels:
+    app: opa-gatekeeper
+    component: policy-engine
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opa-server-role
+  labels:
+    app: opa-server
+    component: policy-engine
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["policy"]
+  resources: ["podsecuritypolicies"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opa-gatekeeper-role
+  labels:
+    app: opa-gatekeeper
+    component: policy-engine
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["config.gatekeeper.sh"]
+  resources: ["*"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["templates.gatekeeper.sh"]
+  resources: ["*"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["constraints.gatekeeper.sh"]
+  resources: ["*"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["mutations.gatekeeper.sh"]
+  resources: ["*"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources: ["validatingadmissionwebhooks", "mutatingadmissionwebhooks"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: opa-server-binding
+  labels:
+    app: opa-server
+    component: policy-engine
+subjects:
+- kind: ServiceAccount
+  name: opa-server
+  namespace: nova-forge-governance
+roleRef:
+  kind: ClusterRole
+  name: opa-server-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: opa-gatekeeper-binding
+  labels:
+    app: opa-gatekeeper
+    component: policy-engine
+subjects:
+- kind: ServiceAccount
+  name: opa-gatekeeper
+  namespace: nova-forge-governance
+roleRef:
+  kind: ClusterRole
+  name: opa-gatekeeper-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opa-bundles-pvc
+  namespace: nova-forge-governance
+  labels:
+    app: opa-server
+    component: policy-engine
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opa-data-pvc
+  namespace: nova-forge-governance
+  labels:
+    app: opa-server
+    component: policy-engine
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: opa-secrets
+  namespace: nova-forge-governance
+  labels:
+    app: opa-server
+    component: policy-engine
+type: Opaque
+data:
+  redis-url: cmVkaXM6Ly9yZWRpcy1zZXJ2aWNlOjYzNzkvMA==  # redis://redis-service:6379/0
+  git-repo-url: aHR0cHM6Ly9naXRodWIuY29tL25vdmEtZm9yZ2UvcG9saWNpZXMuZ2l0  # https://github.com/nova-forge/policies.git
+  git-token: Z2hwX0V4YW1wbGVUb2tlbjEyMw==  # ghp_ExampleToken123
+  webhook-url: aHR0cDovL3dlYmhvb2stc2VydmljZS9wb2xpY3ktcmVzdWx0cw==  # http://webhook-service/policy-results
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: git-credentials
+  namespace: nova-forge-governance
+  labels:
+    app: opa-server
+    component: policy-engine
+type: Opaque
+data:
+  .gitconfig: W2NvcmVdCiAgICBhdXRvY3JsZiA9IGZhbHNlCltjcmVkZW50aWFsXQogICAgaGVscGVyID0gc3RvcmU=  # [core]\n    autocrlf = false\n[credential]\n    helper = store
+  .git-credentials: aHR0cHM6Ly9ub3ZhLWZvcmdlOmdocF9FeGFtcGxlVG9rZW4xMjNAZ2l0aHViLmNvbQ==  # https://nova-forge:ghp_ExampleToken123@github.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gatekeeper-webhook-server-cert
+  namespace: nova-forge-governance
+  labels:
+    app: opa-gatekeeper
+    component: policy-engine
+type: kubernetes.io/tls
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t  # Base64 encoded certificate
+  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t  # Base64 encoded private key
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-config
+  namespace: nova-forge-governance
+  labels:
+    app: opa-server
+    component: policy-engine
+data:
+  opa-config.yaml: |
+    services:
+      bundle-server:
+        url: http://localhost:8080
+
+    bundles:
+      authz:
+        service: bundle-server
+        resource: /bundles/authz.tar.gz
+        persist: true
+        polling:
+          min_delay_seconds: 10
+          max_delay_seconds: 20
+        signing:
+          keyid: nova-forge-bundle-key
+          scope: write
+
+    decision_logs:
+      console: true
+      reporting:
+        min_delay_seconds: 5
+        max_delay_seconds: 10
+
+    status:
+      console: true
+      service: bundle-server
+
+    plugins:
+      envoy_ext_authz_grpc:
+        addr: :9191
+        enable_reflection: true
+        query: data.envoy.authz.allow
+        dry_run: false
+        enable_performance_metrics: true
+
+    server:
+      encoding:
+        gzip:
+          min_length: 1024
+      metrics:
+        prom: true
+
+    storage:
+      disk:
+        directory: /data
+
+    caching:
+      inter_query_builtin_cache:
+        max_size_bytes: 100000000
+
+    nd_builtin_cache: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-policies
+  namespace: nova-forge-governance
+  labels:
+    app: opa-server
+    component: policy-engine
+data:
+  authz.rego: |
+    package envoy.authz
+
+    import future.keywords.if
+    import future.keywords.in
+
+    default allow := false
+
+    # Allow health check endpoints
+    allow if {
+        input.attributes.request.http.method == "GET"
+        startswith(input.attributes.request.http.path, "/health")
+    }
+
+    # Allow metrics endpoints
+    allow if {
+        input.attributes.request.http.method == "GET"
+        startswith(input.attributes.request.http.path, "/metrics")
+    }
+
+    # Allow authenticated API requests
+    allow if {
+        is_authenticated
+        is_authorized
+    }
+
+    is_authenticated if {
+        token := bearer_token
+        jwt.verify_rs256(token, jwks_data)
+    }
+
+    is_authorized if {
+        user_has_permission
+    }
+
+    bearer_token := t if {
+        auth_header := input.attributes.request.http.headers.authorization
+        startswith(auth_header, "Bearer ")
+        t := substring(auth_header, 7, -1)
+    }
+
+    user_has_permission if {
+        user_roles := jwt.decode(bearer_token)[1].roles
+        required_role := path_to_role_mapping[input.attributes.request.http.path]
+        required_role in user_roles
+    }
+
+    path_to_role_mapping := {
+        "/api/v1/admin": "admin",
+        "/api/v1/users": "user",
+        "/api/v1/data": "analyst",
+        "/api/v1/config": "admin"
+    }
+
+    jwks_data := `{
+        "keys": [
+            {
+                "kty": "RSA",
+                "use": "sig",
+                "kid": "nova-forge-key-1",
+                "n": "example-modulus",
+                "e": "AQAB"
+            }
+        ]
+    }`
+
+  security.rego: |
+    package kubernetes.admission
+
+    import future.keywords.if
+    import future.keywords.in
+
+    # Deny containers running as root
+    deny[msg] if {
+        input.request.kind.kind == "Pod"
+        container := input.request.object.spec.containers[_]
+        container.securityContext.runAsUser == 0
+        msg := "Container must not run as root user"
+    }
+
+    # Require security contexts
+    deny[msg] if {
+        input.request.kind.kind == "Pod"
+        container := input.request.object.spec.containers[_]
+        not container.securityContext
+        msg := "Container must define securityContext"
+    }
+
+    # Require resource limits
+    deny[msg] if {
+        input.request.kind.kind == "Pod"
+        container := input.request.object.spec.containers[_]
+        not container.resources.limits
+        msg := "Container must define resource limits"
+    }
+
+    # Require non-privileged containers
+    deny[msg] if {
+        input.request.kind.kind == "Pod"
+        container := input.request.object.spec.containers[_]
+        container.securityContext.privileged == true
+        msg := "Container must not be privileged"
+    }
+
+    # Require read-only root filesystem
+    deny[msg] if {
+        input.request.kind.kind == "Pod"
+        container := input.request.object.spec.containers[_]
+        container.securityContext.readOnlyRootFilesystem != true
+        msg := "Container must use read-only root filesystem"
+    }
+
+    # Require dropping all capabilities
+    deny[msg] if {
+        input.request.kind.kind == "Pod"
+        container := input.request.object.spec.containers[_]
+        not container.securityContext.capabilities.drop
+        msg := "Container must drop all capabilities"
+    }
+
+    deny[msg] if {
+        input.request.kind.kind == "Pod"
+        container := input.request.object.spec.containers[_]
+        "ALL" not in container.securityContext.capabilities.drop
+        msg := "Container must drop ALL capabilities"
+    }
+
+  network.rego: |
+    package kubernetes.admission
+
+    import future.keywords.if
+    import future.keywords.in
+
+    # Require network policies for all namespaces
+    deny[msg] if {
+        input.request.kind.kind == "Namespace"
+        not has_network_policy
+        msg := "Namespace must have associated NetworkPolicy"
+    }
+
+    # Deny default service account usage
+    deny[msg] if {
+        input.request.kind.kind == "Pod"
+        input.request.object.spec.serviceAccountName == "default"
+        msg := "Pod must not use default service account"
+    }
+
+    # Require explicit service account
+    deny[msg] if {
+        input.request.kind.kind == "Pod"
+        not input.request.object.spec.serviceAccountName
+        msg := "Pod must specify serviceAccountName"
+    }
+
+    has_network_policy if {
+        # This would be populated by external data provider
+        # checking for NetworkPolicy resources in the namespace
+        data.kubernetes.networkpolicies[input.request.object.metadata.namespace]
+    }
+
+  compliance.rego: |
+    package kubernetes.admission
+
+    import future.keywords.if
+    import future.keywords.in
+
+    # SOX Compliance - Audit logging required
+    deny[msg] if {
+        input.request.kind.kind == "Pod"
+        not has_audit_logging
+        msg := "Pod must enable audit logging for SOX compliance"
+    }
+
+    # GDPR Compliance - Data retention labels required
+    deny[msg] if {
+        input.request.kind.kind == "PersistentVolumeClaim"
+        stores_personal_data
+        not input.request.object.metadata.labels["data-retention-period"]
+        msg := "PVC storing personal data must have data-retention-period label for GDPR compliance"
+    }
+
+    # HIPAA Compliance - Encryption required
+    deny[msg] if {
+        input.request.kind.kind == "Secret"
+        contains_health_data
+        not input.request.object.metadata.annotations["encryption.nova-forge.io/enabled"]
+        msg := "Secret containing health data must be encrypted for HIPAA compliance"
+    }
+
+    has_audit_logging if {
+        input.request.object.metadata.annotations["audit.nova-forge.io/enabled"] == "true"
+    }
+
+    stores_personal_data if {
+        input.request.object.metadata.labels["data-type"] in ["personal", "pii", "customer"]
+    }
+
+    contains_health_data if {
+        input.request.object.metadata.labels["data-type"] in ["health", "medical", "phi"]
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-bundle-server-config
+  namespace: nova-forge-governance
+  labels:
+    app: opa-server
+    component: policy-engine
+data:
+  nginx.conf: |
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                        '$status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for"';
+
+        access_log /var/log/nginx/access.log main;
+        error_log /var/log/nginx/error.log;
+
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 2048;
+
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript application/octet-stream;
+
+        server {
+            listen 8080;
+            server_name localhost;
+
+            location /bundles/ {
+                root /usr/share/nginx/html;
+                autoindex on;
+                autoindex_exact_size off;
+                autoindex_localtime on;
+
+                add_header Cache-Control "no-cache, must-revalidate";
+                add_header Content-Security-Policy "default-src 'self'";
+                add_header X-Frame-Options "DENY";
+                add_header X-Content-Type-Options "nosniff";
+
+                location ~ \.tar\.gz$ {
+                    add_header Content-Type application/gzip;
+                }
+            }
+
+            location /health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+        }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gatekeeper-config
+  namespace: nova-forge-governance
+  labels:
+    app: opa-gatekeeper
+    component: policy-engine
+data:
+  config.yaml: |
+    apiVersion: config.gatekeeper.sh/v1alpha1
+    kind: Config
+    metadata:
+      name: config
+      namespace: nova-forge-governance
+    spec:
+      match:
+        - excludedNamespaces: ["kube-system", "gatekeeper-system", "nova-forge-governance"]
+          processes: ["*"]
+      validation:
+        traces:
+          - user:
+              kind:
+                group: "*"
+                version: "*"
+                kind: "*"
+          - kind:
+              group: "*"
+              version: "*"
+              kind: "*"
+      readiness:
+        statsEnabled: true
+      sync:
+        syncOnly:
+          - group: ""
+            version: "v1"
+            kind: "Namespace"
+          - group: ""
+            version: "v1"
+            kind: "Pod"
+          - group: "apps"
+            version: "v1"
+            kind: "Deployment"
+          - group: "apps"
+            version: "v1"
+            kind: "ReplicaSet"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: opa-server-hpa
+  namespace: nova-forge-governance
+  labels:
+    app: opa-server
+    component: policy-engine
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: opa-server-cluster
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 15
+      - type: Pods
+        value: 2
+        periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+      selectPolicy: Min
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: opa-policy-engine-monitor
+  namespace: nova-forge-governance
+  labels:
+    component: policy-engine
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      component: policy-engine
+  endpoints:
+  - port: http-api
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s

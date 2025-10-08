@@ -1,0 +1,13 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nexgddp
+  namespace: prep
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1beta1
+    kind: Deployment
+    name: nexgddp
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 50

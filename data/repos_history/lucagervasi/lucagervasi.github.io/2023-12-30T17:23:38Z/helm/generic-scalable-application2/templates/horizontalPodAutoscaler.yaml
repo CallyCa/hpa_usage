@@ -1,0 +1,41 @@
+# horizontalPodAutoscaler.yaml
+###################################################################################################
+{{- if gt .Values.maxReplicas .Values.minReplicas }}
+kind: HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+metadata:
+  name: {{ include "name" . | quote }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels: {{- include "labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "name" . | quote }}
+  minReplicas: {{ required "Missing value: minReplicas" .Values.minReplicas }}
+  maxReplicas: {{ required "Missing value: maxReplicas" .Values.maxReplicas }}
+  metrics:
+  {{- range $k, $v := .Values.metrics.resources }}
+  - type: "Resource"
+    resource:
+      name: "{{ $k }}"
+      target:
+        type: "Utilization"
+        averageUtilization: {{ $v }}
+  {{- end }}
+
+
+  {{- range $k, $v := .Values.metrics.pods }}
+  - type: Pods
+    pods:
+      metric:
+        name: {{ $v.metric }}
+      target:
+        type: {{ $v.type  | default "AverageValue" }}
+        {{ $v.verb | default "averageValue" }}: {{ $v.value }}
+  {{- end }}
+  {{- end }}
+{{- end }}
+
+###################################################################################################
+###################################################################################################

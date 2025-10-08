@@ -1,0 +1,57 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-world
+  annotations:
+    flux.weave.works/automated: 'true'
+    flux.weave.works/tag.hello-world: 'glob:master-*'
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: hello-world
+  template:
+    metadata:
+      labels:
+        app: hello-world
+    spec:
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+      - name: hello-world
+        image: mohtar/hello-world:master-b960ef8bdb0a30b5f32cf9735efb27c50c0e00cd
+        args: [poetry, run, python, hello_world/server.py, '80']
+        env:
+        - name: PYTHONUNBUFFERED
+          value: '1'
+        - name: PYTHONPATH
+          value: .
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-world
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: hello-world

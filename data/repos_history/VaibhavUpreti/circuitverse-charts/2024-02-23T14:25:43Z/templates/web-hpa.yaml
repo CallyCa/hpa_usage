@@ -1,0 +1,25 @@
+{{- if .Values.web.hpa.enabled -}}
+apiVersion: {{ .Values.autoscaling.apiVersion }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "circuitverse.fullname" . }}-web-hpa
+  labels:
+    app: {{ template "circuitverse.fullname" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    apiVersion: apps/v1
+    name: {{ template "circuitverse.fullname" . }}-web
+  minReplicas: {{ .Values.web.hpa.minpods }}
+  maxReplicas: {{ .Values.web.hpa.maxpods }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.web.hpa.cputhreshold }}
+{{- end }}

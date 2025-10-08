@@ -1,0 +1,103 @@
+---
+# Source: chat-chart/templates/app/chat-websocket.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: websocket-secret
+  namespace: chat  # Ensure the namespace is correct
+type: Opaque
+data:
+  EXTERNAL_BROKER_CLIENT_LOGIN: Z3Vlc3Q=  # Base64 encoded value for the secret
+  EXTERNAL_BROKER_CLIENT_PASSCODE: Z3Vlc3Q=
+---
+# Source: chat-chart/templates/app/chat-websocket.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: websocket-config
+  namespace: chat  # Ensure this matches the namespace you're using
+data:
+  EXTERNAL_BROKER_HOST: "rabbitmq-service"  # Example config for WebSocket host
+  EXTERNAL_BROKER_PORT: "61613"
+  USE_EXTERNAL_BROKER: "true"
+---
+# Source: chat-chart/templates/app/chat-websocket.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: chat-websocket-service
+  namespace: chat
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080         # Port exposed by the service
+    targetPort: 8080   # Port on the container
+  selector:
+    app: chat-websocket  # Match the pods labeled with app: angular-app
+---
+# Source: chat-chart/templates/app/chat-websocket.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-websocket-deployment
+  labels:
+    app: chat-websocket
+  namespace: chat
+spec:
+  selector:
+    matchLabels:
+      app: chat-websocket
+  template:
+    metadata:
+      labels:
+        app: chat-websocket
+    spec:
+      initContainers:
+      - name: wait-for-rabbitmq
+        image: busybox
+        command: ['sh', '-c', 'until nc -z -v -w30 rabbitmq-service 5672; do echo "Waiting for RabbitMQ..."; sleep 5; done;']
+      containers:
+      - name: chat-websocket
+        image: runaydhaygude/chat-websocket:latest #:amd64  # Replace with your image name
+        imagePullPolicy: Always
+        resources:
+          limits:
+            memory: 150Mi
+            cpu: 0.5
+          requests:
+            memory: 150Mi
+            cpu: 0.5
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: websocket-config # Inject all keys from ConfigMap into environment variables
+        - secretRef:
+            name: websocket-secret  # Inject all keys from Secret into environment variables
+---
+# Source: chat-chart/templates/app/chat-websocket.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: chat-websocket-deployment
+  namespace: chat
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: chat-websocket-deployment
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

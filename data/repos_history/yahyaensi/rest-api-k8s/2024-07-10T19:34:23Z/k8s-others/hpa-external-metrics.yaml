@@ -1,0 +1,26 @@
+kind: HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+metadata:
+  name: rest-api-hpa
+  namespace: rest-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rest-api-deployment
+  minReplicas: 1
+  maxReplicas: 10
+  # targetCPUUtilizationPercentage: 50 => old way to do it
+  metrics:
+  # Using external metrics requires knowledge of your monitoring system; the setup is similar to that required when using custom metrics. 
+  # External metrics allow you to autoscale your cluster based on any metric available in your monitoring system
+  - type: External
+    external:
+    metric:
+      name: queue_messages_ready
+      selector:
+        matchLabels:
+          queue: "worker_tasks"
+    target:
+      type: AverageValue
+      averageValue: 30

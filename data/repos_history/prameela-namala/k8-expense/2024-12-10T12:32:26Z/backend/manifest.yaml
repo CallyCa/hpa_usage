@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend
+  namespace: expense
+data:
+ DB_HOST: mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: expense
+  labels: # these are replicaset lables
+    app: backend
+    tier: api
+    project: expense
+spec:
+  # modify replicas according to your case
+  replicas: 2
+  selector:
+  # these are used to select the pod to create replicas
+    matchLabels:
+      app: backend
+      tier: api
+      project: expense
+  # this is pod definition
+  template:
+    metadata:
+    # these lables belongs to pod
+      labels:
+        tier: api
+        app: backend
+        project: expense
+    spec:
+      containers:
+      - name: backend
+        image: prameela0/backend:v1
+        envFrom:
+        - configMapRef:
+           name: backend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: expense
+spec:
+  selector:
+    tier: api
+    app: backend
+    project: expense
+  ports:
+    - name: backend-port
+      protocol: TCP
+      port: 8080
+      targetPort: 8080 

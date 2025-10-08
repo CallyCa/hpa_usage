@@ -1,0 +1,231 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mscarceller
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: webchat-secrets
+  namespace: mscarceller
+type: Opaque
+data:
+  MONGO_ROOT_USERNAME: YWRtaW4K
+  MONGO_ROOT_PASSWORD: cGFzc3dvcmQK
+  
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: mscarceller
+  labels:
+    app: mongodb
+spec:
+  clusterIP: None
+  selector:
+    app: mongodb
+    
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: mscarceller
+spec:
+  serviceName: mongodb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+        selector: mongodb
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo:4.0.8
+        env:
+          - name: MONGO_INITDB_ROOT_USERNAME_FILE
+            value: /etc/webchat/admin/MONGO_ROOT_USERNAME
+          - name: MONGO_INITDB_ROOT_PASSWORD_FILE
+            value: /etc/webchat/admin/MONGO_ROOT_PASSWORD
+        volumeMounts:
+        - name: webchat-volume
+          mountPath: /etc/webchat
+          readOnly: true
+      volumes:
+      - name: webchat-volume
+        secret:
+          secretName: webchat-secrets
+          items:
+          - key: MONGO_ROOT_USERNAME
+            path: admin/MONGO_ROOT_USERNAME
+            mode: 0444
+          - key: MONGO_ROOT_PASSWORD
+            path: admin/MONGO_ROOT_PASSWORD
+            mode: 0444
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: webchat-ingress
+  namespace: mscarceller
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  rules:
+  - host: webchat-mscarceller.cloud.okteto.net
+    http:
+      paths:
+        - path: /
+          backend:
+            serviceName: webchatfrontservice      
+            servicePort: 8081
+        - path: /chat
+          backend:
+            serviceName: webchat      
+            servicePort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+ namespace: mscarceller
+ name: webchatservice
+spec:
+ type: ClusterIP
+ clusterIP: None
+ selector:
+   app: webchat
+ ports:
+ - name: hz-port-name
+   port: 5701
+   targetPort: 5701
+   protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webchat
+  namespace: mscarceller
+  labels:
+    webchatcluster: "true"
+    app: webchat
+    type: LoadBalancer
+spec:
+  selector:
+    app: webchat
+  type: LoadBalancer
+  ports:
+    - name: websvc-port
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webchatfrontservice
+  namespace: mscarceller
+  labels:
+    webchatcluster: "true"
+    app: webchatfront
+    type: LoadBalancer
+spec:
+  selector:
+    app: webchatfront
+  type: LoadBalancer
+  ports:
+    - name: webchatfront-port
+      protocol: TCP
+      port: 8081
+      targetPort: 8081
+      
+---
+
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: webchat-consumer
+  namespace: mscarceller
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: webchat
+  minReplicas: 2
+  maxReplicas: 2
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: 1
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webchatbackend
+  namespace: mscarceller
+  labels:
+    app: webchat
+  annotations:
+    litmuschaos.io/chaos: "true"
+spec:
+  selector:
+    matchLabels:
+      app: webchat
+  template:
+    metadata:
+      labels:
+        app: webchat
+        component: webchatservice
+    spec:
+      containers:
+      - image: mscarceller/eftgca-backvertx:0.1.0
+        imagePullPolicy: Always
+        name: webchat
+        ports:
+          - name: websvc-port
+            containerPort: 8080
+          - name: hazlecast
+            containerPort: 5701
+        resources:
+          limits:
+            cpu: 500m
+          requests:
+            cpu: 200m
+      terminationGracePeriodSeconds: 60
+
+--- 
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webchatfront
+  namespace: mscarceller
+spec:
+  selector:
+    matchLabels:
+      app: webchatfront
+  template:
+    metadata:
+      labels:
+        app: webchatfront
+    spec:
+      containers:
+        - name: webchatfront
+          image: mscarceller/eftgca-front:0.1.0
+          imagePullPolicy: Always
+          ports:
+          - containerPort: 8081

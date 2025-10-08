@@ -1,0 +1,160 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: workoutreadservice-sa
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workoutreadservice
+  labels:
+    app: workoutreadservice
+    service: workoutreadservice
+spec:
+  selector:
+    app: workoutreadservice
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 5101
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workoutreadservice-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workoutreadservice
+  template:
+    metadata:
+      labels:
+        app: workoutreadservice
+    spec:
+      serviceAccountName: workoutreadservice-sa
+      containers:
+      - name: workoutreadservice
+        image: carlovankessel/wt_staging_workoutreadservice:latest
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "200Mi"
+        ports:
+        - containerPort: 5101
+        env:
+        - name: Database__DatabasConnectionString
+          valueFrom:
+            secretKeyRef:
+              name: workoutread-secret
+              key: Database__DatabasConnectionString
+        - name: APIGateway__APIGatewayUrl
+          valueFrom:
+            secretKeyRef:
+              name: workoutread-secret
+              key: APIGateway__APIGatewayUrl
+        - name: APIGateway__ApiKey
+          valueFrom:
+            secretKeyRef:
+              name: workoutread-secret
+              key: APIGateway__ApiKey
+        - name: Authentication__Schemes__Bearer__Authority
+          valueFrom:
+            secretKeyRef:
+              name: workoutread-secret
+              key: Authentication__Schemes__Bearer__Authority
+        - name: Authentication__Schemes__Bearer__ValidAudiences
+          valueFrom:
+            secretKeyRef:
+              name: workoutread-secret
+              key: Authentication__Schemes__Bearer__ValidAudiences
+        - name: Authentication__Schemes__Bearer__ValidAudiences__1
+          valueFrom:
+            secretKeyRef:
+              name: workoutread-secret
+              key: Authentication__Schemes__Bearer__ValidAudiences__1
+        - name: Authentication__Schemes__Bearer__ValidIssuer
+          valueFrom:
+            secretKeyRef:
+              name: workoutread-secret
+              key: Authentication__Schemes__Bearer__ValidIssuer
+        - name: ASPNETCORE_URLS
+          valueFrom:
+            secretKeyRef:
+              name: workoutread-secret
+              key: ASPNETCORE_URLS
+        - name: ASPNETCORE_ENVIRONMENT
+          valueFrom:
+            secretKeyRef:
+              name: workoutread-secret
+              key: ASPNETCORE_ENVIRONMENT
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: workoutreadservice-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: workoutreadservice-deployment
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workoutreaddatabase
+spec:
+  selector:
+    app: workoutreaddatabase
+  ports:
+    - port: 5432
+      targetPort: readdb-port
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workoutreaddatabase-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workoutreaddatabase
+  template:
+    metadata:
+      labels:
+        app: workoutreaddatabase
+    spec:
+      containers:
+      - name: workoutreaddatabase
+        image: postgres:latest
+        args:
+        - "-c"
+        - "max_connections=1000"
+        ports:
+        - containerPort: 5432
+          name: readdb-port
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: workoutread-database-secret
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: workoutread-database-secret
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: workoutread-database-secret
+              key: POSTGRES_DB

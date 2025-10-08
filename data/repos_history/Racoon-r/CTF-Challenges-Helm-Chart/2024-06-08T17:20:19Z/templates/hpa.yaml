@@ -1,0 +1,32 @@
+{{- if .Values.challenge.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "challenge.name" . }}
+  labels:
+    {{- include "challenge.labels.standard" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "challenge.name" . }}
+  minReplicas: {{ .Values.challenge.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.challenge.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.challenge.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.challenge.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.challenge.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.challenge.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

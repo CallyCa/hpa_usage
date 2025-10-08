@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: ${APPLICATION_NAME}-${APPLICATION_VERSION}-${ENV}
+objects:
+- apiVersion: autoscaling/v1
+  kind: HorizontalPodAutoscaler
+  metadata:
+    labels:
+      application: ${APPLICATION_NAME}-${ENV}
+      version: ${APPLICATION_VERSION}
+      app: ${APPLICATION_NAME}-${ENV}
+    name: ${APPLICATION_NAME}-${APPLICATION_VERSION}-${ENV}
+  spec:
+    maxReplicas: "${{REPLICAS}}"
+    minReplicas: 5
+    scaleTargetRef:
+      apiVersion: v1
+      kind: DeploymentConfig
+      name: ${APPLICATION_NAME}-${APPLICATION_VERSION}-${ENV}
+    targetCPUUtilizationPercentage: "${{CPU_UTILIZATION}}"
+parameters:
+- displayName: Application name
+  name: APPLICATION_NAME
+  required: true
+- displayName: Application version
+  name: APPLICATION_VERSION
+  required: true
+- displayName: Environment name
+  name: ENV
+  required: true
+- displayName: Max number of Replicas (default 5)
+  name: REPLICAS
+  required: true
+  value: "5"
+- displayName: CPU Utilization (default 400)
+  name: CPU_UTILIZATION
+  required: true
+  value: "400"

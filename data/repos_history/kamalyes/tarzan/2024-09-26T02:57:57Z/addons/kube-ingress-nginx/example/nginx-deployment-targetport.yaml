@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-example  # 创建命名空间 kube-example
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: kube-example  # 更新为 kube-example 命名空间
+  name: tgp-nginx
+  labels:
+    app: tgp-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tgp-nginx
+  template:
+    metadata:
+      labels:
+        app: tgp-nginx
+    spec:
+      containers:
+      - name: tgp-nginx
+        image: {{ADDONS_IMAGE_REPOSITORY}}/nginx:1.25.2-alpine3.18-slim  # 使用 Nginx 镜像
+        ports:
+        - containerPort: 80  # Nginx 默认端口
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "600Mi"
+          limits: 
+            cpu: "500m"
+            memory: "1024Mi" 
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: kube-example  # 更新为 kube-example 命名空间
+  name: tgp-nginx-svc
+spec:
+  selector:
+    app: tgp-nginx
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tgp-nginx-hpa-c
+  namespace: kube-example
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tgp-nginx
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: 80
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tgp-nginx-hpa-m
+  namespace: kube-example
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tgp-nginx
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: 80

@@ -1,0 +1,18 @@
+gitlab:
+  gitlabRootPassword: "12345Got"
+  webservice:
+    enabled: true
+  postgresql:
+    enable: true
+  redis:
+    enable: true
+
+hostname: "gitlab.k8s.djabjo.ru"
+
+externalUrl: "http://gitlab.k8s.djabjo.ru"
+
+persistence:
+  enabled: false
+
+smtp:
+  enabled: false

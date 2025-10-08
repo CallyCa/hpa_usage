@@ -1,0 +1,95 @@
+# Copyright 2018 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: tensorflow-serving
+  name: tensorflow-serving-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tensorflow-serving
+  template:
+    metadata:
+      labels:
+        app: tensorflow-serving
+    spec:
+      containers:
+      - name: tensorflow-serving-container
+        image: gcr.io/vishnuk-cloud/tf-serving:1.9-gpu-minimal
+        command:
+          - /usr/local/bin/tensorflow_model_server
+        args:
+          - --port=9000
+          - --model_name=inception
+          - --model_base_path=gs://vishh/tensorflow/inception/
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - |
+              from grpc.beta import implementations
+              from tensorflow_serving.apis import model_pb2
+              from tensorflow_serving.apis import prediction_service_pb2
+              from tensorflow_serving.apis import get_model_metadata_pb2
+              mreq = get_model_metadata_pb2.GetModelMetadataRequest()
+              mreq.model_spec.name = 'inception'
+              mreq.metadata_field.append('signature_def')
+              channel = implementations.insecure_channel('localhost', int(9000))
+              stub = prediction_service_pb2.beta_create_PredictionService_stub(channel)
+              print(stub.GetModelMetadata(mreq, 10.0))
+        ports:
+        - containerPort: 9000
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tf-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tensorflow-serving-deployment
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - external:  
+      metricName: container.googleapis.com|container|accelerator|duty_cycle
+      targetAverageValue: 20
+      metricSelector:
+        matchLabels:
+          metadata.user_labels.app: tensorflow-serving
+          resource.labels.container_name: tensorflow-serving-container
+    type: External
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: tensorflow-service
+  name: tensorflow-service
+spec:
+  ports:
+  - port: 9000
+    targetPort: 9000
+  selector:
+    app: tensorflow-serving
+

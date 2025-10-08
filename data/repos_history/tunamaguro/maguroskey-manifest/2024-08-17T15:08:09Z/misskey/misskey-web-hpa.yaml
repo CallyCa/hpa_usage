@@ -1,0 +1,26 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: misskey-web-hpa
+  namespace: maguroskey
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: misskey-web
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          # 個人用なので多少詰まることを許容
+          type: Utilization
+          averageUtilization: 95
+  behavior:
+    scaleUp:
+      policies:
+        - periodSeconds: 60
+          type: Percent
+          value: 100

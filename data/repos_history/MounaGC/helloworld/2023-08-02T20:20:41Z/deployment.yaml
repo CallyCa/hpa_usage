@@ -1,0 +1,182 @@
+# Deployment to deploy helloworld application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-world
+  namespace: hello-world
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-world
+  template:
+    metadata:
+      labels:
+        app: hello-world
+    spec:
+      serviceAccountName: hello-world
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        kubernetes.io/os: linux
+      containers:
+        - name: hello-world
+          image: "wspdevglobalacr.azurecr.io/helloworld:v0.0.1"
+          imagePullPolicy: Always
+          command: [dotnet]
+          args: [HelloWorld.dll]
+          ports:
+            - name: web
+              containerPort: 5008              
+          resources: # CPU and memory limits for the application
+            limits:
+              cpu: 200m
+              memory: 1Gi
+            requests:
+              cpu: 200m
+              memory: 1Gi
+          livenessProbe: # Liveness probe to check the container health/ restart if probe fails
+            httpGet:
+              path: /status/connect
+              port: 5008
+            initialDelaySeconds: 1
+            timeoutSeconds: 2
+            periodSeconds: 2
+            failureThreshold: 5
+          readinessProbe: # Readiness probe for containers to wait to serve the traffic 
+            httpGet:
+              path: /status/connect
+              port: 5008
+            initialDelaySeconds: 1
+            timeoutSeconds: 2
+            periodSeconds: 2
+            failureThreshold: 5 
+
+---
+# Ingress configuration for helloworld
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_ssl_name "hello-world.hello-world.cluster.local";
+    nginx.ingress.kubernetes.io/proxy-ssl-secret: "kube-system/osm-nginx-client-cert"
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "on"
+  name: hello-world
+  namespace: hello-world
+  labels:
+    app: hello-world
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: "hellowrold.c001.eastus2.dev.cloud.com"
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: hello-world
+            port: 
+              number: 80
+  tls:
+  - secretName: ingress-certificate
+    hosts:
+      - hellowrold.w57g.eastus2.dev.cloud.com
+
+---
+#Create namespace for hello world application
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: hello-world
+  labels:
+    name: hello-world
+    app: hello-world
+
+---
+#Create ServiceAccount for hello world application
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hello-world
+  namespace: hello-world
+
+---
+# Create Service for hello world application
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-world
+  namespace: hello-world
+  labels:
+    app: hello-world
+    version: v1
+spec:
+  type: LoadBalancer 
+  ports:
+    - port: 80
+      name: rest
+      targetPort: 5008
+  selector:
+    app: hello-world
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hello-world
+  namespace: hello-world
+  labels:
+    app: hello-world
+spec:
+  scaleTargetRef: 
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hello-world
+  minReplicas: 2
+  maxReplicas: 10
+  metrics: # Metrics to scale based on the CPU and memory utilization
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 60
+---
+# Source: skeleton-bones/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: skeleton-bones-policy
+  labels:
+    app.kubernetes.io/name: "skeleton-bones"
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/release: "skeleton-bones"
+    helm.sh/chart: "skeleton-bones-0.1.583"
+  namespace: skeleton-bones
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/release: "skeleton-bones"
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: customer-decommissioning
+    ports:
+      - port: 3001
+        protocol: TCP
+  - ports:
+    - port: 80
+      protocol: TCP
+    - port: 8080
+      protocol: TCP

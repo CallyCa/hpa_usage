@@ -1,0 +1,46 @@
+{{- if .Values.egress.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "rtc-egress.fullname" . }}-egress
+  labels:
+    {{- include "rtc-egress.labels" . | nindent 4 }}
+    app.kubernetes.io/component: egress
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "rtc-egress.fullname" . }}-egress
+  minReplicas: {{ .Values.egress.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.egress.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.egress.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.egress.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.egress.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.egress.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.egress.autoscaling.redis.enabled }}
+    # Scale based on Redis queue length
+    - type: External
+      external:
+        metric:
+          name: redis_queue_length
+          selector:
+            matchLabels:
+              queue: "{{ .Values.egress.autoscaling.redis.queueName }}"
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.egress.autoscaling.redis.targetQueueLength | quote }}
+    {{- end }}
+{{- end }}

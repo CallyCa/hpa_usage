@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: result
+  name: result
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: result
+  template:
+    metadata:
+      labels:
+        app: result
+    spec:
+      containers:
+        - image: lyzhang1999/result:env
+          name: result
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "500m"
+            limits:
+              memory: "1280Mi"
+              cpu: "1000m"
+          ports:
+            - containerPort: 80
+              name: result
+          readinessProbe:
+            httpGet:
+              port: 80
+              path: /healthz
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              port: 80
+              path: /healthz
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          # mount the secret as .env file, .env file name is secret key
+          volumeMounts:
+            - name: result-db-secret
+              mountPath: /app/.env
+              # 避免容器内 /app 目录下所有的文件被覆盖
+              subPath: .env
+              readOnly: true
+      # Add the db secret volumes
+      volumes:
+        - name: result-db-secret
+          secret:
+            secretName: result-db-secret
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: result
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: result
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 60

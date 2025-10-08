@@ -1,0 +1,75 @@
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: frontend
+  namespace: default
+  labels:
+    run: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      run: frontend
+  template:
+    metadata:
+      labels:
+        run: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: gcr.io/antony999k/colibri_frontend:1.2.4
+          ports:
+            - containerPort: 80
+              protocol: TCP
+
+---
+
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: backend-user
+  namespace: default
+  labels:
+    run: backend-user
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      run: backend-user
+  template:
+    metadata:
+      labels:
+        run: backend-user
+    spec:
+      containers:
+        - name: backend-user
+          image: gcr.io/antony999k/colibri_users:1.2
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+
+---
+
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: backend-posts
+  namespace: default
+  labels:
+    run: backend-posts
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      run: backend-posts
+  template:
+    metadata:
+      labels:
+        run: backend-posts
+    spec:
+      containers:
+        - name: backend-posts
+          image: gcr.io/antony999k/colibri_posts:1
+          ports:
+            - containerPort: 8001
+              protocol: TCP

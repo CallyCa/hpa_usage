@@ -1,0 +1,556 @@
+kind: HorizontalPodAutoscaler
+apiVersion: autoscaling/v2beta2
+metadata:
+  name: worker-hpa
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: worker-deploy
+    apiVersion: apps/v1
+  minReplicas: 2
+  maxReplicas: 22
+  metrics:
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 50
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hasher-cm
+data:
+  hasher.rb: |
+    require 'digest'
+    require 'sinatra'
+    require 'socket'
+    set :bind, '0.0.0.0'
+    set :port, 8080
+    post '/' do
+        # Simulate a bit of delay
+        sleep 0.1
+        content_type 'text/plain'
+        "#{Digest::SHA2.new().update(request.body.read)}"
+    end
+    get '/' do
+        "HASHER running on #{Socket.gethostname}\n"
+    end
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rng-cm
+data:
+  rng.py: |
+    from flask import Flask, Response
+    import os
+    import socket
+    import time
+    app = Flask(__name__)
+    # Enable debugging if the DEBUG environment variable is set and starts with Y
+    app.debug = os.environ.get("DEBUG", "").lower().startswith('y')
+    hostname = socket.gethostname()
+    urandom = os.open("/dev/urandom", os.O_RDONLY)
+    @app.route("/")
+    def index():
+        return "RNG running on {}\n".format(hostname)
+    @app.route("/<int:how_many_bytes>")
+    def rng(how_many_bytes):
+        # Simulate a little bit of delay
+        time.sleep(0.1)
+        return Response(
+            os.read(urandom, how_many_bytes),
+            content_type="application/octet-stream")
+    if __name__ == "__main__":
+        app.run(host="0.0.0.0", port=8080)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webui-cm-1-1
+data:
+  webui.js: |
+    var express = require('express');
+    var app = express();
+    var redis = require('redis');
+    var client = redis.createClient(6379, 'redis-1-1');
+    client.on("error", function (err) {
+        console.error("Redis error", err);
+    });
+    app.get('/', function (req, res) {
+        res.redirect('/index.html');
+    });
+    app.get('/json', function (req, res) {
+        client.hlen('wallet', function (err, coins) {
+            client.get('hashes', function (err, hashes) {
+                var now = Date.now() / 1000;
+                res.json( {
+                    coins: coins,
+                    hashes: hashes,
+                    now: now
+                });
+            });
+        });
+    });
+    app.use(express.static('files'));
+    var server = app.listen(8080, function () {
+        console.log('WEBUI running on port 8080');
+    });
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: worker-cm-1-1
+data:
+  worker.py: |
+    import logging
+    import os
+    from redis import Redis
+    import requests
+    import time
+    DEBUG = os.environ.get("DEBUG", "").lower().startswith("y")
+    log = logging.getLogger(__name__)
+    if DEBUG:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+        logging.getLogger("requests").setLevel(logging.WARNING)
+    redis = Redis("redis-1-1")
+    def get_random_bytes():
+        # Se mantiene puerto 80 para el service
+        r = requests.get("http://rng/32")
+        return r.content
+    def hash_bytes(data):
+        r = requests.post("http://hasher/",
+                          data=data,
+                          headers={"Content-Type": "application/octet-stream"})
+        hex_hash = r.text
+        return hex_hash
+    def work_loop(interval=1):
+        deadline = 0
+        loops_done = 0
+        while True:
+            if time.time() > deadline:
+                log.info("{} units of work done, updating hash counter"
+                         .format(loops_done))
+                redis.incrby("hashes", loops_done)
+                loops_done = 0
+                deadline = time.time() + interval
+            work_once()
+            loops_done += 1
+    def work_once():
+        log.debug("Doing one unit of work")
+        time.sleep(0.01)
+        random_bytes = get_random_bytes()
+        hex_hash = hash_bytes(random_bytes)
+        if not hex_hash.startswith('0'):
+            log.debug("No coin found")
+            return
+        log.info("Coin found: {}...".format(hex_hash[:8]))
+        created = redis.hset("wallet", hex_hash, random_bytes)
+        if not created:
+            log.info("We already had that coin")
+    if __name__ == "__main__":
+        while True:
+            try:
+                work_loop()
+            except:
+                log.exception("In work loop:")
+                log.error("Waiting 1s and restarting.")
+                time.sleep(1)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hasher-deploy
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hasher
+      env: production
+      tier: backend
+      version-dockercoins: "1.0"
+      version-hasher: "0.1"
+  template:
+    metadata:
+      labels:
+        app: hasher
+        env: production
+        tier: backend
+        version-dockercoins: "1.0"
+        version-hasher: "0.1"
+    spec:
+      imagePullSecrets:
+        - name: docker-academiaonline
+      containers:
+        - 
+          args:
+            - hasher.rb
+          command:
+            - ruby
+          image: academiaonline/dockercoins-hasher:0.1
+          name: hasher-container
+          ports:
+            - 
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            -
+              mountPath: /src/hasher.rb
+              name: hasher-volume
+              readOnly: true
+              subPath: hasher.rb
+          workingDir: /src/
+      volumes:
+        -
+          configMap:
+            defaultMode: 0400
+            items:
+              -
+                key: hasher.rb
+                mode: 0400
+                path: hasher.rb
+            name: hasher-cm
+          name: hasher-volume
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: rng-ds
+spec:
+  selector:
+    matchLabels:
+      app: rng
+      env: production
+      tier: backend
+      version-dockercoins: "1.0"
+      version-rng: "0.1"
+  template:
+    metadata:
+      labels:
+        app: rng
+        env: production
+        tier: backend
+        version-dockercoins: "1.0"
+        version-rng: "0.1"
+    spec:
+      imagePullSecrets:
+        - name: docker-academiaonline
+      containers:
+        - 
+          args:
+            - rng.py
+          command:
+            - python
+          image: academiaonline/dockercoins-rng:0.1
+          name: rng-container
+          ports:
+            - 
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            -
+              mountPath: /src/rng.py
+              name: rng-volume
+              readOnly: true
+              subPath: rng.py
+          workingDir: /src/
+      volumes:
+        -
+          configMap:
+            defaultMode: 0400
+            items:
+              -
+                key: rng.py
+                mode: 0400
+                path: rng.py
+            name: rng-cm
+          name: rng-volume
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webui-deploy
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: webui
+      env: production
+      tier: frontend
+      version-dockercoins: "1.0"
+      version-webui: "2.0"
+  template:
+    metadata:
+      labels:
+        app: webui
+        env: production
+        tier: frontend
+        version-dockercoins: "1.0"
+        version-webui: "2.0"
+    spec:
+      imagePullSecrets:
+        - name: santander      
+      containers:
+        - 
+          args:
+            - webui.js
+          command:
+            - node
+          image: academiaonline/dockercoins-webui:2.0
+          name: webui-container
+          ports:
+            - 
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            -
+              mountPath: /src/files/
+              name: webui-files
+              readOnly: true
+            -
+              mountPath: /src/webui.js
+              name: webui-volume
+              readOnly: true
+              subPath: webui.js
+          workingDir: /src/
+      initContainers:
+        -
+          args:
+            - set -x ; git clone -b dockercoins-1.1 --single-branch https://github.com/cchillida/dockercoins ; cp -rv dockercoins/webui/files/* /src/files/
+          command:
+            - sh
+            - -c
+          image: bitnami/git:latest
+          name: webui-git
+          volumeMounts:
+            -
+              mountPath: /downloads/
+              name: webui-downloads
+              readOnly: false
+            -
+              mountPath: /src/files/
+              name: webui-files
+              readOnly: false
+          workingDir: /downloads/
+      volumes:
+        -
+          configMap:
+            defaultMode: 0400
+            items:
+              -
+                key: webui.js
+                mode: 0400
+                path: webui.js
+            name: webui-cm-1-1
+          name: webui-volume
+        -
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+          name: webui-downloads
+        -
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+          name: webui-files
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-deploy-1-1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: worker
+      env: production
+      tier: backend
+      version-dockercoins: "1.1"
+      version-worker: "0.2"
+  template:
+    metadata:
+      labels:
+        app: worker
+        env: production
+        tier: backend
+        version-dockercoins: "1.1"
+        version-worker: "0.2"
+    spec:
+      imagePullSecrets:
+        - name: docker-academiaonline
+      containers:
+        - 
+          args:
+            - worker.py
+          command:
+            - python
+          image: academiaonline/dockercoins-worker:0.2
+          name: worker-container
+          ports:
+            - 
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            limits:
+              memory: 30Mi
+            requests:
+              memory: 20Mi
+          volumeMounts:
+            -
+              mountPath: /src/worker.py
+              name: worker-volume
+              readOnly: true
+              subPath: worker.py
+          workingDir: /src/
+      volumes:
+        -
+          configMap:
+            defaultMode: 0400
+            items:
+              -
+                key: worker.py
+                mode: 0400
+                path: worker.py
+            name: worker-cm-1-1
+          name: worker-volume
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: webui-route
+spec:
+  to:
+    kind: Service
+    name: webui
+  port:
+    targetPort: 8080
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-sts-1-1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+      env: production
+      tier: database
+      version-dockercoins: "1.1"
+      version-redis: "latest"
+  template:
+    metadata:
+      labels:
+        app: redis
+        env: production
+        tier: database
+        version-dockercoins: "1.1"
+        version-redis: "latest"
+    spec:
+      imagePullSecrets:
+        - name: docker-academiaonline
+      containers:
+        - 
+          args:
+            - redis-server
+          command:
+            - docker-entrypoint.sh
+          image: library/redis:latest
+          name: redis-container
+          ports:
+            - 
+              containerPort: 6379
+              protocol: TCP
+          volumeMounts:
+            -
+              mountPath: /data/
+              name: redis-volume
+              readOnly: false
+          workingDir: /data/
+  volumeClaimTemplates:
+    - 
+      metadata:
+        name: redis-volume
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: gp2
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-1-1
+spec:
+  ports:
+    -
+      port: 6379
+      protocol: TCP
+      targetPort: 6379
+  selector:
+    app: redis
+    env: production
+    tier: database
+    version-dockercoins: "1.1"
+    version-redis: "latest"
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rng
+spec:
+  ports:
+    -
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: rng
+    env: production
+    tier: backend
+    version-dockercoins: "1.0"
+    version-rng: "0.1"
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hasher
+spec:
+  ports:
+    -
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: hasher
+    env: production
+    tier: backend
+    version-dockercoins: "1.0"
+    version-hasher: "0.1"
+  type: ClusterIP  
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webui
+spec:
+  ports:
+    -
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: webui
+    env: production
+    tier: frontend
+    version-dockercoins: "1.0"
+    version-webui: "2.0"
+  type: ClusterIP  

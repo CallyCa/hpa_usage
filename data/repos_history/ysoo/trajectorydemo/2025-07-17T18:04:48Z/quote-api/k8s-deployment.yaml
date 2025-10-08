@@ -1,0 +1,216 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: quote-api
+  labels:
+    name: quote-api
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: quote-api-config
+  namespace: quote-api
+data:
+  PORT: "8080"
+  NODE_ENV: "production"
+  TICK_MS: "500"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: quote-api-secret
+  namespace: quote-api
+type: Opaque
+data:
+  # Base64 encoded Redis connection string for Azure Redis Cache
+  # Example format: redis://:<password>@<redis-name>.redis.cache.windows.net:6380/0?ssl=true
+  # To encode: echo -n "your-azure-redis-connection-string" | base64
+  REDIS_CONNECTION_STRING: <BASE64_ENCODED_AZURE_REDIS_CONNECTION_STRING>
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quote-api
+  namespace: quote-api
+  labels:
+    app: quote-api
+    version: v1.0.0
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: quote-api
+  template:
+    metadata:
+      labels:
+        app: quote-api
+        version: v1.0.0
+    spec:
+      containers:
+      - name: quote-api
+        image: <YOUR_ACR_LOGIN_SERVER>/quote-api:latest  # Replace with your ACR image
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: quote-api-config
+              key: PORT
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: quote-api-config
+              key: NODE_ENV
+        - name: TICK_MS
+          valueFrom:
+            configMapKeyRef:
+              name: quote-api-config
+              key: TICK_MS
+        - name: REDIS_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: quote-api-secret
+              key: REDIS_CONNECTION_STRING
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+          successThreshold: 1
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        fsGroup: 1000
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quote-api-service
+  namespace: quote-api
+  labels:
+    app: quote-api
+    version: v1.0.0
+spec:
+  selector:
+    app: quote-api
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
+
+---
+# External LoadBalancer service for client access
+apiVersion: v1
+kind: Service
+metadata:
+  name: quote-api-external
+  namespace: quote-api
+  labels:
+    app: quote-api
+    version: v1.0.0
+spec:
+  selector:
+    app: quote-api
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  type: LoadBalancer
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: quote-api-hpa
+  namespace: quote-api
+  labels:
+    app: quote-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: quote-api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: quote-api-pdb
+  namespace: quote-api
+  labels:
+    app: quote-api
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: quote-api 

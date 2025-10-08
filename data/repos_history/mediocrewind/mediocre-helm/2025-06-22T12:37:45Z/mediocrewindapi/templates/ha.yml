@@ -1,0 +1,34 @@
+{{- if .Values.HorizontalPodAutoscaler.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "mediocrewindapi.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "mediocrewindapi.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "mediocrewindapi.fullname" . }}
+  minReplicas: {{ .Values.HorizontalPodAutoscaler.spec.minReplicas }}
+  maxReplicas: {{ .Values.HorizontalPodAutoscaler.spec.maxReplicas }}
+  metrics:
+    {{- if .Values.HorizontalPodAutoscaler.spec.metrics.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.HorizontalPodAutoscaler.spec.metrics.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.HorizontalPodAutoscaler.spec.metrics.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.HorizontalPodAutoscaler.spec.metrics.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

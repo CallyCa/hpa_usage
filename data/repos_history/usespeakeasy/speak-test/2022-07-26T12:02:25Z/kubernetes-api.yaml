@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    labels:
+        app: speak-api-test
+    name: speak-api-test
+spec:
+    selector:
+        matchLabels:
+            app: speak-api-test
+    strategy:
+        rollingUpdate:
+            maxSurge: 25%
+            maxUnavailable: 25%
+        type: RollingUpdate
+    template:
+        metadata:
+            labels:
+                app: speak-api-test
+        spec:
+            containers:
+                - name: speak-api-test-1
+                  image: gcr.io/{{PROJECT_ID}}/speak-api-test
+                  imagePullPolicy: IfNotPresent
+                  resources:
+                      requests:
+                          cpu: 1000m
+                          memory: 1024Mi
+                      limits:
+                          cpu: 1000m
+                          memory: 1024Mi
+                  startupProbe:
+                      httpGet:
+                          path: /_startup
+                          port: 8080
+                      initialDelaySeconds: 15
+                      periodSeconds: 10
+                      failureThreshold: 5
+                  livenessProbe:
+                      httpGet:
+                          path: /_health
+                          port: 8080
+                      initialDelaySeconds: 15
+                      timeoutSeconds: 10
+                      periodSeconds: 10
+                      successThreshold: 1
+                      failureThreshold: 3
+                  readinessProbe:
+                      httpGet:
+                          path: /_health
+                          port: 8080
+                      initialDelaySeconds: 15
+                      timeoutSeconds: 10
+                      periodSeconds: 10
+                      successThreshold: 1
+                      failureThreshold: 3
+                  securityContext:
+                      capabilities:
+                          drop:
+                              - NET_RAW
+            securityContext:
+                seccompProfile:
+                    type: RuntimeDefault
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+    labels:
+        app: speak-api-test
+    name: speak-api-test-hpa-hktn
+spec:
+    minReplicas: 2
+    maxReplicas: 200
+    scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: speak-api-test
+    metrics:
+        - type: Resource
+          resource:
+              name: cpu
+              target:
+                  type: Utilization
+                  averageUtilization: 50

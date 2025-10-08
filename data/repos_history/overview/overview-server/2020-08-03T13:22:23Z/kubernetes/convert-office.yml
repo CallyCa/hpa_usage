@@ -1,0 +1,43 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: convert-office-deployment
+spec:
+  selector:
+    matchLabels:
+      app: convert-office
+  replicas: 1
+  revisionHistoryLimit: 20
+  template:
+    metadata:
+      labels:
+        app: convert-office
+    spec:
+      containers:
+      - name: convert-office
+        image: CONVERT_OFFICE_IMAGE
+        env:
+        - name: POLL_URL
+          value: http://overview-worker:9032/Office
+        resources:
+          requests:
+            cpu: 50m
+            memory: 50Mi
+          limits:
+            cpu: 1
+            memory: 500Mi # total guess
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: convert-office
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: convert-office-deployment
+  minReplicas: 1
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 50

@@ -1,0 +1,64 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: example-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/Sarang095/kube-manifests.git'
+    targetRevision: main
+    path: ./kube-manifests
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: your-namespace
+  syncPolicy:
+    automated:
+      prune: true              # Automatically delete resources not in Git
+      selfHeal: true            # Detect and revert out-of-sync states
+    syncOptions:
+      - CreateNamespace=true    # Automatically create namespace if it doesn't exist
+      - Validate=false          # Validate resource manifests during sync
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas       # Ignore replica changes
+
+  # GitOps practices for scalability and resilience
+  revisionHistoryLimit: 5       # Limit rollback history to save resources
+  info:
+    - name: owner
+      value: 'DevOps Team'
+    - name: environment
+      value: 'production'
+
+  # Compliance & Security Policies
+  metadata:
+    labels:
+      environment: production
+    annotations:
+      argocd.argoproj.io/compare-options: IgnoreExtraneous
+  retryStrategy:
+    limit: 5                     # Retry on errors
+    backoff:
+      duration: '5s'
+      factor: 2
+      maxDuration: '3m'
+
+# Additional scalability practices
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: argocd-server
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+

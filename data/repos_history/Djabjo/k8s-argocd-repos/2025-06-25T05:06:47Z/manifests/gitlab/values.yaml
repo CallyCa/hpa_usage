@@ -1,0 +1,118 @@
+global:
+  # Обязательные настройки для GitLab
+  application:
+    create: true
+  common:
+    labels: {}
+  image:
+    tagSuffix: ""
+  
+  # Настройки начального пароля администратора
+  initialRootPassword:
+    secret: gitlab-initial-root-password
+    key: password
+  
+  # Настройки PostgreSQL
+  psql:
+    host: ""
+    password:
+      secret: gitlab-postgres
+      key: password
+  
+  # Упрощенная настройка Redis
+  redis:
+    password:
+      enabled: false
+
+  # Отключение ненужных компонентов
+  ingress:
+    configureCertmanager: false
+    enabled: false
+  minio:
+    enabled: false
+  certmanager:
+    install: false
+    installCRDs: false
+
+# Настройки GitLab
+gitlab:
+  common:
+    labels: {}
+
+  # Настройка пароля администратора
+  initialRootPassword: {}
+  
+  webservice:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 1
+        memory: 2Gi
+    image: {}
+  
+  sidekiq:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 300m
+        memory: 1Gi
+      limits:
+        cpu: 1
+        memory: 2Gi
+  
+  gitlab-shell:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+# Отключение дополнительных компонентов
+gitlab-runner:
+  install: false
+
+registry:
+  enabled: false
+
+prometheus:
+  install: false
+grafana:
+  install: false
+
+# Встроенная PostgreSQL
+postgresql:
+  enabled: true
+  image:
+    tag: "13.6"
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  auth:
+    password: ""
+
+# Встроенный Redis
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 200m
+        memory: 512Mi

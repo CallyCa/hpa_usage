@@ -1,0 +1,186 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cnpg-reader
+rules:
+- apiGroups: ["postgresql.cnpg.io"]
+  resources: ["clusters"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: [""]
+  resources: ["services", "pods"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cnpg-reader-binding
+subjects:
+- kind: ServiceAccount
+  name: default
+roleRef:
+  kind: Role
+  name: cnpg-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server
+spec:
+  replicas: 1 # TODO: Change to 3 after development
+  selector:
+    matchLabels:
+      app: server
+  template:
+    metadata:
+      labels:
+        app: server
+    spec:
+      initContainers:
+        - name: wait-for-k8s
+          image: bitnami/kubectl
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for CNPG cluster to be ready..."
+              until kubectl get cluster pg-cluster -o jsonpath='{.status.phase}' | grep -q "Cluster in healthy state"; do
+                echo "Waiting for cluster to be healthy..."
+                sleep 5
+              done
+              
+              # Verify primary is available
+              PRIMARY_HOST="pg-cluster-rw"
+              until kubectl get svc $PRIMARY_HOST; do
+                echo "Waiting for primary service to be available..."
+                sleep 5
+              done
+              
+              # until kubectl get pods -l app=pg-cluster -o jsonpath='{.items[*].status.containerStatuses[*].ready}' | grep -q "true"; do
+              #   echo "Waiting for primary pod to be ready..."
+              #   sleep 5
+              # done
+              
+              echo "Kubernetes checks completed!"
+          
+        - name: wait-for-db
+          image: bitnami/postgresql
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pinguser-secret
+                  key: password
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: pinguser-secret
+                  key: username
+          command:
+            - /bin/sh
+            - -c
+            - |
+              PRIMARY_HOST="pg-cluster-rw"
+              until psql -h $PRIMARY_HOST -d pingdb -c '\l'; do
+                echo "Waiting for primary database to accept connections..."
+                sleep 5
+              done
+              
+              echo "PostgreSQL checks completed!"
+        - name: migrations
+          image: server
+          command: ["/app/server"]
+          args: ["-migrate-only"]
+          env:
+            - name: DB_HOST
+              value: pg-cluster-rw
+            - name: DB_NAME
+              value: pingdb
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: pinguser-secret
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pinguser-secret
+                  key: password
+      containers:
+        - name: server
+          image: server
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_HOST
+              value: pg-cluster-rw
+            - name: DB_NAME
+              value: pingdb
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: pinguser-secret
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pinguser-secret
+                  key: password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: server
+spec:
+  type: ClusterIP
+  selector:
+    app: server
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: server-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: server
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

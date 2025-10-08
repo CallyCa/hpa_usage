@@ -1,0 +1,16 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: shorturl
+  namespace: shorturl
+  labels:
+    app: shorturl
+    env: base
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: shorturl
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70

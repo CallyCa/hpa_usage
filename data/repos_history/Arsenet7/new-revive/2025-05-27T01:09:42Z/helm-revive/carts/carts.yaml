@@ -1,0 +1,343 @@
+NAME: cart
+LAST DEPLOYED: Wed Nov 20 11:25:02 2024
+NAMESPACE: default
+STATUS: pending-install
+REVISION: 1
+HOOKS:
+---
+# Source: cart/templates/tests/test-connection.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "cart-test-connection"
+  labels:
+    app.kubernetes.io/name: cart
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['cart:8080']
+  restartPolicy: Never
+MANIFEST:
+---
+# Source: cart/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cart-service-account
+---
+# Source: cart/templates/serviceaccountdb.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cart-db-service-account
+---
+# Source: cart/templates/serviceaccountmq.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rabbitmq-service-account
+---
+# Source: cart/templates/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cart-secret
+type: Opaque
+data:
+  AWS_ACCESS_KEY_ID: QUtJQVRQQzRRVUVXT0c0VklWQzQ=
+  AWS_SECRET_ACCESS_KEY: WnlmczZhWW5JellGT3RFc3Q1TFZhb2hvdlhuZWo2RVd1eFVoK0daOQ==
+---
+# Source: cart/templates/secretdb.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cart-db-secret
+type: Opaque
+data:
+  AWS_ACCESS_KEY_ID: QUtJQVRQQzRRVUVXT0c0VklWQzQ=
+  AWS_SECRET_ACCESS_KEY: WnlmczZhWW5JellGT3RFc3Q1TFZhb2hvdlhuZWo2RVd1eFVoK0daOQ==
+  SPRING_DATASOURCE_READER_PASSWORD: b3JkZXJzX3Bhc3M=
+  SPRING_DATASOURCE_READER_USERNAME: b3JkZXJzX3VzZXI=
+  SPRING_DATASOURCE_WRITER_PASSWORD: b3JkZXJzX3Bhc3M=
+  SPRING_DATASOURCE_WRITER_USERNAME: b3JkZXJzX3VzZXI=
+---
+# Source: cart/templates/secretmq.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-secret
+type: Opaque
+data:
+  RABBITMQ_DEFAULT_PASS: cmFiaXRfcGFzc3dvcmQ=
+---
+# Source: cart/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cart-config
+data:
+  CARTS_DYNAMODB_CREATETABLE: "true"
+  CARTS_DYNAMODB_ENDPOINT: http://carts-db:8000
+  JAVA_OPTS: -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/urandom
+---
+# Source: cart/templates/configmapdb.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cart-db-config
+data:
+  DYNAMODB_CREATE_TABLE: "true"
+  JAVA_OPTS: -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/urandom
+  REGION: us-east-1
+  SERVER_TOMCAT_ACCESSLOG_ENABLED: "true"
+  SPRING_DATASOURCE_READER_URL: jdbc:postgresql://orders-db:5432/orders
+  SPRING_DATASOURCE_WRITER_URL: jdbc:postgresql://orders-db:3306/orders
+  SPRING_PROFILES_ACTIVE: dynamodb,mysql,rabbitmq
+  SPRING_RABBITMQ_HOST: rabbitmq
+---
+# Source: cart/templates/configmapmq.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-config
+data:
+  RABBITMQ_DEFAULT_USER: rabbit_user
+  RABBITMQ_DEFAULT_VHOST: /
+---
+# Source: cart/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: carts
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: cart
+---
+# Source: cart/templates/servicedb.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart-db
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: cart-db
+---
+# Source: cart/templates/servicemq.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5672
+      targetPort: 5672
+      protocol: TCP
+      name: amp
+    - port: 15672
+      targetPort: 15672
+      protocol: TCP
+      name: rabbit
+  selector:
+    app.kubernetes.io/name: rabbitmq
+---
+# Source: cart/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart-deployment
+  labels:
+    app.kubernetes.io/name: cart
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cart
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cart
+    spec:
+      serviceAccountName: cart-service-account
+      containers:
+        - name: cart
+          image: "arsenet10/revive-cart:01"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          #livenessProbe:
+          #  httpGet:
+          #    path: /
+          #    port: http
+          #readinessProbe:
+          #  httpGet:
+          #    path: /
+          #    port: http
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 200m
+              memory: 128Mi
+---
+# Source: cart/templates/deploymentmq.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  labels:
+    app.kubernetes.io/name: rabbitmq
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rabbitmq
+    spec:
+      serviceAccountName: rabbitmq-service-account
+      containers:
+        - name: rabbitmq
+          image: "arsenet10/revive-orders:rabbit-mq-01"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5672
+            - containerPort: 15672
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: rabbitmq-config
+                  key: RABBITMQ_DEFAULT_USER
+            - name: RABBITMQ_DEFAULT_VHOST
+              valueFrom:
+                configMapKeyRef:
+                  name: rabbitmq-config
+                  key: RABBITMQ_DEFAULT_VHOST
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: RABBITMQ_DEFAULT_PASS
+          #livenessProbe:
+          #  httpGet:
+          #    path: /
+          #    port: http
+          #readinessProbe:
+          #  httpGet:
+          #    path: /
+          #    port: http
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 200m
+              memory: 256Mi
+---
+# Source: cart/templates/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cart-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cart-deployment
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    #
+---
+# Source: cart/templates/hpamq.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rabbitmq-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rabbitmq
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    #
+---
+# Source: cart/templates/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cart-db
+spec:
+  serviceName: "cart-db-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cart-db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cart-db
+    spec:
+      serviceAccountName: cart-db-service-account
+      containers:
+        - name: cart-db
+          image: "arsenet10/revive-cart:db-01"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          #livenessProbe:
+          #  httpGet:
+          #    path: /
+          #    port: http
+          #readinessProbe:
+          #  httpGet:
+          #    path: /
+          #    port: http
+          volumeMounts:
+            - name: cart-db-storage
+              mountPath: /home/dynamodb      # Mount path for DynamoDB storage
+  volumeClaimTemplates:
+    - metadata:
+        name: cart-db-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/name=cart,app.kubernetes.io/instance=cart" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace default $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace default port-forward $POD_NAME 8080:$CONTAINER_PORT

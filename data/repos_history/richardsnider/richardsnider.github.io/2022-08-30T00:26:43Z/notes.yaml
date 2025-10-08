@@ -1,0 +1,209 @@
+browser:
+  chrome:
+    v8: # https://github.com/v8/v8
+    devtools: # https://developer.chrome.com/docs/devtools/overview/
+  html: # hypertext markup language https://developer.mozilla.org/en-US/docs/Web/HTML
+    csp: # Content Security Policy https://www.w3.org/TR/CSP/
+  pwa: # progressive web app https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps
+  storage:
+    cookies:
+    local: # https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage
+    session:
+  wasm: # web assembly https://developer.mozilla.org/en-US/docs/WebAssembly
+  xss: # cross site scripting https://www.cloudflare.com/learning/security/threats/cross-site-scripting/
+cloud: # https://www.cloudflare.com/learning/cloud/what-is-the-cloud/ https://en.wikipedia.org/wiki/Cloud_computing
+  aws: # Amazon Web Services https://docs.aws.amazon.com/
+    ec2:
+      asg:
+        - https://docs.aws.amazon.com/autoscaling/ec2/userguide/as-scaling-target-tracking.html#available-metrics
+    iam:
+    s3:
+    vpc:
+  cloudflare: # https://www.cloudflare.com/learning/what-is-cloudflare/
+    cdn: # content delivery network https://www.cloudflare.com/learning/cdn/what-is-a-cdn/
+  gcp: # Google Cloud Platform https://cloud.google.com/docs
+    sql:
+    vpc:
+    OTHER:
+      - https://cloud.google.com/certificate-authority-service/docs/using-cel
+  hybridcloud: # https://www.cloudflare.com/learning/cloud/what-is-hybrid-cloud/
+  multicloud: # https://www.cloudflare.com/learning/cloud/what-is-the-cloud/
+  twilio:
+    sendgrid: # https://docs.sendgrid.com/onboarding/email-api
+      api: # https://docs.sendgrid.com/api-reference/how-to-use-the-sendgrid-v3-api
+      settings: # https://docs.sendgrid.com/ui/account-and-settings/mail
+code: # https://github.com/collections/programming-languages
+  golang:
+    notes:
+      - https://www.linkedin.com/pulse/its-time-understand-golang-contexts-lucas-schenkel-schieferdecker/
+      - https://github.com/valyala/goloris/blob/master/goloris.go
+      - https://golangcode.com/print-the-current-memory-usage/
+      - https://golang.google.cn/pkg/os/signal/
+      - https://github.com/lizrice/strace-from-scratch
+  javascript: # https://developer.mozilla.org/en-US/docs/Web/JavaScript
+    node: # https://nodejs.org/en/docs/
+      npm: # https://docs.npmjs.com/
+  vscode: # https://code.visualstudio.com/docs
+container:
+  docker:
+  containerd:
+computer-science: # https://github.com/jwasham/coding-interview-university
+  algorithm: # https://github.com/trekhleb/javascript-algorithms
+  big-o-notation: # Big O notation https://en.wikipedia.org/wiki/Big_O_notation
+  ephemeral: Lasting for a very short time.
+  immutable: Not subject or susceptible to change.
+  hash:
+  encryption:
+data-science: # data store https://en.wikipedia.org/wiki/Data_store
+  nosql:
+  sql:
+    - https://litestream.io/tips/
+    - https://github.com/phiresky/sqlite-zstd
+git: # https://github.com/git/git https://mirrors.edge.kernel.org/pub/software/scm/git/
+  cli: # https://git-scm.com/docs
+    examples: # http://guides.beanstalkapp.com/version-control/common-git-commands.html
+      - 
+  github: # https://docs.github.com/en
+    actions:
+    cli: # https://cli.github.com/manual/gh_help_reference
+    language-stats: https://madnight.github.io/githut/
+  gitlab:
+k8s: # kubernetes https://kubernetes.io/docs/concepts/overview/
+  cni: # container network interface https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/
+    types:
+      cilium: # eBPF based https://github.com/cilium/cilium
+  components: # https://kubernetes.io/docs/concepts/overview/components/
+    controller-manager:
+    kube-api:
+    kube-proxy:
+    kube-schedule:
+    kubelet:
+    containerd:
+    etcd: # https://etcd.io/docs https://github.com/etcd-io/etcd
+  cri: # container runtime interface https://kubernetes.io/docs/concepts/architecture/cri/
+  kubeadm:
+  k3s:
+    - https://k3s.io/
+  helm:
+    public-charts: https://artifacthub.io/
+    common-expression-language: https://github.com/google/cel-spec/blob/master/doc/intro.md
+  resources:
+    clusterrole:
+    deployment:
+    ingress:
+    pod:
+    service:
+    role:
+linux: # https://www.kernel.org/doc/html/latest/ https://github.com/torvalds/linux
+  bash: # born-again-shell https://www.gnu.org/savannah-checkouts/gnu/bash/manual/bash.html
+    background-process: # https://linuxhint.com/send-process-background-linux/
+      characer: "&"
+    pipes: 
+      character: "|"
+    redirect:
+      character: ">"
+      examples: 
+        - command 2> error.txt 1> output.txt
+        - command > output_file 2>&1 & # redirect background process
+    io-file-descriptors: { stdin: 0, stdout: 1, stderr: 2 }
+  commands:
+    list-all-available-commands: compgen -ac
+    command-list: https://richardsnider.github.io/linux-command-list.yaml
+    exit-codes: https://richardsnider.github.io/linux-exit-codes.yaml
+  distro: # distribution https://en.wikipedia.org/wiki/Linux_distribution
+    alpine:
+    debian:
+      ubuntu:
+    redhat:
+      centos:
+  filesystem:
+    directories:
+      - name: /etc
+        files:
+          - /etc/hosts
+          - /etc/cron
+      - name: /proc
+      - name: /var
+    ext4: # https://ext4.wiki.kernel.org/index.php/Ext4_Howto
+    inode: # https://www.redhat.com/sysadmin/inodes-linux-filesystem
+  hardware:
+    spi: # Serial Peripheral Interface https://docs.kernel.org/spi/spi-summary.html
+    other:
+      - https://discord.com/blog/how-discord-supercharges-network-disks-for-extreme-low-latency
+  kernel:
+    ebpf: # https://ebpf.io/what-is-ebpf
+  storage:
+    iops: 
+network:
+  ietf: # Internet Engineering Task Force https://en.wikipedia.org/wiki/Internet_Engineering_Task_Force
+    rfc: # Request for Comments https://en.wikipedia.org/wiki/Request_for_Comments
+      1918: # private network address allocations https://www.rfc-editor.org/rfc/rfc1918
+  osi: # Open Systems Interconnection model https://en.wikipedia.org/wiki/OSI_model
+    layer:
+      1: # physical layer https://en.wikipedia.org/wiki/Physical_layer
+      2: # data link layer https://en.wikipedia.org/wiki/Data_link_layer
+      3: # network layer https://en.wikipedia.org/wiki/Network_layer
+        protocol: 
+          ipv4:
+          ipv6:
+        router:
+          cisco:
+      4: # transport layer https://en.wikipedia.org/wiki/Transport_layer
+        protocol:
+            icmp:
+              notes:
+                - does not use ports
+              ping:
+              traceroute:
+                notes:
+                  - must use "-I" option to use ICMP, otherwise it uses UDP
+            tcp:
+            udp:
+              protocol:
+                traceroute:
+                  port: 33434 + (max-ttl * numberofprobes - 1)
+        ports: 
+      5:
+      6:
+      7: # application layer https://en.wikipedia.org/wiki/Application_layer
+        protocol:
+          dns: # domain name service https://www.rfc-editor.org/rfc/rfc1035
+            dns-flood: # https://www.cloudflare.com/learning/ddos/dns-flood-ddos-attack/
+            fqdn: # fully qualified domain name
+            port: 53
+          http: # https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP
+            cors: # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+            grpc:
+              - https://github.com/grpc-ecosystem/grpc-gateway
+            mime: # Multipurpose Internet Mail Extensions https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types
+              header: Content-Type
+            port: 80
+          https:
+            port: 443
+          tls/ssl:
+          ssh:
+            port: 22
+  vpn: 
+    openvpn:
+    wireguard: # https://github.com/pirate/wireguard-docs
+       tailscale: # https://tailscale.com/kb/
+security: # https://www.cloudflare.com/learning/security/what-is-web-application-security/
+  attacks:
+    ddos: # https://www.cloudflare.com/learning/ddos/what-is-a-ddos-attack/
+    phishing:
+      examples:
+        - twilio signal phishing attack https://support.signal.org/hc/en-us/articles/4850133017242
+        - https://blog.cloudflare.com/2022-07-sms-phishing-attacks/
+  authoritative:
+  okta:
+  ssl: # https://www.cloudflare.com/learning/ssl/what-is-ssl/
+  sso: # single sign on https://www.cloudflare.com/learning/access-management/what-is-sso/
+  tls: # https://www.cloudflare.com/learning/ssl/transport-layer-security-tls/
+  totp: # https://www.twilio.com/docs/glossary/totp
+other:
+- Conflict-Free Replicated Data Type (CRDT) https://github.com/automerge/automerge
+- WLAN Sensing
+- deepfake zoom call detection, turn sideways https://news.ycombinator.com/item?id=32385555
+- cellular network bioelectric signals physiological software layer https://www.youtube.com/watch?v=Z-9rLlFgcm0
+- https://en.wikipedia.org/wiki/Solar_Foods
+- map generator https://github.com/tepperly/Azimuthal

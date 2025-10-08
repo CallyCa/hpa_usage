@@ -1,0 +1,145 @@
+---
+# Création du namespace
+apiVersion: v1 
+kind: Namespace
+metadata:
+  name: exo3
+---
+# L'application mariadb est liée à un volume persistant
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mariadb
+  namespace: exo3
+  labels:
+    app: mariadb
+
+spec:
+  containers:
+  - name: mariadb
+    image: mariadb:10
+    env:
+    - name: MARIADB_ROOT_PASSWORD
+      value: "juve"
+    - name: MARIADB_USER
+      value: "delpiero"
+    - name: MARIADB_PASSWORD
+      value: "juve"
+    resources:
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+    ports:
+    - containerPort: 3306
+    volumeMounts:
+      - mountPath: /var/lib/mariadb
+        name: db-volume
+  volumes:
+        - name: db-volume
+          persistentVolumeClaim:
+            claimName: mariadb-persistent-volume
+---
+# Service flask doit être facilement scalable ==> kind: Deployment et pas pod
+# Application web Flask est la seule à pouvoir recevoir des requêtes depuis l'extérieur du cluster 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask
+  namespace: exo3
+  labels:
+    app: flask
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flask
+  template:
+    metadata:
+      namespace: exo3
+      labels:
+        app: flask
+    spec:
+      containers:
+      - name: flask
+        image: loann28/capge-k8s-exo3:2.0.0
+        resources: 
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        ports:
+          - containerPort: 5000
+---
+# Service pour connecter 
+apiVersion: v1
+kind: Service
+metadata:
+  name: flask-nodeport
+  namespace: exo3
+
+spec:
+  selector:
+    app: flask
+  # Permet d'accéder au cluster depuis l'extérieur : double interface
+  type: NodePort
+  ports:
+  - port: 5000
+    targetPort: 5000
+    nodePort: 55000  # port ouvert sur l'extérieur
+    protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db-svc
+  namespace: exo3
+
+spec:
+  selector:
+    app: mariadb
+  # type par défaut si je n'avais rien précisé
+  type: ClusterIP
+  ports:
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+---
+apiVersion: v1
+# exists two API resources: PersistentVolume and PersistentVolumeClaim.
+# A PersistentVolume (PV) is a piece of storage in the cluster that has been provisioned by an administrator or dynamically provisioned using Storage Classes.
+# A PersistentVolumeClaim (PVC) is a request for storage by a user. It is similar to a Pod. Pods consume node resources and PVCs consume PV resources
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-persistent-volume
+  namespace: exo3
+
+spec:
+  #volumeName: mariadb-persistent-volume   Faut-il remettre le même nom que dans metadata ou cela ajoute une flexibilité?
+  accessModes:
+  - ReadWriteOnce # ReadOnlyMany or ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi 
+---
+apiVersion: autoscaling/v1  # autoscaling/v2 allows behavior field to configure separate scaleUp and scaleDown
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa
+  namespace: exo3
+spec:
+  minReplicas: 1
+  maxReplicas: 8
+  metrics:
+  - resource:
+      name: cpu
+      target:
+        averageUtilization: 50
+        type: Utilization
+    type: Resource
+  # targetCPUUtilizationPercentage: 70
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: flask
+  
+  

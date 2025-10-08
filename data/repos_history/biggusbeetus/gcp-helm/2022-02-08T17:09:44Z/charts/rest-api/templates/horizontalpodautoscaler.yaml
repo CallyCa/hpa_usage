@@ -1,0 +1,15 @@
+{{ $name := include "rest-api.name" . | printf "%s-hpa" }}
+{{ $deploymentName := include "rest-api.name" . | printf "%s-deployment" }}
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $deploymentName }}
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+

@@ -1,0 +1,23 @@
+# Configures autoscaling for the deployment.
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: user-repository-hpa
+  namespace: default
+  labels:
+    app: user-repository
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: user-repository # Name of the deployment to scale
+  minReplicas: 2 # Minimum number of pods
+  maxReplicas: 10 # Maximum number of pods
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50 # Target CPU utilization percentage

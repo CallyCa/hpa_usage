@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: posts-deployment
+  namespace: doozy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: doozy
+  template:
+    metadata:
+      labels:
+        app: doozy
+    spec:
+      containers:
+        - name: doozy
+        # TODO: make this a usefull url (from acr? or a package in github?)
+          image: l50307031
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: doozy
+  namespace: doozy
+spec:
+  type: ClusterIP
+  selector:
+    app: doozy
+  ports:
+  - name: doozy
+    protocol: TCP
+    port: 80
+    targetPort: 80

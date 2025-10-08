@@ -1,0 +1,25 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: dovecot-hpa
+  namespace: {{ .Values.NamespaceCluster }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: dovecot  # Nombre del StatefulSet
+  minReplicas: 1  # Número mínimo de réplicas
+  maxReplicas: 2 # Número máximo de réplicas
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75  # Escalar si el uso promedio de CPU excede el 65%
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80  # Escalar si el uso promedio de memoria excede el 70%

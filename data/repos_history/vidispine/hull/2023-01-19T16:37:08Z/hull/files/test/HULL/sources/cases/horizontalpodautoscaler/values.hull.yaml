@@ -1,0 +1,120 @@
+################################ 
+### Example values.yaml with all features applied
+################################
+
+###################################################
+### CONFIG
+hull:
+
+  ###################################################
+  ### OBJECTS
+  objects:
+
+  # horizontalpodautoscaler
+    horizontalpodautoscaler:
+      
+      disabled:
+        scaleTargetRef:
+          name: disabled
+          kind: "Deployment"
+        maxReplicas: 3
+      
+      static-name:
+        scaleTargetRef:
+          name: static-name
+          kind: "Deployment"
+        maxReplicas: 3
+
+      metadata-merge:
+        scaleTargetRef:
+          name: metadata-merge
+          kind: "Deployment"
+        maxReplicas: 3
+
+      metadata-overwrite:
+        scaleTargetRef:
+          name: metadata-overwrite
+          kind: "Deployment"
+        maxReplicas: 3
+
+      disabled-transform:
+        scaleTargetRef:
+          name: metadata-overwrite
+          kind: "Deployment"
+        maxReplicas: 3
+        
+      enabled-transform:
+        scaleTargetRef:
+          name: metadata-overwrite
+          kind: "Deployment"
+        maxReplicas: 3
+        
+      disabled-transform-dict:
+        scaleTargetRef:
+          name: metadata-overwrite
+          kind: "Deployment"
+        maxReplicas: 3
+        
+      enabled-transform-dict:
+        scaleTargetRef:
+          name: metadata-overwrite
+          kind: "Deployment"
+        maxReplicas: 3
+
+      disabled-transform-tpl-if:
+        scaleTargetRef:
+          name: metadata-overwrite
+          kind: "Deployment"
+        maxReplicas: 3
+        
+      enabled-transform-tpl-if:
+        scaleTargetRef:
+          name: metadata-overwrite
+          kind: "Deployment"
+        maxReplicas: 3
+
+      metadata-name-override:
+        scaleTargetRef:
+          name: metadata-overwrite
+          kind: "Deployment"
+        maxReplicas: 3
+        
+      metadata-name-override-static:
+        scaleTargetRef:
+          name: metadata-overwrite
+          kind: "Deployment"
+        maxReplicas: 3
+
+      internal:
+        minReplicas: 1
+        maxReplicas: 2
+        behavior:
+          scaleUp: 
+            selectPolicy: select_policy_up
+            stabilizationWindowSeconds: 999
+          scaleDown: 
+            selectPolicy: select_policy_down
+            stabilizationWindowSeconds: 111
+        scaleTargetRef:
+          apiVersion: "v1"
+          kind: "Deployment"
+          name: target_deployment
+          
+      external:
+        minReplicas: 1
+        maxReplicas: 2
+        behavior:
+          scaleUp: 
+            selectPolicy: select_policy_up
+            stabilizationWindowSeconds: 999
+          scaleDown: 
+            selectPolicy: select_policy_down
+            stabilizationWindowSeconds: 111
+        scaleTargetRef:
+          apiVersion: "v1"
+          kind: "Deployment"
+          name: target_deployment
+          staticName: true
+      
+
+###################################################

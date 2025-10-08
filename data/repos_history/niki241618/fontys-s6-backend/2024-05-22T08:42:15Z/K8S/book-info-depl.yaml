@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: book-info-depl
+spec:
+  replicas: 1
+  selector: 
+    matchLabels:
+      app: book-info-service
+  template:
+    metadata:
+      labels:
+        app: book-info-service
+    spec:
+      containers:
+        - name: book-info-service
+          image: niki241618/book-info-service
+          resources:
+            requests: #Claimed resources
+              memory: "256Mi"
+              cpu: "250m" #1/4 of the core
+            limits:   #Maximum resources
+              memory: "512Mi"
+              cpu: "500m" #1/2 of the core
+          env:
+            - name: "AzureBlobStorage__ConnectionString"
+              valueFrom: 
+                secretKeyRef:
+                  name: 'app-secrets'
+                  key: 'AzureBlobStorage__ConnectionString'
+            - name: "ConnectionStrings__DatabaseConnection"
+              valueFrom: 
+                secretKeyRef:
+                  name: 'app-secrets'
+                  key: 'ConnectionStrings__DatabaseConnection'
+            - name: 'SeedDatabase'
+              value: 'true'
+#Declare the node port
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: book-info-service-nodeport
+spec:
+  type: NodePort
+  selector:
+    app: book-info-service
+  ports:
+    - port: 80
+      targetPort: 80
+#Auto-Scaling
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: book-info-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: book-info-depl
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80

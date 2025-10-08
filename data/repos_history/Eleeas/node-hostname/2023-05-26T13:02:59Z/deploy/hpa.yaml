@@ -1,0 +1,22 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: node-hostname
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: node-hostname
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+    - type: ContainerResource
+      containerResource:
+        name: cpu
+        container: node-hostname
+        target:
+          type: Utilization
+          averageUtilization: 30
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 10 

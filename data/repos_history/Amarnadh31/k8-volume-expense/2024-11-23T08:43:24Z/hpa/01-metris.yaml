@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: expense
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      project: expense
+      tier: frontend
+      env: dev
+  template:
+    metadata:
+      labels:
+        project: expense
+        tier: frontend
+        env: dev
+    spec:
+      containers:
+      - name: frontend
+        image: amarnadh31/frontend:v1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 3Gi
+          limits:
+            cpu: 130m
+            memory: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: expense
+spec:
+  type: LoadBalancer
+  selector:
+    project: expense
+    tier: frontend
+    env: dev
+  ports:
+  - name: frontend
+    protocol: TCP
+    port: 80
+    targetPort: 80

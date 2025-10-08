@@ -1,0 +1,22 @@
+{{ if .Values.hpa }}
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}
+  minReplicas: {{ ((.Values.hpa).minReplicas) | default "1" }}
+  maxReplicas: {{ ((.Values.hpa).maxReplicas) | default "1" }} 
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: {{ ((.Values.hpa).cpuScaleUtil) | default "85" }}
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: {{ ((.Values.hpa).memoryScaleUtil) | default "80" }}
+{{ end }}

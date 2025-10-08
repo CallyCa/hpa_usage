@@ -1,0 +1,19 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: game-hpa
+  namespace: default # Namespace where the Deployment is located
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: game # Name of the Deployment to scale
+  minReplicas: 1 # Minimum number of Pods
+  maxReplicas: 5 # Maximum number of Pods
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70 # Target CPU utilization percentage

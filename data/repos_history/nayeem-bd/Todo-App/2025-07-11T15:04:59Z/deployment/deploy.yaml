@@ -1,0 +1,126 @@
+#apiVersion: v1
+#kind: Service
+#metadata:
+#  name: ingress-nginx-controller
+#  namespace: ingress-nginx
+#  labels:
+#    app.kubernetes.io/name: ingress-nginx
+#    app.kubernetes.io/instance: ingress-nginx
+#    app.kubernetes.io/component: controller
+#spec:
+#  type: LoadBalancer
+#  selector:
+#    app.kubernetes.io/name: ingress-nginx
+#    app.kubernetes.io/instance: ingress-nginx
+#    app.kubernetes.io/component: controller
+#  ports:
+#    - name: http
+#      port: 80
+#      targetPort: http
+#      protocol: TCP
+#    - name: https
+#      port: 443
+#      targetPort: https
+#      protocol: TCP
+#
+#
+#---
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-app-service
+  labels:
+    app: todo-app
+spec:
+  type: ClusterIP
+  selector:
+      app: todo-app
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: todo-app-ingress
+#  annotations:
+#    nginx.ingress.kubernetes.io/rewrite-target: /
+
+spec:
+  rules:
+    - host: todo-app.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: todo-app-service
+                port:
+                  number: 8080
+  ingressClassName: nginx
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: todo-app-deployment
+    labels:
+      app: todo-app
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+        app: todo-app
+  template:
+    metadata:
+      labels:
+        app: todo-app
+    spec:
+      containers:
+        - name: todo-app
+          image: todo-app:1.0.0
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "5m"
+              memory: "64Mi"
+            limits:
+              cpu: "50m"
+              memory: "128Mi"
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: todo-app-hpa
+  labels:
+    app: todo-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: todo-app-deployment
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70

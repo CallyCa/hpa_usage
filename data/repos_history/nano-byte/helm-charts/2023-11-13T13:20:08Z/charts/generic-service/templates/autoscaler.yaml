@@ -1,0 +1,45 @@
+{{- if .Values.autoscaling.enabled }}
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "generic-service.fullname" . }}
+  labels: {{- include "generic-service.top-level-labels" . | nindent 4 }}
+
+spec:
+  scaleTargetRef:
+    {{- if eq .Values.rollout.controller "ArgoRollout" }}
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    {{- else }}
+    apiVersion: apps/v1
+    kind: {{ .Values.rollout.controller }}
+    {{- end }}
+    name: {{ include "generic-service.fullname" . }}
+  minReplicas: {{ .Values.replicas | int }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas | int }}
+  behavior: {{- .Values.autoscaling.behavior | toYaml | nindent 4 }}
+  metrics:
+    - type: {{ .Values.autoscaling.metric.type }}
+      {{- if eq .Values.autoscaling.metric.type "Resource" }}
+      resource:
+        name: {{ .Values.autoscaling.metric.name }}
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCpu | default .Values.autoscaling.targetValue | int }}
+      {{- else }}
+      {{ .Values.autoscaling.metric.type | lower }}:
+        metric:
+          name: {{ .Values.autoscaling.metric.name }}
+          {{- if eq .Values.autoscaling.metric.type "Object" }}
+          describedObject: {{- .Values.autoscaling.metric.object | required "autoscaling.metric.object required when autoscaling.metric.type is Object" | toYaml | nindent 10 }}
+          {{- else if eq .Values.autoscaling.metric.type "External" }}
+          selector:
+            matchLabels: {{- .Values.autoscaling.metric.selector | toYaml | nindent 14 }}
+          {{- end }}
+        target:
+          type: Value
+          value: {{ .Values.autoscaling.targetValue | int }}
+      {{- end }}
+
+{{- end }}

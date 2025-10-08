@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mattailor-ai-production
+  namespace: argocd
+  labels:
+    environment: production
+    app.kubernetes.io/name: mattailor-ai
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/mattailor-ai
+    targetRevision: main
+    path: k8s/overlays/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mattailor-ai-prod
+  syncPolicy:
+    # Manual sync for production - requires approval
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+  revisionHistoryLimit: 20
+  # Production-specific validation
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas  # Ignore replica count managed by HPA

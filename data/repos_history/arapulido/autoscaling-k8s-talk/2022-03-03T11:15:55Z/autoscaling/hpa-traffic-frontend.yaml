@@ -1,0 +1,23 @@
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontendhpahits
+  namespace: ecommerce
+spec:
+  minReplicas: 1
+  maxReplicas: 3
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  metrics:
+  - type: External
+    external:
+      metric:
+        name: "trace.rack.request.hits"
+        selector:
+          matchLabels:
+            service: store-frontend
+      target:
+        type: AverageValue
+        averageValue: 3 

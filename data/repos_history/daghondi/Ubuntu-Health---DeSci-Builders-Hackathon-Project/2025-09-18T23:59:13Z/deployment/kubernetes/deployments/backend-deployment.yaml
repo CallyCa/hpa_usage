@@ -1,0 +1,260 @@
+# Ubuntu Health Backend Deployment
+# Node.js/Express API with Ubuntu community consensus middleware
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ubuntu-health-backend
+  namespace: ubuntu-health
+  labels:
+    app: ubuntu-health-backend
+    component: backend
+    ubuntu.philosophy: "i-am-because-we-are"
+    ubuntu.healing: "community-consensus"
+    version: "1.0.0"
+  annotations:
+    ubuntu.community/description: "Backend API serving Ubuntu Health community"
+    ubuntu.community/role: "Community consensus and traditional healing integration"
+    ubuntu.wisdom/integration: "Elder council guidance and community decision-making"
+spec:
+  replicas: 3  # Community resilience through multiple consensus nodes
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0  # Maintain community continuity
+  selector:
+    matchLabels:
+      app: ubuntu-health-backend
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: ubuntu-health-backend
+        component: backend
+        ubuntu.philosophy: "i-am-because-we-are"
+        ubuntu.healing: "community-consensus"
+      annotations:
+        ubuntu.community/pod-purpose: "Community consensus and healing coordination"
+        ubuntu.wisdom/features: "Elder guidance, traditional healing, community decisions"
+    spec:
+      serviceAccountName: ubuntu-health-backend
+      containers:
+      - name: ubuntu-health-backend
+        image: ubuntu-health/backend:1.0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
+          name: api
+          protocol: TCP
+        - containerPort: 8080
+          name: socketio
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "5000"
+        - name: SOCKET_PORT
+          value: "8080"
+        - name: UBUNTU_PHILOSOPHY
+          value: "I am because we are"
+        - name: COMMUNITY_FIRST
+          value: "true"
+        - name: ELDER_WISDOM_ENABLED
+          value: "true"
+        - name: TRADITIONAL_HEALING_SUPPORT
+          value: "true"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: ubuntu-health-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: ubuntu-health-secrets
+              key: redis-url
+        - name: SOLANA_RPC_URL
+          valueFrom:
+            secretKeyRef:
+              name: ubuntu-health-secrets
+              key: solana-rpc-url
+        - name: ELDER_COUNCIL_MULTISIG
+          valueFrom:
+            secretKeyRef:
+              name: ubuntu-health-secrets
+              key: elder-council-multisig
+        - name: UBUNTU_TREASURY_ADDRESS
+          valueFrom:
+            secretKeyRef:
+              name: ubuntu-health-secrets
+              key: ubuntu-treasury-address
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: ubuntu-health-secrets
+              key: jwt-secret
+        - name: CULTURAL_SENSITIVITY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ubuntu-health-secrets
+              key: cultural-sensitivity-api-key
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /api/health/ubuntu-community
+            port: 5000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/ready/community-consensus
+            port: 5000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: ubuntu-cultural-data
+          mountPath: /app/cultural-data
+        - name: ubuntu-wisdom-data
+          mountPath: /app/ubuntu-wisdom
+        - name: community-consensus-data
+          mountPath: /app/community-consensus
+        - name: traditional-healing-protocols
+          mountPath: /app/traditional-healing
+        - name: backend-logs
+          mountPath: /app/logs
+        - name: recovery-logs
+          mountPath: /app/recovery-logs
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # Backend needs write access for logs and data
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: ubuntu-cultural-data
+        persistentVolumeClaim:
+          claimName: ubuntu-cultural-data-pvc
+      - name: ubuntu-wisdom-data
+        persistentVolumeClaim:
+          claimName: ubuntu-wisdom-data-pvc
+      - name: community-consensus-data
+        persistentVolumeClaim:
+          claimName: community-consensus-data-pvc
+      - name: traditional-healing-protocols
+        persistentVolumeClaim:
+          claimName: traditional-healing-protocols-pvc
+      - name: backend-logs
+        persistentVolumeClaim:
+          claimName: backend-logs-pvc
+      - name: recovery-logs
+        persistentVolumeClaim:
+          claimName: recovery-logs-pvc
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 60  # Allow time for graceful community consensus completion
+      dnsPolicy: ClusterFirst
+      
+---
+# Ubuntu Health Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: ubuntu-health-backend-service
+  namespace: ubuntu-health
+  labels:
+    app: ubuntu-health-backend
+    component: backend
+    ubuntu.philosophy: "i-am-because-we-are"
+  annotations:
+    ubuntu.community/service-purpose: "Backend API for Ubuntu Health community consensus"
+    ubuntu.wisdom/features: "Traditional healing, elder guidance, community decisions"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 5000
+    protocol: TCP
+    name: api
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: socketio
+  selector:
+    app: ubuntu-health-backend
+    component: backend
+    
+---
+# Ubuntu Health Backend ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ubuntu-health-backend
+  namespace: ubuntu-health
+  labels:
+    app: ubuntu-health-backend
+    component: backend
+    ubuntu.philosophy: "i-am-because-we-are"
+  annotations:
+    ubuntu.community/account-purpose: "Service account for backend community consensus"
+    ubuntu.wisdom/permissions: "Traditional healing protocols, elder council access"
+    
+---
+# Ubuntu Health Backend HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ubuntu-health-backend-hpa
+  namespace: ubuntu-health
+  labels:
+    app: ubuntu-health-backend
+    component: backend
+    ubuntu.philosophy: "i-am-because-we-are"
+  annotations:
+    ubuntu.community/scaling-philosophy: "Scale consensus nodes with community growth"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ubuntu-health-backend
+  minReplicas: 3  # Maintain consensus quorum
+  maxReplicas: 15  # Scale with community decisions
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600  # Careful scaling to maintain community consensus
+      policies:
+      - type: Percent
+        value: 25  # Conservative scaling down
+        periodSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 120  # Quick response to community needs
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60

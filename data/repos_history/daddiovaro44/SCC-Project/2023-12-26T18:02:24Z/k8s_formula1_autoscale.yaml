@@ -1,0 +1,22 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  # name of the autoscaler
+  name: formula1-autoscaler
+spec:
+  # to which deployment refers
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: formula1
+  # min and max number of replicas that can be created
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # average utilization across all pods
+          averageUtilization: 50

@@ -1,0 +1,464 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-study-planner
+  labels:
+    name: ai-study-planner
+    module: child-progress
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: child-progress-config
+  namespace: ai-study-planner
+data:
+  # Child Progress Module Settings
+  FEATURE_CHILD_PROGRESS_MODULE: "true"
+  FEATURE_ENHANCED_CHILD_AUTH: "true"
+  FEATURE_BADGE_SYSTEM: "true"
+  FEATURE_LEARNING_STREAKS: "true"
+  FEATURE_REAL_TIME_PROGRESS: "true"
+  FEATURE_CHILD_ANALYTICS: "true"
+  FEATURE_PARENTAL_MONITORING: "true"
+  
+  # Badge System Configuration
+  BADGE_PROCESSING_ENABLED: "true"
+  BADGE_PROCESSING_INTERVAL: "60000"
+  BADGE_CACHE_TTL: "300"
+  BADGE_CELEBRATION_ENABLED: "true"
+  BADGE_SOUND_ENABLED: "true"
+  
+  # Progress Tracking Settings
+  PROGRESS_SYNC_ENABLED: "true"
+  PROGRESS_SYNC_INTERVAL: "30000"
+  PROGRESS_BATCH_SIZE: "100"
+  PROGRESS_RETENTION_DAYS: "365"
+  
+  # Child Authentication Settings
+  CHILD_AUTH_ENABLED: "true"
+  CHILD_PIN_MIN_LENGTH: "4"
+  CHILD_PIN_MAX_LENGTH: "6"
+  CHILD_DEVICE_TRACKING: "true"
+  CHILD_IP_LOGGING: "true"
+  CHILD_SESSION_TIMEOUT: "1200000"
+  CHILD_MAX_FAILED_LOGINS: "3"
+  CHILD_LOCKOUT_DURATION: "900000"
+  
+  # Performance Settings
+  CHILD_PROGRESS_CACHE_ENABLED: "true"
+  CHILD_PROGRESS_CACHE_TTL: "300"
+  BADGE_ELIGIBILITY_CACHE_TTL: "180"
+  ANALYTICS_CACHE_TTL: "600"
+  
+  # Rate Limiting
+  CHILD_RATE_LIMIT_ENABLED: "true"
+  CHILD_AUTH_RATE_LIMIT: "5"
+  CHILD_PROGRESS_RATE_LIMIT: "60"
+  CHILD_DASHBOARD_RATE_LIMIT: "30"
+  CHILD_BADGE_RATE_LIMIT: "20"
+  
+  # Logging
+  LOG_LEVEL: "info"
+  LOG_FILE_ENABLED: "true"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: child-progress-secrets
+  namespace: ai-study-planner
+type: Opaque
+data:
+  # Base64 encoded secrets
+  DATABASE_URL: # base64 encoded database URL
+  REDIS_PASSWORD: # base64 encoded Redis password
+  JWT_SECRET: # base64 encoded JWT secret
+  JWT_REFRESH_SECRET: # base64 encoded JWT refresh secret
+  SENDGRID_API_KEY: # base64 encoded SendGrid API key
+  CLAUDE_API_KEY: # base64 encoded Claude API key
+  GEMINI_API_KEY: # base64 encoded Gemini API key
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: child-progress-backend
+  namespace: ai-study-planner
+  labels:
+    app: child-progress-backend
+    module: child-progress
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: child-progress-backend
+  template:
+    metadata:
+      labels:
+        app: child-progress-backend
+        module: child-progress
+    spec:
+      containers:
+      - name: backend
+        image: ai-study-planner/backend:latest
+        ports:
+        - containerPort: 3001
+          name: http
+        - containerPort: 3002
+          name: websocket
+        
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3001"
+        - name: WEBSOCKET_PORT
+          value: "3002"
+        
+        envFrom:
+        - configMapRef:
+            name: child-progress-config
+        - secretRef:
+            name: child-progress-secrets
+        
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: uploads
+          mountPath: /app/uploads
+      
+      volumes:
+      - name: logs
+        persistentVolumeClaim:
+          claimName: backend-logs-pvc
+      - name: uploads
+        persistentVolumeClaim:
+          claimName: backend-uploads-pvc
+      
+      imagePullSecrets:
+      - name: registry-secret
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: child-progress-frontend
+  namespace: ai-study-planner
+  labels:
+    app: child-progress-frontend
+    module: child-progress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: child-progress-frontend
+  template:
+    metadata:
+      labels:
+        app: child-progress-frontend
+        module: child-progress
+    spec:
+      containers:
+      - name: frontend
+        image: ai-study-planner/frontend:latest
+        ports:
+        - containerPort: 3000
+          name: http
+        
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: REACT_APP_API_URL
+          value: "http://child-progress-backend-service:3001"
+        - name: REACT_APP_WEBSOCKET_URL
+          value: "ws://child-progress-backend-service:3002"
+        - name: REACT_APP_CHILD_PROGRESS_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: child-progress-config
+              key: FEATURE_CHILD_PROGRESS_MODULE
+        - name: REACT_APP_BADGE_CELEBRATIONS_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: child-progress-config
+              key: BADGE_CELEBRATION_ENABLED
+        
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      
+      imagePullSecrets:
+      - name: registry-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: child-progress-backend-service
+  namespace: ai-study-planner
+  labels:
+    app: child-progress-backend
+    module: child-progress
+spec:
+  selector:
+    app: child-progress-backend
+  ports:
+  - name: http
+    port: 3001
+    targetPort: 3001
+    protocol: TCP
+  - name: websocket
+    port: 3002
+    targetPort: 3002
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: child-progress-frontend-service
+  namespace: ai-study-planner
+  labels:
+    app: child-progress-frontend
+    module: child-progress
+spec:
+  selector:
+    app: child-progress-frontend
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: child-progress-ingress
+  namespace: ai-study-planner
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+spec:
+  tls:
+  - hosts:
+    - ai-study-planner.com
+    - www.ai-study-planner.com
+    secretName: ai-study-planner-tls
+  
+  rules:
+  - host: ai-study-planner.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: child-progress-backend-service
+            port:
+              number: 3001
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: child-progress-frontend-service
+            port:
+              number: 3000
+  
+  - host: www.ai-study-planner.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: child-progress-backend-service
+            port:
+              number: 3001
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: child-progress-frontend-service
+            port:
+              number: 3000
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-logs-pvc
+  namespace: ai-study-planner
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: nfs-client
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-uploads-pvc
+  namespace: ai-study-planner
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: nfs-client
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: child-progress-backend-hpa
+  namespace: ai-study-planner
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: child-progress-backend
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: child-progress-frontend-hpa
+  namespace: ai-study-planner
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: child-progress-frontend
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: child-progress-backend-pdb
+  namespace: ai-study-planner
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: child-progress-backend
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: child-progress-frontend-pdb
+  namespace: ai-study-planner
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: child-progress-frontend
+
+---
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: child-progress-backend-monitor
+  namespace: ai-study-planner
+  labels:
+    app: child-progress-backend
+    module: child-progress
+spec:
+  selector:
+    matchLabels:
+      app: child-progress-backend
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s

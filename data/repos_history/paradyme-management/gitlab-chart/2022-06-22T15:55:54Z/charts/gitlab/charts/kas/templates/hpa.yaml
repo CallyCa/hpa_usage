@@ -1,0 +1,41 @@
+{{- if .Values.global.kas.enabled -}}
+---
+{{- if .Capabilities.APIVersions.Has "autoscaling/v2" }}
+apiVersion: autoscaling/v2
+{{- else if .Capabilities.APIVersions.Has "autoscaling/v2beta2" }}
+apiVersion: autoscaling/v2beta2
+{{- else }}
+apiVersion: autoscaling/v2beta1
+{{- end }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "fullname" . }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "gitlab.standardLabels" . | nindent 4 }}
+    {{- include "gitlab.commonLabels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ template "fullname" . }}
+  minReplicas: {{ .Values.minReplicas }}
+  maxReplicas: {{ .Values.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        {{- if or (.Capabilities.APIVersions.Has "autoscaling/v2") (.Capabilities.APIVersions.Has "autoscaling/v2beta2") }}
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.hpa.targetAverageValue }}
+        {{- else }}
+        targetAverageValue: {{ .Values.hpa.targetAverageValue }}
+        {{- end }}
+  {{- if or (.Capabilities.APIVersions.Has "autoscaling/v2") (and (.Capabilities.APIVersions.Has "autoscaling/v2beta2") (semverCompare ">=1.18.0-0" .Capabilities.KubeVersion.Version)) }}
+  {{- with .Values.hpa.behaviour }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+{{- end -}}

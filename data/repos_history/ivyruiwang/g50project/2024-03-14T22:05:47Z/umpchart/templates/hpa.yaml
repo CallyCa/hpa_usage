@@ -1,0 +1,23 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Values.frontend_hpa_name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Values.frontend_deployment_name }}
+  minReplicas: {{ .Values.frontend_hpa_minReplicas}}
+  maxReplicas: {{ .Values.frontend_hpa_maxReplicas }}
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Values.backend_hpa_name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Values.backend_deployment_name }}
+  minReplicas: {{ .Values.backend_hpa_minReplicas}}
+  maxReplicas: {{ .Values.backend_hpa_maxReplicas }}

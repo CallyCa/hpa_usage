@@ -1,0 +1,66 @@
+# Create the Deployment
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deployment
+
+spec:
+  selector:
+    matchLabels:
+      app: test
+
+  # Lets create a replica set of this with 2 instance/pod
+  replicas: 2
+
+  # template to use its labal for K8 service to launch in browser
+  template:
+    metadata:
+      labels:
+        app: test # This label connects to the service or any other
+
+    # Lets define the container spec
+    spec:
+      containers:
+      - name: test
+        image: vimitre/sre_app:35
+        ports:
+        - containerPort: 5000
+
+# Create a service for "test"
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-svc
+  namespace: default
+
+spec:
+  ports:
+  - nodePort: 30555
+    port: 80
+    protocol: TCP
+    targetPort: 5000
+
+  selector:
+    app: test
+
+  type: LoadBalancer
+
+
+# Create the HPA
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+
+metadata:
+  name: testautoscale
+  namespace: default
+
+spec:
+  maxReplicas: 9
+  minReplicas: 3
+  scaleTargetRef:     # Target the node deployment
+    apiVersion: apps/v1
+    kind: Deployment
+    name: test-deployment
+  targetCPUUtilizationPercentage: 50

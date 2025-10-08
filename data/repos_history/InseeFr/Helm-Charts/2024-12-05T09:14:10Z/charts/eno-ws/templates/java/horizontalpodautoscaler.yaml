@@ -1,0 +1,32 @@
+{{- if and .Values.enojava.autoscaling.enabled .Values.enojava.enabled}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "eno-ws.enojava.fullname" . }}
+  labels:
+    {{- include "eno-ws.enojava.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "eno-ws.enojava.fullname" . }}
+  minReplicas: {{ .Values.enojava.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.enojava.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.enojava.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.enojava.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.enojava.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.enojava.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

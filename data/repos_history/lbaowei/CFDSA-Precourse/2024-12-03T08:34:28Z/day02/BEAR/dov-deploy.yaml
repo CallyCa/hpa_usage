@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dov-deploy
+  namespace: myns
+  labels:
+    app: dov
+spec:
+  replicas: 3
+  selector: 
+    matchLabels: #selector use this to select which pod template to use, k8 will check matchLabels against podTemplate label
+      app: dov-bear
+      env: test
+  template:
+    metadata:
+      name: dov-pod
+      namespace: myns
+      labels:
+        app: dov-bear
+        env: test
+    spec: 
+      containers:
+      - name: dov-container
+        image: chukmunnlee/dov-bear:v5
+        imagePullPolicy: IfNotPresent
+        # env: 
+        # - name: INSTANCE_NAME
+        #   value: "not_my_dov_bear"
+        # - name: INSTANCE_HASH
+        #   valueFrom:
+        #     fieldRef:
+        #       fieldPath:  status.podIP
+        envFrom:
+        - configMapRef:
+            name: dov-cm
+        - secretRef:
+            name: dov-secret
+        ports:
+        - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dov-svc
+  namespace: myns
+  labels:
+    app: dov
+spec:
+  type: ClusterIP
+  selector:
+    app: dov-bear
+    env: test
+  ports:
+  - name: web
+    port: 8080       # Service port
+    targetPort: 3000 # Container port
+
+

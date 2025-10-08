@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  selector:
+    app: nginx
+    project: wordpress-kubernetes-infrastructure   
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+      project: wordpress-kubernetes-infrastructure  
+  template:
+    metadata:
+      labels:
+        app: nginx
+        project: wordpress-kubernetes-infrastructure  
+    spec:
+      initContainers:
+      - name: init-clone-repo
+        image: alpine/git
+        args:
+            - clone
+            - --single-branch
+            - --
+            - https://github.com/k4izen/wordpress-kubernetes-infrastructure.git
+            - /PROJECT
+        volumeMounts:
+        - name: wpdata
+          mountPath: /PROJECT
+      - name: copy-nginx-files
+        image: busybox
+        command: ['cp', '-rf' ,'/PROJECT/kubernetes/files/nginx/*', '/usr/local/openresty/nginx/conf/']
+        volumeMounts:
+        - name: wpdata
+          mountPath: /PROJECT
+      containers:
+      - name: nginx
+        image: apiki/nginx:1.13.6.2
+        ports:
+        - containerPort: 80
+        env:
+        - name: REDIS_CONNECTION
+          valueFrom:
+            configMapKeyRef:
+              name: wordpress-kubernetes-infrastructure
+              key: redis_connection
+        volumeMounts:
+        - name: wpdata
+          mountPath: /PROJECT
+      volumes:
+      - name: wpdata
+        emptyDir: {}

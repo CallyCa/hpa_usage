@@ -1,0 +1,35 @@
+{{- if .Values.hpa.sidekiq.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "decidim-helm.fullname" . }}
+  labels:
+    {{- include "decidim-helm.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "decidim-helm.fullname" . }}
+  minReplicas: {{ .Values.hpa.sidekiq.minReplicas }}
+  maxReplicas: {{ .Values.hpa.sidekiq.maxReplicas }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.hpa.web.stabilizationWindowSeconds }}
+  metrics:
+    {{- if .Values.hpa.web.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.web.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.hpa.web.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.web.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

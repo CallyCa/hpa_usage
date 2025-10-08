@@ -1,0 +1,119 @@
+global:
+  application:
+    create: true  
+  hosts:
+    domain: k8s.djabjo.ru
+    externalIP: ""  
+    https: true
+    ingress:
+      configureCertmanager: true
+      class: nginx
+    gitlab:
+      name: gitlab.k8s.djabjo.ru
+    registry:
+      name: registry.k8s.djabjo.ru
+
+  ingress:
+    enabled: true
+    configureCertmanager: true
+    tls:
+      enabled: true
+      secretName: gitlab-tls
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+
+
+certmanager:
+  install: false
+certmanager-issuer:
+  install: false
+
+nginx-ingress:
+  enabled: false
+
+gitlab:
+  webservice:
+    enabled: true
+    replicaCount: 1
+    ingress:
+      enabled: true
+      tls:
+        enabled: true
+        secretName: gitlab-tls
+    resources:
+      requests:
+        memory: 2Gi
+        cpu: 500m
+
+  sidekiq:
+    enabled: true
+    replicaCount: 1
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 300m
+
+  toolbox:
+    enabled: true
+    persistence:
+      enabled: false
+
+  gitaly:
+    enabled: true
+    persistence:
+      enabled: true
+      size: 10Gi
+
+  gitlab-shell:
+    enabled: true
+    replicaCount: 1
+
+  registry:
+    enabled: true
+    ingress:
+      enabled: true
+      host: registry.k8s.djabjo.ru
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 200m
+    storage:
+      secret: registry-storage
+      extraKey: config
+      backend: filesystem
+      filesystem:
+        rootdirectory: /var/lib/registry
+    persistence:
+      enabled: true
+      size: 50Gi
+
+postgresql:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+
+redis:
+  enabled: true
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+
+prometheus:
+  install: false
+
+alertmanager:
+  enabled: false
+
+grafana:
+  enabled: false
+
+gitlab-runner:
+  enabled: false
+
+minio:
+  enabled: false

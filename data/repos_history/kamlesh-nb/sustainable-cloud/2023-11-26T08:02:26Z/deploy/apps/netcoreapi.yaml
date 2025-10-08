@@ -1,0 +1,64 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netcore-api-deployment
+  labels:
+    app: netcore-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netcore-api
+  template:
+    metadata:
+      labels:
+        app: netcore-api
+    spec:
+      containers:
+      - name: netcore-api
+        image: taugem/netcoreapi:v0.1
+        ports:
+        - containerPort: 5041
+        resources:
+          requests:
+            memory: "32M"
+            cpu: "250m"
+          limits:
+            memory: "64M"
+            cpu: "500m"          
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: netcore-api-service
+  labels:
+    app: netcore-api
+spec:
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 5041
+  selector:
+    app: netcore-api
+  type: ClusterIP
+status:
+    loadBalancer: {}
+
+# ---
+
+# apiVersion: autoscaling/v1
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: netcore-api-hpa
+# spec:
+#   maxReplicas: 4  
+#   minReplicas: 1   
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: netcore-api-deployment
+#   targetCPUUtilizationPercentage: 80

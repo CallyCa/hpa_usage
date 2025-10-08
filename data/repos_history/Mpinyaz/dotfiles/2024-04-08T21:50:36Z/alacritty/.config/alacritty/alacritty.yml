@@ -1,0 +1,332 @@
+# Configuration for Alacritty, the GPU enhanced terminal emulator.
+# https://github.com/alacritty/alacritty/blob/master/alacritty.yml
+
+env:
+  TERM: xterm-256color
+window:
+  opacity: 1.0
+  # Window decorations
+  #
+  # Values for `decorations`:
+  #     - full: Borders and title bar
+  #     - none: Neither borders nor title bar
+  #
+  # Values for `decorations` (macOS only):
+  #     - transparent: Title bar, transparent background and title bar buttons
+  #     - buttonless: Title bar, transparent background, but no title bar buttons
+  # decorations: buttonless
+  # Window title
+  title: Alacritty
+  # Window class (Linux/BSD only):
+  class:
+    # Application instance name
+    instance: Alacritty
+    # General application class
+    general: Alacritty
+scrolling:
+  history: 5000 # Specifying '0' will disable scrolling.
+
+
+
+# Font configuration
+font:
+  normal:
+    family: "Agave Nerd Font"
+
+  bold:
+    family: "Agave Nerd Font"
+    style: bold
+
+  italic:
+    family: "Agave Nerd Font"
+    style: Italic
+
+  bold_italic:
+    family: "Agave Nerd Font"
+    style: Bold Italic
+
+  size: 16
+  # Offset is the extra space around each character. `offset.y` can be thought of
+  # as modifying the line spacing, and `offset.x` as modifying the letter spacing.
+  offset:
+    x: 2
+    y: 3
+
+draw_bold_text_with_bright_colors: true # If `true`, bold text is drawn using the bright color variants.
+
+selection:
+  # This string contains all characters that are used as separators for
+  # "semantic words" in Alacritty.
+  semantic_escape_chars: ",│`|:\"' ()[]{}<>\t"
+  save_to_clipboard: true # When set to `true`, selected text will be copied to the primary clipboard.
+
+cursor:
+  style: Block
+  unfocused_hollow: true # If this is `true`, the cursor will be rendered as a hollow box when the window is not focused.
+
+# Send ESC (\x1b) before characters when alt is pressed.
+# fixes not being able type @ and | with altgr
+window.option_as_alt: false
+
+hints:
+  alphabet: "jfkdlsahgurieowpq"
+  enabled:
+    - regex: "(magnet:|mailto:|gemini:|gopher:|https:|http:|news:|file:|git:|ssh:|ftp:)\
+              [^\u0000-\u001F\u007F-\u009F<>\"\\s{-}\\^⟨⟩`]+"
+      action: Copy
+      post_processing: false
+      mouse:
+        enabled: true
+      binding:
+        key: U
+        mods: Control|Shift
+    # multi regex for different purposes:
+    # 1. Kubernetes Resources
+    # 2. UUIDs
+    # 3. hex (for example signatures)
+    # 4. IP addresses
+    - regex: '((deployment.app|binding|componentstatuse|configmap|endpoint|event|limitrange|namespace|node|persistentvolumeclaim|persistentvolume|pod|podtemplate|replicationcontroller|resourcequota|secret|serviceaccount|service|mutatingwebhookconfiguration.admissionregistration.k8s.io|validatingwebhookconfiguration.admissionregistration.k8s.io|customresourcedefinition.apiextension.k8s.io|apiservice.apiregistration.k8s.io|controllerrevision.apps|daemonset.apps|deployment.apps|replicaset.apps|statefulset.apps|tokenreview.authentication.k8s.io|localsubjectaccessreview.authorization.k8s.io|selfsubjectaccessreviews.authorization.k8s.io|selfsubjectrulesreview.authorization.k8s.io|subjectaccessreview.authorization.k8s.io|horizontalpodautoscaler.autoscaling|cronjob.batch|job.batch|certificatesigningrequest.certificates.k8s.io|events.events.k8s.io|daemonset.extensions|deployment.extensions|ingress.extensions|networkpolicies.extensions|podsecuritypolicies.extensions|replicaset.extensions|networkpolicie.networking.k8s.io|poddisruptionbudget.policy|clusterrolebinding.rbac.authorization.k8s.io|clusterrole.rbac.authorization.k8s.io|rolebinding.rbac.authorization.k8s.io|role.rbac.authorization.k8s.io|storageclasse.storage.k8s.io)[[:alnum:]_#$%&+=/@-]+)|([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})|([0-9a-f]{12,128})|([[:digit:]]{1,3}\.[[:digit:]]{1,3}\.[[:digit:]]{1,3}\.[[:digit:]]{1,3})'
+      action: Copy
+      post_processing: false
+      binding:
+        key: R
+        mods: Control|Shift
+
+mouse_bindings:
+ - { mouse: Left,      action: Copy }
+ - { mouse: Middle,    action: PasteSelection  }
+
+key_bindings:
+  - { key: V, mods: Alt, action: Paste }
+  - { key: C, mods: Alt, action: Copy }
+  - { key: Insert, mods: Shift, action: PasteSelection }
+  - { key: Key0, mods: Control, action: ResetFontSize }
+  - { key: Plus, mods: Control, action: IncreaseFontSize }
+  - { key: Minus, mods: Control, action: DecreaseFontSize }
+  - { key: N,mods: Command,chars: "\x1bn"} # to be able to switch tmux windows with alt-n
+  - { key: PageUp, mods: Shift, action: ScrollPageUp, mode: ~Alt }
+  - { key: PageDown, mods: Shift, action: ScrollPageDown, mode: ~Alt }
+  - { key: Home, mods: Shift, action: ScrollToTop, mode: ~Alt }
+  - { key: End, mods: Shift, action: ScrollToBottom, mode: ~Alt }
+
+schemes:
+  material: &material
+    primary:
+      background: "#263238"
+      foreground: "#eeffff"
+    # Normal colors
+    normal:
+      black: "#000000" # Arbitrary
+      red: "#e53935"
+      green: "#91b859"
+      yellow: "#ffb62c"
+      blue: "#6182b8"
+      magenta: "#ff5370" # Dark pink of the original material theme
+      cyan: "#39adb5"
+      white: "#a0a0a0" # Arbitrary
+    # Bright colors
+    bright:
+      black: "#4e4e4e" # Arbitrary
+      red: "#ff5370"
+      green: "#c3e88d"
+      yellow: "#ffcb6b"
+      blue: "#82aaff"
+      magenta: "#f07178" # Pink of the original material theme
+      cyan: "#89ddff"
+      white: "#ffffff" # Arbitrary
+  # from https://github.com/EdenEast/nightfox.nvim/blob/main/extra/nightfox/nightfox_alacritty.yml
+  wombat: &wombat
+    primary:
+      background: "#1f1f1f"
+      foreground: "#e5e1d8"
+    # Normal colors
+    normal:
+      black: "#000000"
+      red: "#f7786d"
+      green: "#bde97c"
+      yellow: "#efdfac"
+      blue: "#6ebaf8"
+      magenta: "#ef88ff"
+      cyan: "#90fdf8"
+      white: "#e5e1d8"
+    # Bright colors
+    bright:
+      black: "#b4b4b4"
+      red: "#f99f92"
+      green: "#e3f7a1"
+      yellow: "#f2e9bf"
+      blue: "#b3d2ff"
+      magenta: "#e5bdff"
+      cyan: "#c2fefa"
+      white: "#ffffff"
+      # Colors (Solarized Dark)
+  solarized_dark: &solarized_dark
+    primary:
+      background: "#002b36" # base03
+      foreground: "#839496" # base0
+    # Cursor colors
+    cursor:
+      text: "#002b36" # base03
+      cursor: "#839496" # base0
+    # Normal colors
+    normal:
+      black: "#073642" # base02
+      red: "#dc322f" # red
+      green: "#859900" # green
+      yellow: "#b58900" # yellow
+      blue: "#268bd2" # blue
+      magenta: "#d33682" # magenta
+      cyan: "#2aa198" # cyan
+      white: "#eee8d5" # base2
+    # Bright colors
+    bright:
+      black: "#002b36" # base03
+      red: "#cb4b16" # orange
+      green: "#586e75" # base01
+      yellow: "#657b83" # base00
+      blue: "#839496" # base0
+      magenta: "#6c71c4" # violet
+      cyan: "#93a1a1" # base1
+      white: "#fdf6e3" # base3
+      # Colors (Nord)
+  nord: &nord
+    primary:
+      background: "#2e3440"
+      foreground: "#d8dee9"
+    # normal colors
+    normal:
+      black: "#3b4252"
+      red: "#bf616a"
+      green: "#a3be8c"
+      yellow: "#ebcb8b"
+      blue: "#81a1c1"
+      magenta: "#b48ead"
+      cyan: "#88c0d0"
+      white: "#e5e9f0"
+    # bright colors
+    bright:
+      black: "#4c566a"
+      red: "#bf616a"
+      green: "#a3be8c"
+      yellow: "#ebcb8b"
+      blue: "#81a1c1"
+      magenta: "#b48ead"
+      cyan: "#8fbcbb"
+      white: "#eceff4"
+      # Colors (Gruvbox dark)
+  gruvbox: &gruvbox
+    primary:
+      # hard contrast background - '#1d2021'
+      background: &gruvbox_dark_bg "#282828"
+      # soft contrast background - '#32302f'
+      foreground: "#ebdbb2"
+      bright_foreground: "#fbf1c7"
+      dim_foreground: "#a89984"
+    cursor:
+      text: CellBackground
+      cursor: CellForeground
+    vi_mode_cursor:
+      text: CellBackground
+      cursor: CellForeground
+    # search:
+    #   matches:
+    #     foreground: '#000000'
+    #     background: '#ffffff'
+    #   focused_match:
+    #    foreground: CellBackground
+    #    background: CellForeground
+    #   bar:
+    #     background: ''
+    #     foreground: ''
+    # line_indicator:
+    #   foreground: None
+    #   background: None
+    selection:
+      text: CellBackground
+      background: CellForeground
+    bright:
+      black: "#928374"
+      red: "#fb4934"
+      green: "#b8bb26"
+      yellow: "#fabd2f"
+      blue: "#83a598"
+      magenta: "#d3869b"
+      cyan: "#8ec07c"
+      white: "#ebdbb2"
+    normal:
+      black: *gruvbox_dark_bg
+      red: "#cc241d"
+      green: "#98971a"
+      yellow: "#d79921"
+      blue: "#458588"
+      magenta: "#b16286"
+      cyan: "#689d6a"
+      white: "#a89984"
+    dim:
+      black: "#32302f"
+      red: "#9d0006"
+      green: "#79740e"
+      yellow: "#b57614"
+      blue: "#076678"
+      magenta: "#8f3f71"
+      cyan: "#427b58"
+      white: "#928374"
+      # indexed_colors: []
+  doom-one: &doom-one
+    primary:
+      background: "0x282c34"
+      foreground: "0xbbc2cf"
+    normal:
+      black: "0x282c34"
+      red: "0xff6c6b"
+      green: "0x98be65"
+      yellow: "0xecbe7b"
+      blue: "0x51afef"
+      magenta: "0xc678dd"
+      cyan: "0x46d9ff"
+      white: "0xbbc2cf"
+  nightofx: &nightfox
+     primary:
+        background: '0x192330'
+        foreground: '0xcdcecf'
+      # Normal colors
+     normal:
+        black:   '0x393b44'
+        red:     '0xc94f6d'
+        green:   '0x81b29a'
+        yellow:  '0xdbc074'
+        blue:    '0x719cd6'
+        magenta: '0x9d79d6'
+        cyan:    '0x63cdcf'
+        white:   '0xdfdfe0'
+      # Bright colors
+     bright:
+        black:   '0x575860'
+        red:     '0xd16983'
+        green:   '0x8ebaa4'
+        yellow:  '0xe0c989'
+        blue:    '0x86abdc'
+        magenta: '0xbaa1e2'
+        cyan:    '0x7ad4d6'
+        white:   '0xe4e4e5'
+     indexed_colors:
+        - { index: 16, color: '0xf4a261' }
+        - { index: 17, color: '0xd67ad2' }
+colors: *nightfox
+selection:
+  # This string contains all characters that are used as separators for
+  # "semantic words" in Alacritty.
+  semantic_escape_chars: ",│`|:\"' ()[]{}<>\t"
+  # When set to `true`, selected text will be copied to the primary clipboard.
+  save_to_clipboard: true
+hints:
+    enabled:
+      - regex: "(magnet:|mailto:|gemini:|gopher:|https:|http:|news:|file:|git:|ssh:|ftp:)[^\u0000-\u001F\u007F-\u009F<>\"\\s{-}\\^⟨⟩`]+"
+        command: xdg-open
+        post_processing: true
+        mouse:
+            enabled: true
+            mods: Control
+        binding:
+            key: U
+            mods: Control|Shift

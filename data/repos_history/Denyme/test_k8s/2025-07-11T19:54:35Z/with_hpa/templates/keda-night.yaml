@@ -1,0 +1,16 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: web-app-scaledobject-night
+spec:
+  scaleTargetRef:
+    apiVersion: autoscaling/v2beta2
+    kind: HorizontalPodAutoscaler
+    name: web-app-hpa
+  triggers:
+  - type: cron
+    metadata:
+      timezone: {{ .Values.timezone }}
+      start: "20:00"
+      end: "07:00"
+      desiredReplicas: "3"

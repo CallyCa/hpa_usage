@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    Service.kubernetes.io/topology-aware-hints: auto
+  name: event-ingest-service
+  namespace: game-event-ns
+  labels:
+    app: event-ingest
+spec:
+  selector:
+    app: event-ingest
+  ports:
+    - name: event-ingest-port
+      protocol: TCP
+      port: 80
+      targetPort: 7777
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-ingest
+  namespace: game-event-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: event-ingest
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 50%
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: event-ingest
+    spec:
+      serviceAccountName: udp-k8s-sa
+      nodeSelector:
+        iam.gke.io/gke-metadata-server-enabled: "true"
+      containers:
+      - name: event-ingest
+        image: "${ARTIFACT_REPO_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/services-images/event-ingest:latest"
+        imagePullPolicy: Always
+        env:
+          - name: ML_AGENT_URL
+            value: "ml-serving-service-spend.game-event-ns.svc.cluster.local"
+          - name: GCP_PROJECT_ID
+            value: "${GCP_PROJECT_ID}"
+          - name: PUBSUB_TOPIC_ID
+            value: "game_telemetry_streaming_topic"
+          - name: CHURN_LOOKUP_SERVICE_URL
+            value: "churn-lookup-service.game-event-ns.svc.cluster.local"
+        ports:
+          - containerPort: 7777
+        resources:
+          limits:
+            cpu: "1"
+            memory: 2Gi
+          requests:
+            cpu: 250m
+            memory: 2Gi
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - event-ingest
+              topologyKey: "kubernetes.io/hostname"
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: event-ingest-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: event-ingest
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 75

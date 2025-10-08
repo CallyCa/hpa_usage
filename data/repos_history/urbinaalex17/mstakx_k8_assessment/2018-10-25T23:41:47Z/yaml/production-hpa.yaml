@@ -1,0 +1,15 @@
+# Horizontal Autoscalling for fronted deployment in production namespace
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend-hpa
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  minReplicas: 3
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 60
+

@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment
+  labels:
+    app: payment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment
+  template:
+    metadata:
+      labels:
+        app: payment
+    spec:
+      containers:
+      - name: payment
+        image: 355449129696.dkr.ecr.us-east-1.amazonaws.com/payment:v005
+        ports:
+        - containerPort: 8080
+        envFrom:  
+          - configMapRef:
+                name: payment-cm 
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "400m"
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payment-cm
+data:
+  CART_HOST: "cart-svc"
+  USER_HOST: "user-svc"
+  AMQP_HOST: "rabbitmq-dev.roboshop.internal"
+  AMQP_USER: "roboshop"
+  AMQP_PASS: "roboshop123"
+
+--- 
+# Creating ClusterIP Service ( this is the default type ) 
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-svc
+spec:
+  selector:
+    app: payment
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080 
+
+--- 
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-hpa 
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75

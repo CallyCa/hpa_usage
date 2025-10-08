@@ -1,0 +1,19 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: contact-update-producer-api-hpa
+  namespace: default  # Substitua pelo seu namespace, se necessário
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: contact-update-producer-api # Nome do seu deployment
+  minReplicas: 3  # Número mínimo de réplicas
+  maxReplicas: 10  # Número máximo de réplicas
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu  # Métrica de CPU
+        target:
+          type: Utilization
+          averageUtilization: 50  # O HPA tenta manter a utilização da CPU em 50%

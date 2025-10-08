@@ -1,0 +1,49 @@
+#-------------------------------------------------------------
+# Manifest File to create Autoscaling Deployment with Labels
+# Аzrubael 2023
+#-------------------------------------------------------------
+apiVersion : apps/v1
+kind: Deployment
+metadata:
+  name: azweb-deployment-autoscaling
+  labels:
+    app  : az-k8s-app
+    env  : prod
+    owner: Azrubael
+
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      project: mi5
+  template:
+    metadata:
+      labels:
+        project: mi5
+    spec:
+      containers:
+        - name : mi5-web
+          image: adv4000/k8sphp:version2
+          ports:
+            - containerPort: 80      
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+  metadata:
+    name: az-autoscaling
+  spec:
+    scaleTargetRef:
+      apiVersion: apps/v2beta1v1
+      kind: Deployment
+      name: azweb-deployment-autoscaling
+    nimReplicas: 1
+    maxReplicas: 3
+    metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUyilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        targetAverageUtilization: 80

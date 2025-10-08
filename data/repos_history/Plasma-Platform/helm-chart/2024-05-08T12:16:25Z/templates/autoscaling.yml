@@ -1,0 +1,24 @@
+{{- if .Values.autoscaling }}
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Values.service.app }}
+#  namespace: services
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: {{ .Values.service.app }}
+    apiVersion: apps/v1
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 500
+
+{{- end }}

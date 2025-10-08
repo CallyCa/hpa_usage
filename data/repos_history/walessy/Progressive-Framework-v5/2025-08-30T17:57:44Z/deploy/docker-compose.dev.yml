@@ -1,0 +1,512 @@
+# Deployment Configuration Files
+# Location: C:\Projects\Progressive-Framework-v5\deploy\
+
+# ========================================
+# DOCKER COMPOSE - DEVELOPMENT
+# deploy/docker-compose.dev.yml
+# ========================================
+version: '3.8'
+
+services:
+  progressive-framework:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: development
+    container_name: progressive-framework-dev
+    ports:
+      - "3000:3000"
+      - "9229:9229"  # Node.js debugger
+    environment:
+      - NODE_ENV=development
+      - DEBUG=progressive:*
+      - LOG_LEVEL=debug
+    volumes:
+      - ../src:/app/src:ro
+      - ../data:/app/data
+      - dev_node_modules:/app/node_modules
+    command: npm run dev:debug
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/agents/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: progressive-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # Monitoring with Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: progressive-prometheus-dev
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+
+volumes:
+  dev_node_modules:
+  redis_data:
+  prometheus_data:
+
+---
+
+# ========================================
+# DOCKER COMPOSE - PRODUCTION
+# deploy/docker-compose.prod.yml
+# ========================================
+version: '3.8'
+
+services:
+  progressive-framework:
+    image: ghcr.io/your-org/progressive-framework-v5:latest
+    container_name: progressive-framework-prod
+    ports:
+      - "80:3000"
+      - "443:3000"
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - BACKUP_INTERVAL=1800000  # 30 minutes
+      - MAX_BACKUPS=168          # 7 days of hourly backups
+      - CIRCUIT_BREAKER_THRESHOLD=3
+    volumes:
+      - prod_data:/app/data
+      - prod_logs:/app/logs
+      - prod_backups:/app/data/backups
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "node", "scripts/health-check.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # Load balancer
+  nginx:
+    image: nginx:alpine
+    container_name: progressive-nginx-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - progressive-framework
+    restart: unless-stopped
+
+  # Redis for production caching
+  redis:
+    image: redis:7-alpine
+    container_name: progressive-redis-prod
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+
+  # Monitoring stack
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: progressive-prometheus-prod
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../monitoring/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: progressive-grafana-prod
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prod_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/progressive-framework/data
+  prod_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/progressive-framework/logs
+  prod_backups:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/progressive-framework/backups
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  nginx_logs:
+
+---
+
+# ========================================
+# KUBERNETES DEPLOYMENT
+# deploy/k8s/deployment.yml
+# ========================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: progressive-framework-v5
+  namespace: progressive-framework
+  labels:
+    app: progressive-framework-v5
+    version: v1.0.0
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: progressive-framework-v5
+  template:
+    metadata:
+      labels:
+        app: progressive-framework-v5
+        version: v1.0.0
+    spec:
+      serviceAccountName: progressive-framework-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+      - name: progressive-framework
+        image: ghcr.io/your-org/progressive-framework-v5:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: BACKUP_INTERVAL
+          value: "1800000"
+        - name: MAX_BACKUPS
+          value: "168"
+        - name: CIRCUIT_BREAKER_THRESHOLD
+          value: "3"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
+        - name: logs-volume
+          mountPath: /app/logs
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /api/emergency/health
+            port: 3000
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/agents/status
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        lifecycle:
+          preStop:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  echo "Graceful shutdown initiated..."
+                  curl -X POST http://localhost:3000/api/emergency/backups/create \
+                    -H "Content-Type: application/json" \
+                    -d '{"reason": "pod_termination", "type": "full_system"}'
+                  sleep 15
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: progressive-framework-data-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: progressive-framework-logs-pvc
+      - name: config-volume
+        configMap:
+          name: progressive-framework-config
+      imagePullSecrets:
+      - name: ghcr-secret
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 60
+
+---
+
+# ========================================
+# KUBERNETES SERVICE
+# deploy/k8s/service.yml
+# ========================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: progressive-framework-v5-service
+  namespace: progressive-framework
+  labels:
+    app: progressive-framework-v5
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: progressive-framework-v5
+
+---
+
+# ========================================
+# KUBERNETES INGRESS
+# deploy/k8s/ingress.yml
+# ========================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: progressive-framework-v5-ingress
+  namespace: progressive-framework
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - progressive-framework.example.com
+    secretName: progressive-framework-tls
+  rules:
+  - host: progressive-framework.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: progressive-framework-v5-service
+            port:
+              number: 80
+
+---
+
+# ========================================
+# PERSISTENT VOLUME CLAIMS
+# deploy/k8s/pvc.yml
+# ========================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: progressive-framework-data-pvc
+  namespace: progressive-framework
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: fast-ssd
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: progressive-framework-logs-pvc
+  namespace: progressive-framework
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+
+---
+
+# ========================================
+# CONFIGMAP
+# deploy/k8s/configmap.yml
+# ========================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: progressive-framework-config
+  namespace: progressive-framework
+data:
+  production.json: |
+    {
+      "server": {
+        "port": 3000,
+        "cors": {
+          "origin": ["https://progressive-framework.example.com"],
+          "credentials": true
+        }
+      },
+      "emergency": {
+        "backupInterval": 1800000,
+        "maxBackups": 168,
+        "circuitBreakerThreshold": 3,
+        "healthCheckInterval": 30000,
+        "autoRollbackEnabled": false
+      },
+      "agents": {
+        "timeout": 30000,
+        "retries": 3,
+        "fallbackMode": "graceful"
+      },
+      "monitoring": {
+        "enabled": true,
+        "metricsPort": 9090,
+        "healthEndpoint": "/api/emergency/health"
+      }
+    }
+
+---
+
+# ========================================
+# HORIZONTAL POD AUTOSCALER
+# deploy/k8s/hpa.yml
+# ========================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: progressive-framework-v5-hpa
+  namespace: progressive-framework
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: progressive-framework-v5
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+
+---
+
+# ========================================
+# SERVICE ACCOUNT
+# deploy/k8s/serviceaccount.yml
+# ========================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: progressive-framework-sa
+  namespace: progressive-framework
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: progressive-framework
+  name: progressive-framework-role
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: progressive-framework-role-binding
+  namespace: progressive-framework
+subjects:
+- kind: ServiceAccount
+  name: progressive-framework-sa
+  namespace: progressive-framework
+roleRef:
+  kind: Role
+  name: progressive-framework-role
+  apiGroup: rbac.authorization.k8s.io

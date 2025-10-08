@@ -1,0 +1,71 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: custom-prometheus-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: custom-metric-prometheus-sd
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Pods
+    pods:
+      metric:
+        name: custom_prometheus
+      target:
+        type: AverageValue
+        averageValue: 20
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: custom-metric-prometheus-sd
+  name: custom-metric-prometheus-sd
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: custom-metric-prometheus-sd
+  template:
+    metadata:
+      labels:
+        run: custom-metric-prometheus-sd
+    spec:
+      containers:
+      # sample container generating custom metrics
+      - name: prometheus-dummy-exporter
+        image: us-docker.pkg.dev/google-samples/containers/gke/prometheus-dummy-exporter:v0.2.0
+        command: ["./prometheus-dummy-exporter"]
+        args:
+        - --metric-name=custom_prometheus
+        - --metric-value=40
+        - --port=8080
+      # pre-built 'prometheus-to-sd' sidecar container to export prometheus
+      # metrics to Stackdriver
+      - name: prometheus-to-sd
+        image: gcr.io/google-containers/prometheus-to-sd:v0.5.0
+        command: ["/monitor"]
+        args:
+        - --source=:http://localhost:8080
+        - --stackdriver-prefix=custom.googleapis.com
+        - --pod-id=$(POD_ID)
+        - --namespace-id=$(POD_NAMESPACE)
+        env:
+        # save Kubernetes metadata as environment variables for use in metrics
+        - name: POD_ID
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.uid
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+              
+  

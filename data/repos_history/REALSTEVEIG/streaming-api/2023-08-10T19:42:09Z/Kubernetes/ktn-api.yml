@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ktn-api-deployment
+  namespace: ktn
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ktn-api
+  template:
+    metadata:
+      labels:
+        app: ktn-api
+    spec:
+      containers:
+        - name: ktn-api-container
+          image: 844268948863.dkr.ecr.us-east-2.amazonaws.com/ktn-api:94
+          ports:
+            - containerPort: 4000
+          env:
+            - name: MONGODB_URI
+              value: "mongodb+srv://antmediadb:antmedia@cluster0.y6g9k6h.mongodb.net/?retryWrites=true&w=majority"
+            - name: API_BASE_URL
+              value: "a4411998e830c463d8c9710488954316-1078269471.us-east-1.elb.amazonaws.com"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ktn-api-service
+  namespace: ktn
+spec:
+  selector:
+    app: ktn-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 4000
+    -name: backend-ssl
+      port: 443
+      targetPort: 4000
+  type: LoadBalancer
+
+---   
+                                                            ### KTN_API HPA ###
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ktn-api-hpa
+  namespace: ktn
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ktn-api-deployment
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+

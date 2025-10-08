@@ -1,0 +1,128 @@
+# Copyright 2022 Red Hat, Inc
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+apiVersion: v1
+kind: Template
+metadata:
+  name: io-gathering-service
+objects:
+
+- kind: HorizontalPodAutoscaler
+  apiVersion: autoscaling/v1
+  metadata:
+    labels:
+      app: io-gathering-service
+    name: io-gathering-service
+  spec:
+    minReplicas: ${{MIN_REPLICAS}}
+    maxReplicas: ${{MAX_REPLICAS}}
+    scaleTargetRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: io-gathering-service-service
+    targetCPUUtilizationPercentage: 50
+
+- apiVersion: cloud.redhat.com/v1alpha1
+  kind: ClowdApp
+  metadata:
+    name: io-gathering-service
+  spec:
+    envName: ${ENV_NAME}
+    testing:
+      iqePlugin: ccx
+    dependencies:
+      - ingress
+    deployments:
+      - name: instance
+        minReplicas: ${{MIN_REPLICAS}}
+        webServices:
+          public:
+            enabled: true
+          private:
+            enabled: false
+          metrics:
+            enabled: true
+        podSpec:
+          env:
+            - name: INSIGHTS_OPERATOR_CONDITIONAL_SERVICE_CONFIG_FILE
+              value: /data/config.toml
+          image: ${IMAGE}:${IMAGE_TAG}
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /api/gathering/openapi.json
+              port: 8081
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 2
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /api/gathering/openapi.json
+              port: 8081
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          volumeMounts:
+            - mountPath: /data
+              name: io-gathering-service-config
+          volumes:
+            - configMap:
+                name: io-gathering-service-config-map
+              name: io-gathering-service-config
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1024Mi
+
+- kind: ConfigMap
+  apiVersion: v1
+  metadata:
+    labels:
+      app: io-gathering-service
+    name: io-gathering-service-config-map
+  data:
+    config.toml: |-
+      [server]
+      address = ":8081"
+      use_https = false
+      enable_cors = false
+
+      [storage]
+      rules_path = "/conditions"
+
+parameters:
+- description: Image name
+  name: IMAGE
+  value: quay.io/cloudservices/io-gathering-conditions-service
+- description: Image tag
+  name: IMAGE_TAG
+  required: true
+- description: ClowdEnv Name
+  name: ENV_NAME
+  requred: true
+- description: Minimum number of pods to use when autoscaling is enabled
+  name: MIN_REPLICAS
+  value: '1'
+- description: Minimum number of pods to use when autoscaling is enabled
+  name: MAX_REPLICAS
+  value: '1'

@@ -1,0 +1,189 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: 'archie-{{ .Values.service.name }}'
+  labels:
+    app: 'archie-{{ .Values.service.name }}'
+    tags.datadoghq.com/env: '{{ .Values.environment }}'
+    tags.datadoghq.com/service: 'archie-{{ .Values.service.name }}'
+    tags.datadoghq.com/version: '{{ .Values.tag }}'
+spec:
+  selector:
+    matchLabels:
+      app: 'archie-{{ .Values.service.name }}'
+  {{- if not .Values.local }}
+  replicas: 1
+  {{- else }}
+  replicas: {{ .Values.replicas }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: 'archie-{{ .Values.service.name }}'
+        tags.datadoghq.com/env: '{{ .Values.environment }}'
+        tags.datadoghq.com/service: 'archie-{{ .Values.service.name }}'
+        tags.datadoghq.com/version: '{{ .Values.tag }}'
+        helm-revision: '{{ .Release.Revision }}'
+      {{- if not .Values.local }}
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/agent-inject-status: "update"
+        vault.hashicorp.com/agent-init-first: "true"
+        vault.hashicorp.com/agent-cache-enable: "true"
+        vault.hashicorp.com/role: '{{ .Values.service.name }}'
+        vault.hashicorp.com/agent-requests-cpu: "50m"
+        vault.hashicorp.com/agent-limits-cpu: ""
+        vault.hashicorp.com/agent-inject-secret-config: '{{ .Values.vault.secretConfig }}'
+        vault.hashicorp.com/agent-inject-template-config: {{ .Values.vault.templateConfig | toYaml | indent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: '{{ .Values.service.name }}'
+      containers:
+        - name: 'archie-{{ .Values.service.name }}'
+          image: '{{ .Values.image }}:{{ .Values.tag }}'
+          {{- if not .Values.local }}
+          imagePullPolicy: Always
+          {{- else }}
+          imagePullPolicy: Never
+          {{- end }}
+          args:
+            ['sh', '-c', '. /vault/secrets/config && {{ .Values.service.command }}']
+          ports:
+            - containerPort: 80
+          livenessProbe:
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            httpGet:
+              path: /health
+              port: 80
+          resources:
+            requests:
+              memory: '{{ .Values.resources.request.memory }}'
+              cpu: '{{ .Values.resources.request.cpu }}'
+            limits:
+              memory: '{{ .Values.resources.limits.memory }}'
+          env:
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_ENV
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/env']
+            - name: DD_VERSION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/version']
+            - name: DD_SERVICE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/service']
+            - name: DD_LOGS_INJECTION
+              value: 'true'
+      imagePullSecrets:
+        - name: regcred
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: 'archie-{{ .Values.service.name }}-service'
+  labels:
+    app: 'archie-{{ .Values.service.name }}-service'
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: 'archie-{{ .Values.service.name }}'
+{{- if (and .Values.autoscaling.enabled .Values.autoscaling.queue)  }}
+---
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: 'archie-{{ .Values.service.name }}-queue-messages-ready'
+spec:
+  query: 'sum:rabbitmq.queue.messages_ready{rabbitmq_queue:{{ .Values.service.name }}-*}.rollup(30)'
+---
+{{- end }}
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: 'archie-{{ .Values.service.name }}-hpa'
+spec:
+  minReplicas: {{ .Values.replicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: 'archie-{{ .Values.service.name }}'
+  metrics:
+    {{- if .Values.autoscaling.queue }}
+    - type: External
+      external:
+        metric:
+          name: 'datadogmetric@default:archie-{{ .Values.service.name }}-queue-messages-ready'
+        target:
+          type: Value
+          value: 50
+    {{- end }}
+    {{- if .Values.autoscaling.resource }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+    {{- end }}
+  {{- end }}
+{{- if (and .Values.cronJobs .Values.cronJobs.curl) }}
+{{- range $job := .Values.cronJobs.curl }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: "{{ $job.name }}"
+spec:
+  schedule: "{{ $job.schedule }}"
+  jobTemplate:
+    metadata:
+      name: "{{ $job.name }}"
+    spec:
+      template:
+        spec:
+          containers:
+            - name: "{{ $job.name }}-job"
+              image: curlimages/curl
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: INTERNAL_API_URL
+                  {{- if not $.Values.local }}
+                  valueFrom:
+                    secretKeyRef:
+                      name: internal-api-shared-secrets
+                      key: internal-api-url
+                  {{- else }}
+                  value: http://host.minikube.internal
+                  {{- end }}
+              command:
+                - /bin/sh
+                - -c
+                - "{{ $job.command }}"
+          restartPolicy: OnFailure
+{{- end }}
+{{- end }}
+
+

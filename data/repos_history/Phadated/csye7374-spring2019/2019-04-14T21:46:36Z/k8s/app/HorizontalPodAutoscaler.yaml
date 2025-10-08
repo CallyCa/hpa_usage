@@ -1,0 +1,17 @@
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+ name: csye7374-v2
+spec:
+ maxReplicas: 15
+ minReplicas: 1
+ scaleTargetRef:
+   apiVersion: apps/v1
+   kind: Deployment
+   name: csye7374-assign3-rc
+ metrics:
+ - type: Resource
+   resource:
+     name: cpu
+     targetAverageUtilization: 5 

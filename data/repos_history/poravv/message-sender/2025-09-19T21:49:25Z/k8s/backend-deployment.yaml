@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sender-backend
+  namespace: sender
+  labels:
+    app: sender-backend
+    tier: backend
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: sender-backend
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: sender-backend
+        tier: backend
+    spec:
+      containers:
+      - name: sender-backend
+        image: ghcr.io/poravv/message-sender:latest   # 👉 siempre la última
+        imagePullPolicy: Always                      # 👉 fuerza pull en cada arranque
+        ports:
+        - containerPort: 3010
+          name: http
+        env:
+        - name: PORT
+          value: "3010"
+        envFrom:
+        - configMapRef:
+            name: backend-config
+        - secretRef:
+            name: backend-env-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3010
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3010
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 6
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh","-c","sleep 15"]
+      imagePullSecrets:
+      - name: ghcr-secret     # 👉 asegura acceso a GHCR tras reinicios
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sender-backend-service
+  namespace: sender
+  labels:
+    app: sender-backend
+    tier: backend
+spec:
+  type: ClusterIP            # 👉 acceso interno, el Ingress expone públicamente
+  selector:
+    app: sender-backend
+    tier: backend
+  ports:
+  - port: 80                 # 👉 puerto expuesto hacia el Ingress
+    targetPort: 3010         # 👉 apunta al contenedor
+    name: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sender-backend-hpa
+  namespace: sender
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sender-backend
+  minReplicas: 1
+  maxReplicas: 10
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      selectPolicy: Max
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+

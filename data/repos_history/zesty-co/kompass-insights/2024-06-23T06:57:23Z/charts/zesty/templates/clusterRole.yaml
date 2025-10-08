@@ -1,0 +1,53 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: zesty
+  annotations:
+    meta.helm.sh/release-name: zesty
+    meta.helm.sh/release-namespace: zesty
+  labels:
+    app.kubernetes.io/instance: zesty
+    app.kubernetes.io/name: zesty
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - nodes
+      - namespaces
+      - events
+      - configmaps
+      - persistentvolumes
+      - persistentvolumeclaims
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+      - replicasets
+      - daemonsets
+      - statefulsets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "karpenter.sh"
+    resources:
+      - nodepools
+      - nodeclaims
+    verbs:
+      - get
+      - list
+      - watch

@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: facade-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: facade-service
+  template:
+    metadata:
+      labels:
+        app: facade-service
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: facade-service
+        image: kirillshakhov/facade-service:1.0
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "400Mi"
+          limits:
+            cpu: "400m"
+            memory: "800Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: facade-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: facade-service

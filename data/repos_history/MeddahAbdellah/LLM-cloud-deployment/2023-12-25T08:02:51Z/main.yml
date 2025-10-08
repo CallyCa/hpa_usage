@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anoti-erllm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: anoti-erllm
+  template:
+    metadata:
+      labels:
+        app: anoti-erllm
+    spec:
+      containers:
+      - name: spacy-entity
+        image: 250956544061.dkr.ecr.eu-west-1.amazonaws.com/anoti_repo:spacy_entity
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "2500Mi"
+            cpu: "300m"
+          limits:
+            memory: "3500Mi"
+            cpu: "900m"
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: anoti-erllm-load-balance
+spec:
+  selector:
+    app: anoti-erllm
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: anoti-erllm-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: anoti-erllm
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+

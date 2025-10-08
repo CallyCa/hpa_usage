@@ -1,0 +1,181 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hakgal-performance-optimizer-production
+  namespace: hakgal-production
+  labels:
+    app: hakgal-performance-optimizer
+    environment: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: hakgal-performance-optimizer
+      environment: production
+  template:
+    metadata:
+      labels:
+        app: hakgal-performance-optimizer
+        environment: production
+    spec:
+      containers:
+      - name: hakgal-performance-optimizer
+        image: hakgal/performance-optimizer:latest
+        ports:
+        - containerPort: 5000
+          name: http
+        - containerPort: 8000
+          name: metrics
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: LOG_LEVEL
+          value: "WARNING"
+        - name: DATABASE_PATH
+          value: "/data/hakgal.db"
+        - name: MONITORING_INTERVAL
+          value: "1.0"
+        - name: MAX_HISTORY_SIZE
+          value: "10000"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: data-volume
+          mountPath: /data
+        - name: config-volume
+          mountPath: /config
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: hakgal-data-pvc-prod
+      - name: config-volume
+        configMap:
+          name: hakgal-config
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - key: "hakgal-performance"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hakgal-performance-optimizer-production-service
+  namespace: hakgal-production
+  labels:
+    app: hakgal-performance-optimizer
+    environment: production
+spec:
+  selector:
+    app: hakgal-performance-optimizer
+    environment: production
+  ports:
+  - name: http
+    port: 80
+    targetPort: 5000
+  - name: metrics
+    port: 8000
+    targetPort: 8000
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hakgal-data-pvc-prod
+  namespace: hakgal-production
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hakgal-config
+  namespace: hakgal-production
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+    - job_name: 'hakgal-performance'
+      static_configs:
+      - targets: ['hakgal-performance-optimizer-production-service:8000']
+  grafana-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "HAK/GAL Performance Dashboard",
+        "panels": [
+          {
+            "title": "System Metrics",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "system_cpu_percent",
+                "legendFormat": "CPU Usage"
+              }
+            ]
+          }
+        ]
+      }
+    }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hakgal-performance-optimizer-hpa
+  namespace: hakgal-production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hakgal-performance-optimizer-production
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

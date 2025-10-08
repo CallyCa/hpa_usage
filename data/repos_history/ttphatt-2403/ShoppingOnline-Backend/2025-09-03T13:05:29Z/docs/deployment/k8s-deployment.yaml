@@ -1,0 +1,292 @@
+# 🌊 **KUBERNETES DEPLOYMENT MANIFESTS**
+
+## 📦 **Complete K8s Setup cho ShoppingOnline**
+
+```yaml
+# namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shopping-online
+  labels:
+    name: shopping-online
+
+---
+# configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: shopping-online
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  CORS_ORIGINS: "https://yourdomain.com,https://www.yourdomain.com"
+  JWT_ISSUER: "ShoppingOnline"
+  JWT_AUDIENCE: "ShoppingOnlineUsers"
+
+---
+# secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+  namespace: shopping-online
+type: Opaque
+data:
+  # Base64 encoded values
+  ConnectionStrings__DefaultConnection: <base64-encoded-connection-string>
+  JWT__SecretKey: <base64-encoded-jwt-secret>
+  
+---
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shoppingonline-api
+  namespace: shopping-online
+  labels:
+    app: shoppingonline-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: shoppingonline-api
+  template:
+    metadata:
+      labels:
+        app: shoppingonline-api
+    spec:
+      containers:
+      - name: api
+        image: your-registry/shoppingonline:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: ASPNETCORE_ENVIRONMENT
+        - name: ConnectionStrings__DefaultConnection
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: ConnectionStrings__DefaultConnection
+        - name: JWT__SecretKey
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT__SecretKey
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: shoppingonline-service
+  namespace: shopping-online
+spec:
+  selector:
+    app: shoppingonline-api
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: ClusterIP
+
+---
+# ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shoppingonline-ingress
+  namespace: shopping-online
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+spec:
+  tls:
+  - hosts:
+    - yourdomain.com
+    - www.yourdomain.com
+    secretName: shoppingonline-tls
+  rules:
+  - host: yourdomain.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: shoppingonline-service
+            port:
+              number: 80
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+
+---
+# hpa.yaml - Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: shoppingonline-hpa
+  namespace: shopping-online
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: shoppingonline-api
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+      selectPolicy: Max
+
+---
+# pdb.yaml - Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: shoppingonline-pdb
+  namespace: shopping-online
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: shoppingonline-api
+```
+
+## 🚀 **Deployment Commands**
+
+```bash
+# Deploy tất cả
+kubectl apply -f k8s/
+
+# Check status
+kubectl get pods -n shopping-online
+kubectl get services -n shopping-online
+kubectl get ingress -n shopping-online
+
+# Scale manual
+kubectl scale deployment shoppingonline-api --replicas=10 -n shopping-online
+
+# Rolling update
+kubectl set image deployment/shoppingonline-api api=your-registry/shoppingonline:v2 -n shopping-online
+
+# Check logs
+kubectl logs -f deployment/shoppingonline-api -n shopping-online
+```
+
+## 📊 **Monitoring Setup**
+
+```yaml
+# monitoring.yaml
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: shoppingonline-metrics
+  namespace: shopping-online
+spec:
+  selector:
+    matchLabels:
+      app: shoppingonline-api
+  endpoints:
+  - port: web
+    path: /metrics
+    interval: 30s
+
+---
+# Grafana Dashboard cho API
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard
+  namespace: monitoring
+data:
+  dashboard.json: |
+    {
+      "dashboard": {
+        "title": "ShoppingOnline API Metrics",
+        "panels": [
+          {
+            "title": "Request Rate",
+            "targets": [
+              {
+                "expr": "rate(http_requests_total[5m])"
+              }
+            ]
+          },
+          {
+            "title": "Response Time",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))"
+              }
+            ]
+          },
+          {
+            "title": "Error Rate",
+            "targets": [
+              {
+                "expr": "rate(http_requests_total{status=~\"5..\"}[5m])"
+              }
+            ]
+          }
+        ]
+      }
+    }
+```

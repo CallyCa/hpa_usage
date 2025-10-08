@@ -1,0 +1,38 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: temporal-worker
+  namespace: {{ .Release.Namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Values.worker.deployment }}
+  minReplicas: 2
+  maxReplicas: 50
+  metrics:
+  - type: External
+    external:
+      metric:
+        name: temporal_cloud_sync_match_rate
+        selector:
+          matchLabels:
+            temporal_namespace: "{{ .Values.temporal.namespace }}"
+      target:
+        type: Value
+        value: 1500m
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 5
+      selectPolicy: Max
+      policies:
+        - type: Pods
+          value: 10
+          periodSeconds: 5
+    scaleDown:
+      stabilizationWindowSeconds: 5
+      selectPolicy: Max
+      policies:
+        - type: Pods
+          value: 10
+          periodSeconds: 5

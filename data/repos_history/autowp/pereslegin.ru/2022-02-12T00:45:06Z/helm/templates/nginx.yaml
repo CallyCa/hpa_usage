@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pereslegin
+spec:
+  selector:
+    matchLabels:
+      app: pereslegin
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: pereslegin
+    spec:
+      containers:
+      - name: pereslegin
+        image: autowp/pereslegin_ru
+        imagePullPolicy: Always
+        ports:
+        - name: app-port
+          containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /
+            port: app-port
+          initialDelaySeconds: 3
+          periodSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: app-port
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "10m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: pereslegin
+  name: pereslegin
+spec:
+  ports:
+    - name: app-port
+      port: 8080
+      protocol: TCP
+      targetPort: app-port
+  selector:
+    app: pereslegin
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pereslegin
+  annotations:
+    nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: nginx
+  rules:
+  {{- range .Values.hosts }}
+  - host: {{ . | quote }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: pereslegin
+            port:
+              name: app-port
+  {{- end }}
+  tls:
+  - hosts:
+      {{- range .Values.hosts }}
+      - {{ . | quote }}
+      {{- end }}
+    secretName: pereslegin-tls
+
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: pereslegin
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pereslegin
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70

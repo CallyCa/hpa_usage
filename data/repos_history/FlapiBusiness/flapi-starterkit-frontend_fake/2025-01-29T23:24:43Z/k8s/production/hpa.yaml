@@ -1,0 +1,45 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: prod-customerName-projectName-frontend-hpa
+  namespace: prod-customerName-projectName-frontend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: prod-customerName-projectName-frontend-deployment
+  minReplicas: 2
+  maxReplicas: 5
+  # Liste des métriques utilisées pour scaler (ici CPU et mémoire)
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu # On se base sur l'utilisation CPU
+        target:
+          type: Utilization # Basé sur un pourcentage de "requests.cpu"
+          averageUtilization: 75 # On veut que l'utilisation CPU moyenne ne dépasse pas ~70% par Pod
+
+    - type: Resource
+      resource:
+        name: memory # On se base aussi sur l'utilisation mémoire
+        target:
+          type: Utilization
+          averageUtilization: 75 # On veut que l'utilisation mémoire moyenne ne dépasse pas ~70% par Pod
+
+  # Comportement avancé pour scaler (montée/descente)
+  behavior:
+    scaleUp:
+      # Policies définissent la vitesse maximale d'augmentation du nombre de Pods
+      policies:
+        - type: Percent # On exprime la croissance en pourcentage
+          value: 100 # 100% = on peut doubler le nombre de Pods d'un coup en 60 secondes
+          periodSeconds: 60 # Intervalle de temps pour appliquer cette limite
+      # StabilizationWindowSeconds = délai de "stabilisation" avant d'appliquer un nouveau scaling up
+      stabilizationWindowSeconds: 60
+    scaleDown:
+      # Même logique pour réduire le nombre de Pods
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+      stabilizationWindowSeconds: 60

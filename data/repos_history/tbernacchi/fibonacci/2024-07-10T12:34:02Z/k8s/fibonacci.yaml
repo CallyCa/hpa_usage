@@ -1,0 +1,69 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: fibonacci
+  name: fibonacci
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fibonacci
+  template:
+    metadata:
+      labels:
+        app: fibonacci
+    spec:
+      containers:
+      - name: fibonacci
+        image: <your-image>
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 100m  # 1/10th of core (1000m is 1 vCPU)
+            memory: 32Mi  # 32 Megabytes
+          limits:
+            cpu: 250m  # 1/4th of core (1000m is 1 vCPU)
+            memory: 48Mi  # 48 Megabytes
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fibonacci
+spec:
+  selector:
+    app: fibonacci  # Matches the labels in your Deployment
+  ports:
+    - protocol: TCP
+      port: 8000    # Port your application is listening on
+      targetPort: 8000  # Port your container exposes
+  type: ClusterIP    # Exposes the Service inside the cluster only
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fibonacci-hpa
+spec:
+  maxReplicas: 10
+  metrics:
+  - resource:
+      name: cpu
+      target:
+        averageUtilization: 50
+        type: Utilization
+    type: Resource
+  minReplicas: 3
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fibonacci
+    scaleDown:
+      stabilizationWindowSeconds: 15 # seconds wait before scaling down
+      policies:
+      - type: Pods
+        value: 1 # scale down 1 pod at a time
+        periodSeconds: 20 # seconds wait before another scale down allowed
+      selectPolicy: Max

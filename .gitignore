@@ -9,3 +9,5 @@ __pypackages__/
 .ipynb_checkpoints/
 
 .env
+
+data/.cache/

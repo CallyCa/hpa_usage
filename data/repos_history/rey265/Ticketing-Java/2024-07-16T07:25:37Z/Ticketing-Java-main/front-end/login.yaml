@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: login-nginx
+  name: login-nginx
+  namespace: front-end
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: login-nginx
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app: login-nginx
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: login-nginx
+              topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: login-nginx
+      containers:
+      - name: login-nginx
+        image: 381492217459.dkr.ecr.ap-northeast-2.amazonaws.com/login-nginx:v2.0
+        ports:
+        - containerPort: 80
+        livenessProbe:
+          tcpSocket: 
+            port: 80
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 30
+        readinessProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 30
+        resources:
+          requests:
+            memory: 120Mi
+            cpu: 60m
+          limits:
+            memory: 120Mi
+            cpu: 60m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: login-nginx
+  name: login-nginx-svc
+  namespace: front-end
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: login-nginx
+  type: LoadBalancer
+status:
+  loadBalancer: {}
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: login-nginx-hpa
+  namespace: front-end
+spec:
+  maxReplicas: 10
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: login-nginx
+  targetCPUUtilizationPercentage: 20

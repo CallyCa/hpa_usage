@@ -1,0 +1,36 @@
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: myapp
+  namespace: 3-example
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: myapp   # to target deployment
+  minReplicas: 1
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 40
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+# kubectl get hpa -w -n 3-example
+# kubectl get svc -n 3-example |c
+# curl "localhost:8080/api/cpu?index=44"
+# kubectl -n 3-example run mycurlpod --image=curlimages/curl -i --tty -- sh
+# Session ended, resume using 'kubectl attach mycurlpod -c mycurlpod -i -t' command when the pod is running
+# curl "myapp:8080/api/cpu?index=44"
+
+# to cleanup
+# kubectl delete -n 3-example

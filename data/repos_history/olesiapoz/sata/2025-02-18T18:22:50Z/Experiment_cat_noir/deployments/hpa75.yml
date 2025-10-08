@@ -1,0 +1,82 @@
+# #------------------test 1 settings ------------
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: demo1-hpa
+spec:
+  maxReplicas: 55
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: demo1
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 180
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 15
+      - type: Pods
+        value: 1
+        periodSeconds: 15
+      selectPolicy: Max
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 300
+        periodSeconds: 15
+      - type: Pods
+        value: 10
+        periodSeconds: 15
+      selectPolicy: Max
+
+#------------------test 2 settings ------------
+# apiVersion: autoscaling/v2
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: demo1-hpa
+# spec:
+#   maxReplicas: 40
+#   minReplicas: 1
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: demo1
+#   metrics:
+#   - type: Resource
+#     resource:
+#       name: cpu
+#       target:
+#         type: Utilization
+#         averageUtilization: 50
+#   behavior:
+#     scaleDown:
+#       stabilizationWindowSeconds: 600
+#       policies:
+#       - type: Percent
+#         value: 10
+#         periodSeconds: 15
+#       - type: Pods
+#         value: 1
+#         periodSeconds: 15
+#       selectPolicy: Max
+#     scaleUp:
+#       stabilizationWindowSeconds: 0
+#       policies:
+#       - type: Percent
+#         value: 500
+#         periodSeconds: 15
+#       - type: Pods
+#         value: 10
+#         periodSeconds: 15
+#       selectPolicy: Max
+

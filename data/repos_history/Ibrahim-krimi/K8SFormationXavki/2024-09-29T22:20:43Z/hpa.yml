@@ -1,0 +1,12 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: monhpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1 #reference à l'API version de mon deployment
+    kind: Deployment #reference au kind de mon deployment
+    name: monfront #reference au nom de mon deployment
+  minReplicas: 3 # Mettre à jour le nombre min de réplicas
+  maxReplicas: 10 # Mettre à jour le nombre maxde réplicas
+  targetCPUUtilizationPercentage: 11 # Mettre à jour le pourcentage de CPU

@@ -1,0 +1,238 @@
+# Additional Pod annotations
+podAnnotations:
+  proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
+  sidecar.istio.io/rewriteAppHTTPProbers: "true"
+# Pod Labels for Keycloak
+podLabels:
+  app: keycloak
+  version: v1
+#
+command:
+  - "/opt/keycloak/bin/kc.sh"
+#
+args:
+  - "start"
+#
+extraEnv: |-
+  - name: KC_HOSTNAME_DEBUG
+    value: "true"
+  - name: KEYCLOAK_ADMIN
+    value: "admin"
+  - name: KEYCLOAK_ADMIN_PASSWORD
+    value: "password"
+  - name: KEYCLOAK_PRODUCTION
+    value: "true"
+  - name: KC_HEALTH_ENABLED
+    value: "true"
+  - name: KC_CACHE_STACK
+    value: "kubernetes"
+  - name: KC_HOSTNAME
+    value: "site.domain.com"
+  - name: KC_HOSTNAME_STRICT
+    value: "true"
+  - name: KC_HOSTNAME_STRICT_HTTPS
+    value: "true"
+  - name: KC_HTTP_ENABLED
+    value: "false"
+  - name: KC_HTTPS_CERTIFICATE_FILE
+    value: "/opt/keycloak/conf/tls.crt"
+  - name: KC_HTTPS_CERTIFICATE_KEY_FILE
+    value: "/opt/keycloak/conf/tls.key"
+  - name: KC_HTTPS_TRUST_STORE_FILE
+    value: "/opt/keycloak/conf/truststore.jks"
+  - name: KC_HTTPS_TRUST_STORE_PASSWORD
+    value: "password"
+  - name: KC_HTTPS_CLIENT_AUTH
+    value: "request"
+  - name: JAVA_OPTS_APPEND
+    value: "-Djgroups.dns.query=keycloak-headless"
+  - name: KC_LOG_LEVEL
+    value: "org.keycloak.events:DEBUG,org.infinispan:INFO,org.jgroups:INFO"
+  - name: QUARKUS_TRANSACTION_MANAGER_ENABLE_RECOVERY
+    value: "true"
+# name: DB_USER_FILE
+# value: "/secrets/name/user"
+# name: DB_PASSWORD_FILE
+# value: "/secrets/name/password"
+#
+extraVolumeMounts: |-
+  - mountPath: "/opt/keycloak/conf/truststore.jks"
+    name: kc-truststore
+    subPath: truststore.jks
+    readOnly: true
+  - mountPath: "/opt/keycloak/conf/tls.crt"
+    name: nginx-tls-cert
+    subPath: tls.crt
+    readOnly: true
+  - mountPath: "/opt/keycloak/conf/tls.key"
+    name: nginx-tls-cert
+    subPath: tls.key
+    readOnly: true
+#
+extraVolumes: |-
+  - name: kc-truststore
+    secret:
+      secretName: kc-truststore
+  - name: nginx-tls-cert
+    secret:
+      secretName: nginx-tls-cert
+#
+replicas: 1
+#
+image:
+  repository: registry1.dso.mil/ironbank/opensource/keycloak/keycloak
+  tag: "23.0.3"
+  pullPolicy: Always
+#
+imagePullSecrets:
+- name: registry1-secret
+#
+updateStrategy: RollingUpdate
+#
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+securityContext:
+  runAsUser: 1000
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+#
+resources:
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+#
+## Network policy configuration
+networkPolicy:
+  # If true, the Network policies are deployed
+  enabled: false
+
+pgchecker:
+  image:
+    # Docker image used to check Postgresql readiness at startup
+    repository: registry1.dso.mil/ironbank/opensource/postgres/postgresql12
+    # Image tag for the pgchecker image
+    tag: 12.15
+    # Image pull policy for the pgchecker image
+    pullPolicy: Always
+  # SecurityContext for the pgchecker container
+  securityContext:
+    allowPrivilegeEscalation: false
+    runAsUser: 1337
+    runAsGroup: 1337
+    runAsNonRoot: true
+    capabilities:
+      drop:
+        - ALL
+  # Resource requests and limits for the pgchecker container
+  resources:
+    requests:
+      cpu: "20m"
+      memory: "32Mi"
+    limits:
+      cpu: "20m"
+      memory: "32Mi"
+#
+autoscaling:
+  # If `true`, an autoscaling/v2beta2 HorizontalPodAutoscaler resource is created (requires Kubernetes 1.18 or above)
+  # Autoscaling seems to be most reliable when using KUBE_PING service discovery (see README for details)
+  # This disables the `replicas` field in the StatefulSet
+  enabled: false
+  # Additional HorizontalPodAutoscaler labels
+  labels: {}
+  # The minimum and maximum number of replicas for the Keycloak StatefulSet
+  minReplicas: 3
+  maxReplicas: 10
+  # The metrics to use for scaling
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+  # The scaling policy to use. This will scale up quickly but only scale down a single Pod per 5 minutes.
+  # This is important because caches are usually only replicated to 2 Pods and if one of those Pods is terminated this will give the cluster time to recover.
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 300
+#
+postgresql:
+  # If `true`, the Postgresql dependency is enabled
+  enabled: true
+  # PostgreSQL User to create
+  postgresqlUsername: keycloak
+  # PostgreSQL Password for the new user
+  postgresqlPassword: keycloak
+  # PostgreSQL Database to create
+  postgresqlDatabase: keycloak
+  # PostgreSQL network policy configuration
+  networkPolicy:
+    enabled: false
+  # Added by BigBang
+  # change bitnami sub-chart upstream image to pull from registry1.dso.mil
+  # this image is only used for dev and CI pipelines
+  global:
+    imagePullSecrets:
+      - registry1-secret
+  image:
+    registry: registry1.dso.mil
+    repository: ironbank/opensource/postgres/postgresql12
+    tag: 12.15
+  securityContext:
+    enabled: true
+    fsGroup: 26
+    runAsUser: 1001
+    runAsGroup: 1001
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 26
+    capabilities:
+      drop:
+        - ALL
+#
+secrets: {}
+
+domain: domain.com
+istio:
+  # Toggle istio integration
+  enabled: true
+  injection: "enabled"
+  mtls:
+    # -- STRICT = Allow only mutual TLS traffic,
+    # PERMISSIVE = Allow both plain text and mutual TLS traffic
+    mode: STRICT
+  keycloak:
+    # Toggle vs creation
+    enabled: true
+    annotations: {}
+    labels: {}
+    gateways:
+      - istio-system/istio-ingressgateway
+    hosts:
+      - keycloak.{{ .Values.domain }}
+monitoring:
+  enabled: true
+networkPolicies:
+  enabled: false
+  ingressLabels:
+    app: istio-ingressgateway
+    istio: ingressgateway
+  smtpPort: 587
+  ldap:
+    enabled: false
+    cidr: X.X.X.X/X
+    port: 636
+
+#
+ingress:
+  enabled: false

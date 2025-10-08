@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml-vector-search
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: embedding-generator
+  namespace: ml-vector-search
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: embedding-generator
+  template:
+    metadata:
+      labels:
+        app: embedding-generator
+    spec:
+      containers:
+      - name: embedding-service
+        image: embedding-generator:latest
+        resources:
+          limits:
+            cpu: 4
+            memory: 16Gi
+          requests:
+            cpu: 2
+            memory: 8Gi
+        env:
+        - name: MODELS
+          value: "openai,anthropic,cohere,huggingface,google"
+        - name: VECTOR_DB_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: vector-db-secrets
+              key: vertex-endpoint
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hyde-embedding-indexer
+  namespace: ml-vector-search
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: indexer
+            image: vector-indexer:latest
+            env:
+            - name: EMBEDDING_STRATEGY
+              value: "hyde"
+            - name: MODEL_WEIGHTS
+              value: "0.2,0.2,0.2,0.2,0.2"
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vector-db-secrets
+  namespace: ml-vector-search
+type: Opaque
+stringData:
+  vertex-endpoint: ${VERTEX_AI_ENDPOINT}
+  openai-key: ${OPENAI_API_KEY}
+  anthropic-key: ${ANTHROPIC_API_KEY}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vector-search-network
+  namespace: ml-vector-search
+spec:
+  podSelector:
+    matchLabels:
+      app: embedding-generator
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          project: ml-infrastructure
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: embedding-generator-hpa
+  namespace: ml-vector-search
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: embedding-generator
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70

@@ -1,0 +1,620 @@
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: python-api
+  labels:
+    app: python-api
+    version: v1.0
+    app.kubernetes.io/name: python-api
+    app.kubernetes.io/version: v1.0
+  annotations:
+spec:
+  selector:
+    app: python-api
+  type: NodePort
+  ports:
+    - name: "http-python"
+      nodePort: 30000
+      port: 80
+      targetPort: 5000
+    - name: grpc-port
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: python-api-redis
+  labels:
+    app: python-api-redis
+    version: latest
+    app.kubernetes.io/name: python-api-redis
+    app.kubernetes.io/version: latest
+spec:
+  ports:
+  - name: redis
+    port: 6379
+  selector:
+    app: python-api-redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: python-api-ratelimit
+  labels:
+    app: python-api-ratelimit
+    version: latest
+    app.kubernetes.io/name: python-api-ratelimit
+    app.kubernetes.io/version: latest
+spec:
+  ports:
+  - name: http-port
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: grpc-port
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+  - name: http-debug
+    port: 6070
+    targetPort: 6070
+    protocol: TCP
+  selector:
+    app: python-api-ratelimit
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-api-redis
+  labels:
+    app: python-api-redis
+    version: latest
+    app.kubernetes.io/name: python-api-redis
+    app.kubernetes.io/version: latest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: python-api-redis
+  template:
+    metadata:
+      labels:
+        app: python-api-redis
+        version: latest
+        app.kubernetes.io/name: python-api-redis
+        app.kubernetes.io/version: latest
+    spec:
+      containers:
+      - image: redis:alpine
+        imagePullPolicy: Always
+        name: python-api-redis
+        ports:
+        - name: redis
+          containerPort: 6379
+        livenessProbe:
+          tcpSocket:
+            port: redis # named port
+          initialDelaySeconds: 120
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+      restartPolicy: Always
+      serviceAccountName: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-api
+  annotations:
+  labels:
+    app: python-api
+    version: v1.0
+    app.kubernetes.io/name: python-api
+    app.kubernetes.io/version: v1.0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: python-api
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/statsInclusionPrefixes: local_rate_limit,cluster.inbound|80
+      labels:
+        app: python-api
+        version: v1.0
+        app.kubernetes.io/name: python-api
+        app.kubernetes.io/version: v1.0
+    spec:
+      containers:
+      - name: python-api
+        image: python-api:v1.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
+          name: "http-python"
+        resources:
+          limits:
+            cpu: 1.5
+            memory: "1Gi"
+          requests:
+            cpu: 50m
+            memory: "256Mi"
+        livenessProbe:
+          httpGet:
+            path: /health-check
+            port: 5000
+          initialDelaySeconds: 120
+          periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health-check
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 5
+        env:
+        - name: DD_AGENT_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: DD_SERVICE_NAME
+          value: python-api
+        - name: DD_TRACE_GLOBAL_TAGS
+          value: "env:"
+        - name: SERVER_PORT
+          value: "5000"
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: python-api
+  labels:
+    app: python-api
+    version: v1.0
+    app.kubernetes.io/name: python-api
+    app.kubernetes.io/version: v1.0
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: python-api
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: 70
+
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  annotations:
+    type: internal
+  name: python-api
+  labels:
+    app: python-api
+    version: v1.0
+    app.kubernetes.io/name: python-api
+    app.kubernetes.io/version: v1.0
+spec:
+  selector:
+    istio: ilbgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "*"
+    tls:
+      credentialName: python-api.fake.com.crt
+      mode: SIMPLE
+
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: python-api
+  labels:
+    app: python-api
+    version: v1.0
+    app.kubernetes.io/name: python-api
+    app.kubernetes.io/version: v1.0
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - python-api
+  http:
+  - route:
+    - destination:
+        port:
+          # number: 5000
+          number: 80
+        host: python-api
+---
+
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: python-api
+  labels:
+    app: python-api
+    version: v1.0
+    app.kubernetes.io/name: python-api
+    app.kubernetes.io/version: v1.0
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: python-api
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  # If you change the config below, then increment the version number in the name below as well as the reference in the ratelimit deploy so the pods pickup the changes.
+  name: python-api-ratelimit-config-v6
+data:
+  config.yaml: |
+    domain: python-api-global-ratelimiter
+    descriptors:
+      - key: header_match
+        value: "TEST_API_PATH_MATCH"
+        descriptors:
+          - key: TEST-API-HEADER-VALUE
+            rate_limit:
+              unit: minute
+              requests_per_unit: 20
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: python-api-filter-ratelimit
+spec:
+  workloadSelector:
+    labels:
+      app: python-api
+  configPatches:
+    # The Envoy config you want to modify
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: "envoy.http_connection_manager"
+              subFilter:
+                name: "envoy.router"
+      patch:
+        operation: INSERT_BEFORE
+        # Adds the Envoy Rate Limit Filter in HTTP filter chain.
+        value:
+          name: envoy.filters.http.ratelimit
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit
+            # The domain can be anything. Match it to the ratelimiter service config.
+            domain: python-api-global-ratelimiter
+            failure_mode_deny: false
+            timeout: 1s
+            rate_limit_service:
+              grpc_service:
+                envoy_grpc:
+                  cluster_name: python-api-rate_limit_cluster
+              transport_api_version: V3
+    - applyTo: CLUSTER
+      match:
+        cluster:
+          service: python-api-ratelimit.mystuff.svc.cluster.local
+      patch:
+        operation: ADD
+        # Adds the rate limit service cluster for rate limit service
+        value:
+          name: python-api-rate_limit_cluster
+          type: STRICT_DNS
+          connect_timeout: 10s
+          lb_policy: ROUND_ROBIN
+          http2_protocol_options: {}
+          load_assignment:
+            cluster_name: python-api-rate_limit_cluster
+            endpoints:
+            - lb_endpoints:
+              - endpoint:
+                  address:
+                     socket_address:
+                      address: python-api-ratelimit.mystuff.svc.cluster.local
+                      port_value: 8081
+
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: python-api-filter-ratelimit-svc
+spec:
+  workloadSelector:
+    labels:
+      app: python-api
+  configPatches:
+    - applyTo: VIRTUAL_HOST
+      match:
+        context: SIDECAR_INBOUND
+        routeConfiguration:
+          vhost:
+            name: ""
+            route:
+              action: ANY
+
+
+      patch:
+        operation: MERGE
+        # Applies the rate limit rules.
+        value:
+          rate_limits:
+            - actions:
+              - header_value_match:
+                  # Uses preset key of "header_match"
+                  descriptor_value: "TEST_API_PATH_MATCH"
+                  headers:
+                  - name: ":path"
+                    prefix_match: "/index"
+              - request_headers:
+                  header_name: "X-TEST-API-HEADER-VALUE"
+                  descriptor_key: "TEST-API-HEADER-VALUE"
+
+              limit:
+                dynamic_metadata:
+                  metadata_key:
+                    key: "envoy.filters.http.ratelimit.override"
+                    path:
+                    - key: "limit"
+
+---
+
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-api-ratelimit
+  labels:
+    app: python-api-ratelimit
+    version: latest
+    app.kubernetes.io/name: python-api-ratelimit
+    app.kubernetes.io/version: latest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: python-api-ratelimit
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: python-api-ratelimit
+        version: latest
+        app.kubernetes.io/name: python-api-ratelimit
+        app.kubernetes.io/version: latest
+    spec:
+      containers:
+      - image: envoyproxy/ratelimit:4bb32826
+        imagePullPolicy: Always
+        name: python-api-ratelimit
+        command: ["/bin/ratelimit"]
+        env:
+        - name: LOG_LEVEL
+          value: debug
+        - name: REDIS_SOCKET_TYPE
+          value: tcp
+        - name: REDIS_URL
+          value: python-api-redis:6379
+        - name: USE_STATSD
+          value: "false"
+        - name: RUNTIME_ROOT
+          value: /data
+        - name: RUNTIME_SUBDIRECTORY
+          value: ratelimit
+        ports:
+        - containerPort: 8080
+        - containerPort: 8081
+        - containerPort: 6070
+        volumeMounts:
+        - name: config-volume
+          mountPath: /data/ratelimit/config/config.yaml
+          subPath: config.yaml
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 5
+      volumes:
+      - name: config-volume
+        configMap:
+          name: python-api-ratelimit-config-v6
+
+
+
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: core-authz-filter-patch
+spec:
+  workloadSelector:
+    labels:
+      app: python-api
+  configPatches:
+    - applyTo: CLUSTER
+      match:
+        cluster:
+          service: authz.mystuff.svc.cluster.local
+      patch:
+        operation: MERGE
+        value:
+          name: external.authz.mystuff.svc.cluster.local
+---
+
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: core-authz-filter
+spec:
+  workloadSelector:
+    labels:
+      app: python-api
+  configPatches:
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: "envoy.filters.network.http_connection_manager"
+              subFilter:
+                # name: "envoy.router"
+                name: envoy.filters.http.router
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.ext_authz
+          # connect_timeout: 1.0s
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz            
+            grpc_service:
+              envoy_grpc:
+                cluster_name: external.authz.mystuff.svc.cluster.local
+              timeout: 1.0s
+            transport_api_version: V3
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: "envoy.filters.network.http_connection_manager"
+              subFilter:
+                name: envoy.ext_authz
+      patch:
+        operation: INSERT_AFTER
+        value:
+          name: envoy.filters.http.header_to_metadata
+          typed_config: 
+            "@type": type.googleapis.com/envoy.extensions.filters.http.header_to_metadata.v3.Config
+            request_rules:
+              - header: x-ext-auth-ratelimit
+                on_header_present:
+                  key: rate.requests_per_unit
+                  type: NUMBER
+                on_header_missing:
+                  key: rate.requests_per_unit
+                  value: "1"
+                  type: STRING
+                remove: false
+              - header: x-ext-auth-ratelimit-unit
+                on_header_present:
+                  key: rate.unit
+                  type: STRING
+                on_header_missing:
+                  key: rate.unit
+                  value: 'HOUR'
+                  type: STRING
+                remove: false
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: "envoy.filters.network.http_connection_manager"
+              subFilter:
+                name: "envoy.filters.http.header_to_metadata"
+      patch:
+        operation: INSERT_AFTER
+        value:
+          name: envoy.filters.http.lua
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+            inline_code: |
+
+              function PrintTable(tbl, depth, n)
+                n = n or 0;
+                depth = depth or 5;
+
+                if (depth == 0) then
+                    print(string.rep(' ', n).."...");
+                    return;
+                end
+
+                if (n == 0) then
+                    print(" ");
+                end
+
+                for key, value in pairs(tbl) do
+                    if (key and type(key) == "number" or type(key) == "string") then
+                        key = string.format("[\"%s\"]", key);
+
+                        if (type(value) == "table") then
+                            if (next(value)) then
+                                print(string.rep(' ', n)..key.." = {");
+                                PrintTable(value, depth - 1, n + 4);
+                                print(string.rep(' ', n).."},");
+                            else
+                                print(string.rep(' ', n)..key.." = {},");
+                            end
+                        else
+                            if (type(value) == "string") then
+                                value = string.format("\"%s\"", value);
+                            else
+                                value = tostring(value);
+                            end
+
+                            print(string.rep(' ', n)..key.." = "..value..",");
+                        end
+                    end
+                end
+
+                if (n == 0) then
+                    print(" ");
+                end
+              end
+
+              function envoy_on_request(request_handle)
+                  -- request_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.ratelimit.override", "limit", { unit = "MINUTE", requests_per_unit = 2 })
+
+                  local reqs_per_unit = request_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.header_to_metadata")["rate.requests_per_unit"]
+                  local reqs_unit = request_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.header_to_metadata")["rate.unit"]
+                  request_handle:logWarn("requests_per_unit value: " .. reqs_per_unit)
+                  request_handle:logWarn("unit value: " .. reqs_unit) 
+
+                  local rate_limits = { requests_per_unit = reqs_per_unit, unit = reqs_unit}
+
+                  request_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.ratelimit.override", "limit", rate_limits)
+
+                  local all_of_it = request_handle:streamInfo():dynamicMetadata()
+
+                  request_handle:logWarn("DATA IN METADATA")
+                  PrintTable(all_of_it)
+
+              end

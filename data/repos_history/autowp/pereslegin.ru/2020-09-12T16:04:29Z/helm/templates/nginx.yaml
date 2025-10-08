@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pereslegin
+spec:
+  selector:
+    matchLabels:
+      app: pereslegin
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: pereslegin
+    spec:
+      containers:
+      - name: pereslegin
+        image: autowp/pereslegin_ru
+        ports:
+        - name: app-port
+          containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /
+            port: app-port
+          initialDelaySeconds: 3
+          periodSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: app-port
+          initialDelaySeconds: 5
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: pereslegin
+  name: pereslegin
+spec:
+  ports:
+    - name: app-port
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: pereslegin
+  sessionAffinity: None
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: pereslegin
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  rules:
+  - host: pereslegin.ru
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: pereslegin
+          servicePort: 8080
+  - host: www.pereslegin.ru
+    http:
+      paths:
+      - backend:
+          serviceName: pereslegin
+          servicePort: 8080

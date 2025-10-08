@@ -1,0 +1,17 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  annotations: {}
+  name: gh-app-1-v1-0-0
+  labels:
+    app: gh-app-1-v1-0-0
+    applicationId: app_d12a3d9d-dbde-45a0-a3b0-d4b72ea78c15
+    version: v1.0.0
+    organizationId: org_6de1b366-9da6-4d55-b363-f5a2c4382016
+    projectId: project_d6eb94b5-d39d-4dc5-8c15-602de5677592
+    environmentId: env_2bf60841-30d1-4917-9c6a-9b79c56beb31
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gh-app-1-v1-0-0

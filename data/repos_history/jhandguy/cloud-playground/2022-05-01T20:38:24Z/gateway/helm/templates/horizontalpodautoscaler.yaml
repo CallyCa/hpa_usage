@@ -1,0 +1,34 @@
+{{- range $name, $service := .Values.services }}
+{{- if or (not $.Values.argoRollouts.enabled) (eq $name "stable") }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $.Release.Name }}-{{ $name }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  scaleTargetRef:
+    {{- if $.Values.argoRollouts.enabled }}
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    name: {{ $.Release.Name }}
+    {{- else }}
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $.Release.Name }}-{{ $name }}
+    {{- end }}
+  {{- with $.Values.horizontalPodAutoscaler }}
+  minReplicas: {{ .minReplicas }}
+  maxReplicas: {{ .maxReplicas }}
+  metrics:
+    {{- range $resource, $target := .targets }}
+    - type: Resource
+      resource:
+        name: {{ $resource }}
+        target:
+          type: {{ $target.type }}
+          averageUtilization: {{ $target.averageUtilization }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}

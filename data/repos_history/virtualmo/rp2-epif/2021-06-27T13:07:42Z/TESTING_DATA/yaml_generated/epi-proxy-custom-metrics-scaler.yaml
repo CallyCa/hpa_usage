@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: epi-bf
+  labels:
+    app: epi-bf
+    tier: proxy
+  namespace: epi
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5000
+  selector:
+    app: epi-bf
+    tier: proxy
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: epi-proxy
+  labels:
+    service-monitor: epi-proxy
+spec:
+  selector:
+    matchLabels:
+      app: epi-proxy
+  endpoints:
+  - port: web
+    interval: 10s
+---
+kind: HorizontalPodAutoscaler
+apiVersion: autoscaling/v2beta1
+metadata:
+  name: epi-bf-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: epi-bf
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Object
+    object:
+      target:
+        kind: Service
+        name: epi-proxy
+      metricName: http_requests
+      targetValue: 100
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: epi-config
+  namespace: epi
+data:
+  EPI_SERVER: "epi-server"
+  EPI_SERVER_PORT: "80"
+  EPI_VNF: "epi-bf"
+  EPI_VNF_PORT: "5000"
+  PROXY_HOST: "epi-proxy"
+  PROXY_PORT: "1080"
+  DELTA: "5.0"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: epi-bf
+  namespace: epi
+spec:
+  replicas: 1
+  selector:
+   matchLabels:
+    app: epi-bf
+  template:
+    metadata:
+      labels:
+        app: epi-bf
+        tier: proxy
+    spec:
+      containers:
+      - name: epi-bf
+        image: pimpaardekooper/vnf_instances:http_filter_no_stress
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: epi-config
+        ports:
+        - containerPort: 5000
+        securityContext:
+          privileged: true
+        resources:
+          limits:
+            cpu: 100m
+            memory: 500Mi
+          requests:
+            cpu: 50m
+            memory: 100Mi
+        volumeMounts:
+          - name: bf-pv
+            mountPath: /mnt
+      volumes:
+        - name: bf-pv
+          hostPath:
+            path: /root
+            type: Directory
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: epi-proxy
+  namespace: default
+  annotations:
+    traefik.frontend.rule.type: PathPrefixStrip
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /epi-proxy
+        backend:
+          serviceName: epi-proxy
+          servicePort: 80
+---
+
+# melamin/epi-proxy:v0.01
+# pimpaardekooper/vnf_instances:proxy

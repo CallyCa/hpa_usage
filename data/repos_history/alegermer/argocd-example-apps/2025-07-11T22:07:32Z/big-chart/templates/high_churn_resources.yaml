@@ -1,0 +1,49 @@
+
+# Loop through N resources with configurable number
+{{- range $i := until (int .Values.numResources) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: busybox-deployment-{{ $i }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: busybox-{{ $i }}
+  template:
+    metadata:
+      labels:
+        app: busybox-{{ $i }}
+    spec:
+      containers:
+      - name: busybox
+        image: busybox
+        command: ["sleep", "infinity"]
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "16Mi"
+          limits:
+            cpu: "10m" 
+            memory: "16Mi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: busybox-hpa-{{ $i }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: busybox-deployment-{{ $i }}
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 100
+---
+{{- end }}

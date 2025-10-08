@@ -1,0 +1,531 @@
+{{- if not ( $.Values.global.serviceAccountName) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "service.fullname" .}}  
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "labels.allResources" . }}
+    app.kubernetes.io/component: ingress-front-end
+  annotations:
+    {{- include "annotations.allResources" . }}
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ template "ingressgateway.role" .}}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "labels.allResources" . }}
+    app.kubernetes.io/component: ingress-front-end
+  annotations:
+    {{- include "annotations.allResources" . }}
+rules:
+- apiGroups:
+  - "" # "" indicates the core API group
+  resources:
+  - services
+  - configmaps
+  - pods
+  - secrets
+  - endpoints
+  verbs:
+  - get
+  - watch
+  - list
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ template "ingressgateway.rolebinding" .}}-v1
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "labels.allResources" . }}
+    app.kubernetes.io/component: ingress-front-end
+  annotations:
+    {{- include "annotations.allResources" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "ingressgateway.role" .}}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "service.fullname" .}}
+  namespace: {{ .Release.Namespace }}
+---
+{{- end }}
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "hpautoscalar.fullname" .}}-v1
+  labels:
+    {{- include "labels.allResources" . }}
+    app.kubernetes.io/component: ingress-front-end
+  annotations:
+    {{- include "annotations.allResources" . }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ template "deployment.fullname" .}}
+  minReplicas: {{ .Values.minReplicas }}
+  maxReplicas: {{ .Values.maxReplicas }}
+  targetCPUUtilizationPercentage: {{ .Values.resources.target.averageCpuUtil }}
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "deployment.fullname" .}}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "labels.lbDeployments" . }}
+    app.kubernetes.io/component: ingress-front-end
+  annotations:
+    traffic.sidecar.istio.io/excludeOutboundPorts: "{{ .Values.coherence.messagingPort1 }}, {{ .Values.coherence.messagingPort2 }}, {{ .Values.ports.actuatorPort }}"
+    traffic.sidecar.istio.io/excludeInboundPorts: "{{ .Values.coherence.messagingPort1 }}, {{ .Values.coherence.messagingPort2 }}, {{ .Values.ports.actuatorPort }}" 
+    {{- include "annotations.lbDeployments" . }}
+spec:
+  replicas: {{ .Values.minReplicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ template "chart.fullname" .}}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      
+  template:
+    metadata:
+      labels:
+        {{- include "labels.lbDeployments" . | nindent 4 }}
+        app.kubernetes.io/component: ingress-front-end
+      annotations:
+        traffic.sidecar.istio.io/excludeOutboundPorts: "{{ .Values.coherence.messagingPort1 }}, {{ .Values.coherence.messagingPort2 }}, {{ .Values.ports.actuatorPort }}"
+        traffic.sidecar.istio.io/excludeInboundPorts: "{{ .Values.coherence.messagingPort1 }}, {{ .Values.coherence.messagingPort2 }}, {{ .Values.ports.actuatorPort }}" 
+        {{- include "annotations.lbDeployments" . | nindent 4 }}
+        prometheus.io/port: "{{ .Values.ports.actuatorPort }}"
+        prometheus.io/path: "/actuator/prometheus"
+        prometheus.io/scrape: "true"
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+        Accept: application/json 
+    spec:
+      tolerations: {{ include "ocnf.tolerations" . | nindent 6 }}
+      {{- if $.Values.global.serviceAccountName }}
+      serviceAccountName: {{ .Values.global.serviceAccountName }}
+      {{- else }}
+      serviceAccountName: {{ template "service.fullname" .}}
+      {{- end }}
+      {{- $helmBasedConfigurationNodeSelectorApiVersion:= .Values.helmBasedConfigurationNodeSelectorApiVersion | default "v1" }}
+      {{- if (eq $helmBasedConfigurationNodeSelectorApiVersion "v2") }}
+      nodeSelector: {{ include "ocnf.nodeselector" . | nindent 8 }}
+      {{- else }} 
+      {{- $globalnodeselector := and  .Values.global.nodeSelector.nodeKey .Values.global.nodeSelector.nodeValue }}
+      {{- $localnodeselector := and  .Values.nodeSelector.nodeKey .Values.nodeSelector.nodeValue }}
+      {{- if or $globalnodeselector $localnodeselector }}
+      nodeSelector:
+      {{- if $localnodeselector }}
+         {{ .Values.nodeSelector.nodeKey }}: {{ .Values.nodeSelector.nodeValue }}
+      {{- else}}
+         {{ .Values.global.nodeSelector.nodeKey }}: {{ .Values.global.nodeSelector.nodeValue }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: "app.kubernetes.io/name"
+                  operator: In
+                  values:
+                  - {{ template "chart.fullname" .}}
+              topologyKey: "kubernetes.io/hostname"
+      
+      {{- if .Values.enableIncomingHttps }} 
+      initContainers:
+      - name: {{ printf "%s-%s-%s" (include "getprefix" .) "init-service" (include "getsuffix" .) | trunc 63 | trimPrefix "-"|trimSuffix "-"  }}
+        image: "{{ .Values.global.dockerRegistry }}/{{ .Values.initContainersImage.name }}:{{ .Values.initContainersImage.tag }}"
+        imagePullPolicy: "{{ .Values.initContainersImage.pullPolicy }}"
+        command: ["java"]
+        args: ["-Djdk.tls.client.protocols=TLSv1.2", "-jar", "/opt/oracle/app/configurationinit.jar" ]
+        volumeMounts:
+        - name: empty-dir
+          mountPath: "/configinfo"
+        envFrom:
+          - configMapRef:
+              name: {{ template "configmap.fullname" .}}
+        env:
+        - name: K8S_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: K8S_NODE
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        resources:
+          requests:
+            cpu: {{ .Values.resources.requests.initServiceCpu | quote}}
+            memory: {{ .Values.resources.requests.initServiceMemory | quote}}
+          limits:
+            cpu: {{ .Values.resources.limits.initServiceCpu | quote}}
+            memory: {{ .Values.resources.limits.initServiceMemory | quote}}
+      {{- end }} 
+      containers:
+      {{- if .Values.enableIncomingHttps }} 
+      - name:  {{ printf "%s-%s-%s" (include "getprefix" .) "update-service" (include "getsuffix" .) | trunc 63 | trimPrefix "-"|trimSuffix "-"  }}
+        image: "{{ .Values.global.dockerRegistry }}/{{ .Values.updateContainersImage.name }}:{{ .Values.updateContainersImage.tag }}"
+        imagePullPolicy: "{{ .Values.updateContainersImage.pullPolicy }}"
+        command: ["java"]
+        args: ["-Djdk.tls.client.protocols=TLSv1.2", "-jar", "/opt/oracle/app/configurationupdate.jar" ]
+        volumeMounts:
+        - name: empty-dir
+          mountPath: "/configinfo"
+        envFrom:
+          - configMapRef:
+              name: {{ template "configmap.fullname" .}}
+        env:
+        - name: K8S_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: K8S_NODE
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        resources:
+          requests:
+            cpu: {{ .Values.resources.requests.updateServiceCpu | quote}}
+            memory: {{ .Values.resources.requests.updateServiceMemory | quote}}
+          {{- if ne (add .Values.global.logStorage .Values.global.crictlStorage)  0 }}
+            ephemeral-storage: {{ template "ingress-gateway-ephemeral-storage-request" .}}
+          {{- end }}
+          limits:
+            cpu: {{ .Values.resources.limits.updateServiceCpu | quote}}
+            memory: {{ .Values.resources.limits.updateServiceMemory | quote}}
+          {{- if ne (int .Values.global.ephemeralStorageLimit)  0 }}
+            ephemeral-storage: {{ template "ingress-gateway-ephemeral-storage-limit" .}}
+          {{- end }}
+      {{- end }} 
+      - image: "{{ .Values.global.dockerRegistry }}/{{ .Values.image.name }}:{{ .Values.image.tag }}"
+        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
+        name:  {{ template "container.fullname" . }}
+        envFrom:
+          - configMapRef:
+              name: {{ template "configmap.fullname" .}}
+        ports:
+        - containerPort:  {{ .Values.ports.actuatorPort }}
+          name: cnc-metrics
+          protocol: TCP
+        {{- if  .Values.enableIncomingHttp }}
+        - containerPort:  {{ .Values.ports.containerPort }}
+        {{- end}}
+        {{- if .Values.enableIncomingHttp1 }}
+        - containerPort: {{ .Values.ports.containerHttp1Port }}
+        {{- end }}
+        {{- if  .Values.enableIncomingHttps }}
+        - containerPort:  {{ .Values.ports.containersslPort }}
+        {{- end }}
+        readinessProbe:
+          #tcpSocket:
+          #  port: {{ .Values.ports.actuatorPort }}
+          httpGet:
+            path: /actuator/health/readiness
+            port: {{ .Values.ports.actuatorPort }}
+          initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+          timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+          periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+          successThreshold: {{ .Values.readinessProbe.successThreshold }}
+          failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: {{ .Values.ports.actuatorPort }}
+          initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+          timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+          periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+          successThreshold: {{ .Values.livenessProbe.successThreshold }}
+          failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+        startupProbe:
+          httpGet:
+            path: /actuator/health/startup
+            port: {{ .Values.ports.actuatorPort }}
+          initialDelaySeconds: {{ .Values.startupProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.startupProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.startupProbe.timeoutSeconds }}
+          successThreshold: {{ .Values.startupProbe.successThreshold }}
+          failureThreshold: {{ .Values.startupProbe.failureThreshold }}
+        resources:
+          limits:
+            cpu: {{ .Values.resources.limits.cpu | quote}} 
+            memory: {{ .Values.resources.limits.memory | quote}}
+          {{- if ne (int .Values.global.ephemeralStorageLimit)  0 }}
+            ephemeral-storage: {{ template "ingress-gateway-ephemeral-storage-limit" .}}
+          {{- end }}
+          requests:
+            cpu: {{ .Values.resources.requests.cpu | quote}}
+            memory: {{ .Values.resources.requests.memory | quote}}
+          {{- if ne (add .Values.global.logStorage .Values.global.crictlStorage)  0 }}
+            ephemeral-storage: {{ template "ingress-gateway-ephemeral-storage-request" .}}
+          {{- end }}
+        volumeMounts:
+        - name: empty-dir
+          mountPath: "/configinfo"
+        env:
+        - name: OAUTH_VALIDATOR_ENABLED
+          value: {{ .Values.oauthValidatorEnabled | quote }}
+        {{- if .Values.oauthValidatorEnabled }}
+        - name: NF_TYPE
+          value: {{ .Values.nfType }}
+        - name: NF_INSTANCE_ID
+          value: {{ .Values.nfInstanceId }}
+        - name: ALLOWED_CLOCK_SKEW_SECONDS
+          value: {{ .Values.allowedClockSkewSeconds | quote }}
+        - name: PRODUCER_SCOPE
+          value: {{ .Values.producerScope }}
+        - name: NRF_PUBLICKEY_SECRET
+          value: {{ .Values.nrfPublicKeyKubeSecret }}
+        - name: NRF_PUBLICKEY_KUBE_NAMESPACE
+          value: {{ .Values.nrfPublicKeyKubeNamespace }}
+        - name: VALIDATION_TYPE
+          value: {{ .Values.validationType }}
+        - name: PRODUCER_PLMN_MNC
+          value: {{ .Values.producerPlmnMNC | quote}}
+        - name: PRODUCER_PLMN_MCC
+          value:  {{ .Values.producerPlmnMCC | quote }}
+        {{- end }}
+        - name: CONFIGMAP_NAME
+          value: {{ template "configmap.fullname" .}}
+        - name: SERVICE_MESH_CHECK
+          value: {{ template "servicemesh.check" . }}
+        - name: SERVICE_MESH_HTTPS_ENABLED
+          value: {{ template "cncc.servicemesh.httpsEnabled" . }}
+        - name: APP_NAME
+          value: {{ template "chart.fullname" .}}
+        - name: APPLICATION_VERSION
+          value: {{ .Chart.Version | quote}}
+        #TODO: Remove if not used in logging
+        - name: ENGINEERING_VERSION
+          value: {{ .Chart.Version | quote}}
+        - name: ACTUATOR_PORT
+          value: {{ .Values.ports.actuatorPort | quote }}
+        - name: LOG_LEVEL_ROOT
+          value: {{ .Values.log.level.root }}
+        - name: LOG_LEVEL_INGRESS
+          value: {{ .Values.log.level.ingress }}
+        - name: LOG_LEVEL_OAUTH
+          value: {{ .Values.log.level.oauth }} 
+        - name: DNS_REFRESH_DELAY
+          value: {{ .Values.dnsRefreshDelay | quote }}
+        - name: INGRESS_SERVER_KEEPALIVE_ENABLED
+          value: {{ .Values.ingressServer.keepAlive.enabled | quote }}
+        - name: INGRESS_SERVER_KEEPALIVE_IDEALTIME
+          value: {{ .Values.ingressServer.keepAlive.idealTime | quote }}
+        - name: INGRESS_SERVER_KEEPALIVE_COUNT
+          value: {{ .Values.ingressServer.keepAlive.count | quote }}
+        - name: INGRESS_SERVER_KEEPALIVE_INTERVAL
+          value: {{ .Values.ingressServer.keepAlive.interval | quote }}
+        - name: WEBCLIENT_THREAD_QUEUE_CAPACITY 
+          value: {{ .Values.webclient.threadQueueCapacity | quote }}
+        - name: WEBCLIENT_THREAD_SIZE_CORE
+          value: {{ .Values.webclient.threadSizeMultiByCore | quote }}
+        - name: MAX_REQUESTS_QUEUED_PER_DESTINATION
+          value: {{ .Values.maxRequestsQueuedPerDestination | quote }}
+        - name: MAX_CONNECTIONS_PER_DESTINATION
+          value: {{ .Values.maxConnectionsPerDestination | quote}}
+        - name: MAX_CONNECTIONS_PER_IP
+          value: {{ .Values.maxConnectionsPerIp | quote}}
+        - name: CONNECTION_TIMEOUT
+          value: {{ .Values.connectionTimeout | quote}}
+        - name: REQUEST_TIMEOUT
+          value: {{ .Values.requestTimeout | quote }} 
+        - name: MICROSERVICE_NAME
+          value: {{ .Values.fullnameOverride | quote}}
+        - name: GATEWAY_SERVICE_NAME
+          value: {{ template "service.fullname" .}}
+        - name: COHERENCE_MODE
+          value: {{ .Values.coherence.mode }}
+        - name: COHERENCE_SERVICE
+          value: {{ template "service.igw.CoherenceSvcFullname" . }}
+        - name: GLOBAL_RATELIMITING_DURATION
+          value: {{ .Values.globalIngressRateLimiting.duration | quote}}
+        - name: GLOBAL_RATELIMITING_BUCKETCAPACITY
+          value: {{ .Values.globalIngressRateLimiting.burstCapacity | quote}}
+        - name: JETTY_MAX_CONCURRENT_PUSHEDSTREAMS
+          value: {{.Values.maxConcurrentPushedStreams | quote}} 
+        - name: JETTY_GRACEFUL_REQUEST_TERMINATION
+          value: {{.Values.jettyGracefulRequestTermination | quote}} 
+        - name: GLOBAL_RATELIMITING_REFILLRATE
+          value: {{ .Values.globalIngressRateLimiting.refillRate | quote}}
+        - name: SERVER_DEFAULT_SETTINGS_MAX_CONCURRENT_STREAM
+          value: {{ .Values.serverDefaultSettingsMaxConcurrentStream| quote }}
+        - name: SERVER_DEFAULT_SETTINGS_INITIAL_WINDOWSIZE
+          value: {{ .Values.serverDefaultSettingsInitialWindowSize | quote }}
+        - name: SERVER_DEFAULT_WINDOWUPDATE_RATIO
+          value: {{ .Values.serverDefaultWindowUpdateRatio }}   
+        - name: COMMON_CFG_CLIENT_ENABLED
+          value: {{ .Values.commonCfgClient.enabled | quote }}
+        - name: COMMON_CFG_SERVER_HOST
+          value: {{ template "service.ConfigServerSvcFullname" .}}
+        - name: COMMON_CFG_SERVER_PORT
+          value: {{ .Values.commonCfgServer.port | quote }}
+        - name: COMMON_CFG_SERVER_POLLING_INTERVAL
+          value: {{ .Values.commonCfgServer.pollingInterval | quote }}
+        - name: COMMONSERVICE_NAME
+          value: {{ .Values.commonServiceName }}  
+        - name: ISTIO_SIDECAR_QUIT_URL
+          value: {{ template "istioproxy.quit.url" . }}
+        - name: ISTIO_SIDECAR_READY_URL
+          value: {{ template "istioproxy.ready.url" . }}
+        - name: COHERENCE_MESSAGING_PORT_1
+          value: {{ .Values.coherence.messagingPort1 | quote }}
+        - name: COHERENCE_MESSAGING_PORT_2
+          value: {{ .Values.coherence.messagingPort2 | quote }}
+        - name: RELEASE_VERSION
+          value: {{ .Chart.Version | quote }}
+        {{- if .Values.isIpv6Enabled }}
+        - name: KUBERNETES_MASTER
+          value: https://kubernetes.default.svc
+        {{- end }}
+        - name: METRIC_PREFIX
+          value: {{ template "metric.prefix" .}}
+        - name: METRIC_SUFFIX
+          value: {{ template "metric.suffix" .}}
+        - name: AUTO_REDIRECT
+          value: {{ .Values.autoRedirect | quote }}
+        - name: K8S_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: K8S_NODE
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: "COHERENCE_MACHINE"
+          valueFrom:
+            fieldRef:
+              fieldPath: "spec.nodeName"
+        - name: "COHERENCE_MEMBER"
+          valueFrom:
+            fieldRef:
+              fieldPath: "metadata.name"
+        # CNCC env variables
+        - name: CNCC_ROOT_LOG_LEVEL
+          value: {{ .Values.log.level.cncc.root }}
+        - name: CNCC_AUDIT_LOG_LEVEL
+          value: {{ .Values.log.level.cncc.audit }}
+        - name: CNCC_SECURITY_LOG_LEVEL
+          value: {{ .Values.log.level.cncc.security }}
+        #TODO: Remove if not used in logging
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: CFG_CLIENT_ENABLED
+          value: {{ .Values.cfgClient.enabled | quote }}
+        - name: CFG_SERVER_HOST
+          value: {{ .Release.Name }}-{{ .Values.global.configServerFullNameOverride }}
+        - name: CFG_SERVER_PORT
+          value: {{ .Values.global.configServerPort | quote }}
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: TRACE_ID_GENERATION_ENABLED
+          value: {{ .Values.log.traceIdGenerationEnabled | quote }}
+        - name: REQ_COUNT_SAMPLING_INTERVAL
+          value: {{ .Values.requestCountSamplingInteval | quote}}
+        - name: SUBS_ACT_MAPPINGTABLE_ENTRY_SIZE
+          value: {{ .Values.global.subsActMappingTableEntrySize | default 20 | quote}}
+      {{- include "extraContainers" . | nindent 6}}
+      volumes:
+      - name: empty-dir
+        emptyDir: 
+          medium : Memory
+          sizeLimit: 1Mi 
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: {{ template "service.fullname" .}}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "labels.lbServices" . }}
+    app.kubernetes.io/component: ingress-front-end
+  annotations:
+    {{- include "annotations.lbServices" . }}
+spec:
+  type: {{ .Values.global.type }}
+  {{- if .Values.global.staticIpAddressEnabled }}
+  loadBalancerIP: {{ .Values.global.staticIpAddress }}
+  {{- end }}
+  selector:
+    app.kubernetes.io/name: {{ template "chart.fullname" .}}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+  {{- if .Values.enableIncomingHttp }}
+  - protocol: TCP
+  {{- if .Values.global.staticNodePortEnabled }}
+    nodePort: {{ .Values.global.staticHttpNodePort}}
+  {{- end }}
+    port: {{ .Values.global.publicHttpSignalingPort }}
+    targetPort: {{ .Values.ports.containerPort }}
+    name: http2-tcp
+  {{- end }}
+  {{- if .Values.enableIncomingHttp1 }}
+  - protocol: TCP
+  {{- if .Values.global.staticNodePortEnabled }}
+    nodePort: {{ .Values.global.staticHttp1NodePort }}
+  {{- end }}
+    port: {{ .Values.global.publicHttp1SignalingPort }}
+    targetPort: {{ .Values.ports.containerHttp1Port }}
+    name: http1-tcp
+  {{- end }}
+  {{- if .Values.enableIncomingHttps }}
+  - protocol: TCP
+    name: http2-tls
+    port: {{ .Values.global.publicHttpsSignalingPort }}
+  {{- if .Values.global.staticNodePortEnabled }}
+    nodePort: {{  .Values.global.staticHttpsNodePort}}
+  {{- end }}
+    targetPort:  {{ .Values.ports.containersslPort }}
+  {{- end }}
+    #port: {{ .Values.service.publicSignalingPort }}
+    #{{- if .Values.global.staticNodePortEnabled }}
+    #nodePort: {{ .Values.service.staticNodePort }}
+    #{{- end }}
+    #targetPort: {{ .Values.ports.containerPort }}
+    #{{- if .Values.service.httpsEnabled }}
+    #name: https
+    #{{- else }}
+    #name: http
+    #{{- end }}
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "service.fullname" .}}-podDisruptionBudget
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "labels.allResources" . }}
+    app.kubernetes.io/component: ingress-front-end
+  annotations:
+    {{- include "annotations.allResources" . }}
+spec:
+  maxUnavailable: {{ .Values.maxUnavailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ template "chart.fullname" .}}
+      app.kubernetes.io/instance: {{ .Release.Name }}

@@ -1,0 +1,7 @@
+airflow:
+  extraPipPackages:
+    - "boto3=1.34.118"
+    - "apache-airflow-providers-amazon"
+  config:
+    core:
+      dags_folder: s3://data-platform-chevalsumo/airflow/dags

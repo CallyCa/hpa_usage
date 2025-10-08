@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reporttee-intelligence
+  labels:
+    app: reporttee-intelligence
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reporttee-intelligence
+  template:
+    metadata:
+      labels:
+        app: reporttee-intelligence
+    spec:
+      containers:
+        - name: reporttee-intelligence
+          image: 658721656416.dkr.ecr.ap-southeast-1.amazonaws.com/tools-python-flask:test-deploy-eks
+          ports:
+            - containerPort: 8081
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: 500m
+            requests:
+              cpu: 200m
+      imagePullSecrets:
+        - name: ecrdockersecret
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: reporttee-intelligence
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: reporttee-intelligence
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 50
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reporttee-intelligence-svc
+spec:
+  selector:
+    app: reporttee-intelligence
+  ports:
+    - port: 80
+      targetPort: 8081
+  type: LoadBalancer
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reporttee-intelligence
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: prod.sherosupport.org
+    http:
+      paths:
+      - backend:
+          service:
+            name: reporttee-intelligence-svc
+            port:
+              number: 80
+        pathType: ImplementationSpecific

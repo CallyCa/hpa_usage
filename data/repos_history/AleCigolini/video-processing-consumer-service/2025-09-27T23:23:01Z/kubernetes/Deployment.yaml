@@ -1,0 +1,157 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-processing
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: video-processing
+  template:
+    metadata:
+      labels:
+        app: video-processing
+    spec:
+      containers:
+        - name: video-processing
+          image: alecigolini/video-processing:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                secretKeyRef:
+                  name: video-processing-secret
+                  key: KAFKA_BOOTSTRAP_SERVERS
+            - name: KAFKA_SECURITY_PROTOCOL
+              valueFrom:
+                secretKeyRef:
+                  name: video-processing-secret
+                  key: KAFKA_SECURITY_PROTOCOL
+            - name: KAFKA_SASL_MECHANISM
+              valueFrom:
+                secretKeyRef:
+                  name: video-processing-secret
+                  key: KAFKA_SASL_MECHANISM
+            - name: KAFKA_SASL_JAAS_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: video-processing-secret
+                  key: KAFKA_SASL_JAAS_CONFIG
+            - name: VIDEO_UPLOADED_TOPIC
+              valueFrom:
+                secretKeyRef:
+                  name: video-processing-secret
+                  key: VIDEO_UPLOADED_TOPIC
+            - name: VIDEO_SPLITTED_TOPIC
+              valueFrom:
+                secretKeyRef:
+                  name: video-processing-secret
+                  key: VIDEO_SPLITTED_TOPIC
+            - name: REDIS_HOSTS
+              valueFrom:
+                secretKeyRef:
+                  name: video-processing-secret
+                  key: REDIS_HOSTS
+                  optional: true
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: video-processing-secret
+                  key: REDIS_PASSWORD
+                  optional: true
+            - name: REDIS_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: video-processing-secret
+                  key: REDIS_USERNAME
+                  optional: true
+            - name: HTTP_ROOT_PATH
+              value: "/video-processing"
+          resources:
+            requests:
+              cpu: "400m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1024Mi"
+          readinessProbe:
+            httpGet:
+              path: /video-processing/q/health/ready
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /video-processing/q/health/live
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-processing-service
+spec:
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  selector:
+    app: video-processing
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: video-processing-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /video-processing
+            pathType: Prefix
+            backend:
+              service:
+                name: video-processing-service
+                port:
+                  number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: video-processing-hpa
+  namespace: default
+spec:
+  maxReplicas: 3
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: video-processing
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          periodSeconds: 15
+          value: 1
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          periodSeconds: 60
+          value: 1

@@ -1,0 +1,60 @@
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "gcp-devops-gke"
+  namespace: "gcp-devops-prod"
+  labels:
+    app: "gcp-gke-app"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: "gcp-gke-app"
+  template:
+    metadata:
+      labels:
+        app: "gcp-gke-app"
+    spec:
+      containers:
+      - name: "my-image-1"
+        image: "us-central1-docker.pkg.dev/pr-manualdeployment/my-repo/my-image:latest"
+---
+apiVersion: "autoscaling/v2"
+kind: "HorizontalPodAutoscaler"
+metadata:
+  name: "gcp-devops-gke-hpa-87vz"
+  namespace: "gcp-devops-prod"
+  labels:
+    app: "gcp-gke-app"
+spec:
+  scaleTargetRef:
+    kind: "Deployment"
+    name: "gcp-devops-gke"
+    apiVersion: "apps/v1"
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: "Resource"
+    resource:
+      name: "cpu"
+      target:
+        type: "Utilization"
+        averageUtilization: 80
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "gcp-devops-gke"
+  namespace: "gcp-devops-prod"
+  labels:
+    app: "gcp-gke-app"
+spec:
+  ports:
+  - protocol: "TCP"
+    port: 80
+    targetPort: 5000
+  selector:
+    app: "gcp-gke-app"
+  type: "LoadBalancer"
+---

@@ -1,0 +1,446 @@
+---
+# Horizontal Pod Autoscaler for GenomeVault API
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: genomevault-api-hpa
+  namespace: genomevault
+  labels:
+    app: genomevault
+    component: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: genomevault-api
+  
+  minReplicas: 3
+  maxReplicas: 50
+  
+  metrics:
+  # CPU utilization (target 80%)
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+  
+  # Memory utilization (target 70%)
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  
+  # Custom metrics - Request rate
+  - type: Pods
+    pods:
+      metric:
+        name: genomevault_api_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "100"  # 100 requests per second per pod
+  
+  # Custom metrics - P95 latency
+  - type: Pods
+    pods:
+      metric:
+        name: genomevault_api_p95_latency_ms
+      target:
+        type: AverageValue
+        averageValue: "500"  # Scale up if P95 > 500ms
+  
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 minutes
+      policies:
+      - type: Percent
+        value: 50  # Scale down by max 50%
+        periodSeconds: 60
+      - type: Pods
+        value: 2   # Remove max 2 pods at a time
+        periodSeconds: 60
+      selectPolicy: Min  # Choose the policy that scales down the least
+    
+    scaleUp:
+      stabilizationWindowSeconds: 60  # 1 minute
+      policies:
+      - type: Percent
+        value: 100  # Double the pods
+        periodSeconds: 60
+      - type: Pods
+        value: 5    # Add max 5 pods at a time
+        periodSeconds: 60
+      selectPolicy: Max  # Choose the policy that scales up the most
+
+---
+# Vertical Pod Autoscaler for API
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: genomevault-api-vpa
+  namespace: genomevault
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: genomevault-api
+  
+  updatePolicy:
+    updateMode: "Auto"  # Automatically update pod resources
+  
+  resourcePolicy:
+    containerPolicies:
+    - containerName: api
+      minAllowed:
+        cpu: 500m
+        memory: 1Gi
+      maxAllowed:
+        cpu: 4
+        memory: 8Gi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+
+---
+# HPA for PIR Servers with Anti-affinity
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: pir-server-1-hpa
+  namespace: pir-server-1
+  labels:
+    app: pir-server
+    server-id: "1"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pir-server-1
+  
+  minReplicas: 2  # Minimum for redundancy
+  maxReplicas: 10
+  
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  
+  # PIR-specific metrics
+  - type: Pods
+    pods:
+      metric:
+        name: genomevault_pir_query_latency_p95
+      target:
+        type: AverageValue
+        averageValue: "100"  # 100ms P95 latency target
+  
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600  # 10 minutes (PIR servers are stateful)
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 120  # Remove 1 pod every 2 minutes
+    
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+      - type: Pods
+        value: 2
+        periodSeconds: 60  # Add 2 pods per minute max
+
+---
+# VPA for PIR Server 1
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: pir-server-1-vpa
+  namespace: pir-server-1
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pir-server-1
+  
+  updatePolicy:
+    updateMode: "Recreate"  # PIR servers maintain state
+  
+  resourcePolicy:
+    containerPolicies:
+    - containerName: pir-server
+      minAllowed:
+        cpu: 1
+        memory: 2Gi
+      maxAllowed:
+        cpu: 8
+        memory: 32Gi
+      controlledResources: ["cpu", "memory"]
+
+---
+# HPA for PIR Server 2
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: pir-server-2-hpa
+  namespace: pir-server-2
+  labels:
+    app: pir-server
+    server-id: "2"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pir-server-2
+  
+  minReplicas: 2
+  maxReplicas: 10
+  
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 120
+    
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+
+---
+# VPA for PIR Server 2
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: pir-server-2-vpa
+  namespace: pir-server-2
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pir-server-2
+  
+  updatePolicy:
+    updateMode: "Recreate"
+  
+  resourcePolicy:
+    containerPolicies:
+    - containerName: pir-server
+      minAllowed:
+        cpu: 1
+        memory: 2Gi
+      maxAllowed:
+        cpu: 8
+        memory: 32Gi
+
+---
+# HPA for Hypervector Processing Workers
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hv-worker-hpa
+  namespace: genomevault
+  labels:
+    app: genomevault
+    component: hv-worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hv-worker
+  
+  minReplicas: 2
+  maxReplicas: 20
+  
+  metrics:
+  # Scale based on encoding queue length
+  - type: External
+    external:
+      metric:
+        name: genomevault_hv_encoding_queue_length
+        selector:
+          matchLabels:
+            queue: "encoding"
+      target:
+        type: AverageValue
+        averageValue: "10"  # Target 10 items per worker
+  
+  # Scale based on encoding throughput
+  - type: Pods
+    pods:
+      metric:
+        name: genomevault_hv_encoding_throughput
+      target:
+        type: AverageValue
+        averageValue: "1000"  # Target 1000 variants/sec per pod
+  
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60
+    
+    scaleUp:
+      stabilizationWindowSeconds: 30  # Fast scale-up for encoding
+      policies:
+      - type: Percent
+        value: 200  # Can triple the pods
+        periodSeconds: 30
+
+---
+# Cluster Autoscaler Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-autoscaler-status
+  namespace: kube-system
+data:
+  nodes.min: "3"
+  nodes.max: "100"
+  scale-down-delay-after-add: "10m"
+  scale-down-unneeded-time: "10m"
+  scale-down-utilization-threshold: "0.5"
+  max-node-provision-time: "15m"
+  
+---
+# PodDisruptionBudget for API
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: genomevault-api-pdb
+  namespace: genomevault
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: genomevault
+      component: api
+  unhealthyPodEvictionPolicy: AlwaysAllow
+
+---
+# PodDisruptionBudget for PIR Servers
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pir-server-1-pdb
+  namespace: pir-server-1
+spec:
+  minAvailable: 1  # Always keep at least 1 PIR server running
+  selector:
+    matchLabels:
+      app: pir-server
+      server-id: "1"
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pir-server-2-pdb
+  namespace: pir-server-2
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: pir-server
+      server-id: "2"
+
+---
+# Priority Classes for Critical Components
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: genomevault-critical
+value: 1000
+globalDefault: false
+description: "Critical GenomeVault components (PIR servers)"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: genomevault-high
+value: 900
+globalDefault: false
+description: "High priority GenomeVault components (API)"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: genomevault-normal
+value: 500
+globalDefault: true
+description: "Normal priority GenomeVault components"
+
+---
+# Update deployments to use priority classes and anti-affinity
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: genomevault-api
+  namespace: genomevault
+spec:
+  template:
+    spec:
+      priorityClassName: genomevault-high
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - genomevault
+                - key: component
+                  operator: In
+                  values:
+                  - api
+              topologyKey: kubernetes.io/hostname
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - genomevault
+                - key: component
+                  operator: In
+                  values:
+                  - api
+              topologyKey: topology.kubernetes.io/zone

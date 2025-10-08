@@ -1,0 +1,70 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: todo-app-minimal-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: todo-app-todo-app
+  minReplicas: 1
+  maxReplicas: 3  # Limiting to just 3 replicas at most
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 10  # Lower threshold to 10% (was 50%)
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 20  # Lower threshold to 20% (was 70%)
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: pod-resource-constraints
+  namespace: default
+spec:
+  limits:
+  - type: Container
+    default:
+      memory: "256Mi"  # Default memory limit
+      cpu: "200m"      # Default CPU limit
+    defaultRequest:
+      memory: "64Mi"   # Default memory request
+      cpu: "50m"       # Default CPU request
+    max:
+      memory: "512Mi"  # Maximum memory for any container
+      cpu: "500m"      # Maximum CPU for any container
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-app-todo-app
+  namespace: default
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todo-app-todo-app
+  template:
+    metadata:
+      labels:
+        app: todo-app-todo-app
+    spec:
+      containers:
+      - name: todo-app
+        resources:
+          limits:
+            cpu: 400m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi 

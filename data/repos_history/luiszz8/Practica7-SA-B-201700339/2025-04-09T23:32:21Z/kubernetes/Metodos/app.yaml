@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metodos
+  namespace: sa-p5
+  labels:
+    app: metodos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metodos
+  template:
+    metadata:
+      labels:
+        app: metodos
+    spec:
+      containers:
+      - name: metodos
+        image: luizz8/metodosp6
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        envFrom:
+          - secretRef:
+              name: my-secret
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1024Mi"
+            cpu: "1000m"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: metodos-hpa
+  namespace: sa-p5
+spec:
+    scaleTargetRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: metodos
+    minReplicas: 1
+    maxReplicas: 2
+    metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80

@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-config
+data:
+  REDIS_CONNECTION_URL: redis://cloud-native.redis.cache.windows.net:6379
+  REDIS_PASSWORD: LVoh1gQOLurX1l2G4oXfIIbjThg5ZvKk2AzCaCBOdWM=
+  JWT_ACCESS_TOKEN_SECRET: e5f3f839b5c8678377ca97cd373f51f28d0c69e5f60726c4d79b7626bc401e6e6209768f83a7c3634e64329966eb6774596c91250dce24af68fe4d5f5912aecc
+  JWT_REFRESH_TOKEN_SECRET: 7af4989628b9c23bdeb29247ddf74df3ffbb15f39318ebe298e87dd55e2aaa79cbc6f8e1635924914702276d26ba7833e63f8e72b105e7cf3c7940fd6eeac470
+  LOG_SERVER_ID: logs-service
+  EXERCISE_SERVER_ID: exercise-service
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-deployment
+  labels:
+    app: dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: nirmalAzureContainerRegistry.azurecr.io/dashboard:v3
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: dashboard-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-service
+spec:
+  selector:
+    app: dashboard
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000

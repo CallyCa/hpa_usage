@@ -1,0 +1,289 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: project1
+
+---
+
+# Auth Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: project1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-service
+          image: node:18
+          command: ["sh", "-c", "npm install && npm start"]
+          workingDir: /app
+          ports:
+          - containerPort: 5000
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: project1
+spec:
+  selector:
+    app: auth-service
+  ports:
+  - protocol: TCP
+    port: 5000
+    targetPort: 5000
+  type: ClusterIP
+
+---
+
+# Data Entry Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-entry-service
+  namespace: project1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: data-entry-service
+  template:
+    metadata:
+      labels:
+        app: data-entry-service
+    spec:
+      containers:
+      - name: data-entry-service
+        image: node:18
+        command: ["npm", "start"]
+        workingDir: /app
+        ports:
+        - containerPort: 5001
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+        volumeMounts:
+        - name: data-entry-code
+          mountPath: /app
+      volumes:
+      - name: data-entry-code
+        hostPath:
+          path: ./data-entry-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-entry-service
+  namespace: project1
+spec:
+  selector:
+    app: data-entry-service
+  ports:
+  - protocol: TCP
+    port: 5001
+    targetPort: 5001
+  type: ClusterIP
+
+---
+
+# Analytics Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service
+  namespace: project1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: analytics-service
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+    spec:
+      containers:
+      - name: analytics-service
+        image: python:3.9
+        command: ["python", "server.py"]
+        workingDir: /app
+        ports:
+        - containerPort: 5002
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "1"
+            memory: "512Mi"
+        volumeMounts:
+        - name: analytics-code
+          mountPath: /app
+      volumes:
+      - name: analytics-code
+        hostPath:
+          path: ./analytics-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-service
+  namespace: project1
+spec:
+  selector:
+    app: analytics-service
+  ports:
+  - protocol: TCP
+    port: 5002
+    targetPort: 5002
+  type: ClusterIP
+
+---
+
+# Show Results Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: show-results-service
+  namespace: project1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: show-results-service
+  template:
+    metadata:
+      labels:
+        app: show-results-service
+    spec:
+      containers:
+      - name: show-results-service
+        image: python:3.9
+        command: ["python", "server.py"]
+        workingDir: /app
+        ports:
+        - containerPort: 5003
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+        volumeMounts:
+        - name: show-results-code
+          mountPath: /app
+      volumes:
+      - name: show-results-code
+        hostPath:
+          path: ./show-results-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: show-results-service
+  namespace: project1
+spec:
+  selector:
+    app: show-results-service
+  ports:
+  - protocol: TCP
+    port: 5003
+    targetPort: 5003
+  type: ClusterIP
+
+---
+
+# HTML Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: html-service
+  namespace: project1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: html-service
+  template:
+    metadata:
+      labels:
+        app: html-service
+    spec:
+      containers:
+      - name: html-service
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+        volumeMounts:
+        - name: html-code
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: html-code
+        hostPath:
+          path: ./index.html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: html-service
+  namespace: project1
+spec:
+  selector:
+    app: html-service
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: LoadBalancer
+
+---
+
+# Horizontal Pod Autoscaler for Data Entry Service
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: data-entry-hpa
+  namespace: project1
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: data-entry-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50

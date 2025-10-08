@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{ .Values.chat.releaseName }}-deployment"
+  labels:
+    app: "{{ .Values.chat.releaseName }}"
+spec:
+  replicas: {{ .Values.chat.replicaCount }}
+  selector:
+    matchLabels:
+      app: "{{ .Values.chat.releaseName }}"
+  template:
+    metadata:
+      labels:
+        app: "{{ .Values.chat.releaseName }}"
+    spec:
+      containers:
+        - name: "{{ .Values.chat.releaseName }}"
+          image: "{{ .Values.chat.repository }}/{{ .Values.chat.image }}:{{ .Values.chat.tag }}"
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: "{{ .Values.chat.releaseName }}-config"
+          env:
+            - name: MYSQL_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: "chat-secret"
+                  key: mysql-username
+            - name: MYSQL_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "chat-secret"
+                  key: mysql-password

@@ -1,0 +1,133 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: datadog-secrets
+type: Opaque
+data:
+  apiKey: YzI4NjdjZWExZjcxOTg5Yxxxxx
+  appKey: OTAwYmRjNjkxY2NmN2UzN2QzZDA4YjAxxxxx
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-trigger-auth-datadog-secret
+spec:
+  secretTargetRef:
+  - parameter: apiKey
+    name: datadog-secrets
+    key: apiKey
+  - parameter: appKey
+    name: datadog-secrets
+    key: appKey
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: project-web
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: project-web
+  minReplicaCount: 1
+  maxReplicaCount: 20
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          policies:
+          - type: Pods
+            value: 2
+            periodSeconds: 30
+          selectPolicy: Min
+        scaleUp:
+          policies:
+          - type: Pods
+            value: 2
+            periodSeconds: 30
+          selectPolicy: Max
+  triggers:
+  - type: cpu
+    metadata:
+      type: Utilization
+      value: "30"
+  - type: datadog
+    metricType: Value
+    metadata:
+      # Required: datadog metric query
+      query: "sum:mfid_web.unicorn.request_backlog.total{env:prod}.rollup(avg, 30)"
+      # Required: according to the number of query result, to scale the TargetRef
+      queryValue: "0.1"
+      # Optional: Target value for activating the scaler. Learn more about activation here.(Default: 0, Optional, This value can be a float)
+      # activationQueryValue: "1000"
+      # Optional: The time window (in seconds) to retrieve metrics from Datadog. Default: 90
+      age: "30"
+      timeWindowOffset: "3600"
+      # Optional: The metric value to return to the HPA if a metric value wasn't found for the specified time window
+      # metricUnavailableValue: "100"
+    authenticationRef:
+      name: keda-trigger-auth-datadog-secret
+  - type: cron
+    metadata:
+      timezone: Asia/Tokyo  # The acceptable values would be a value from the IANA Time Zone Database.
+      start: 0 1 * * *        # At 1:00 AM
+      end: 0 23 * * *         # At 23:00 PM
+      desiredReplicas: "3"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: project-web # for production
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: project-web
+  strategy:
+   type: RollingUpdate
+   rollingUpdate:
+     maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: project-web
+    spec:
+      containers:
+        - name: app
+          image: nginx
+          ports:
+            - containerPort: 80
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "64Mi"  # Minimum memory required
+              cpu: "100m"       # Minimum CPU required
+            limits:
+              memory: "128Mi" # Maximum memory allowed
+              cpu: "200m"     # Maximum CPU allowed
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-web-loadbalancer # for production
+spec:
+  selector:
+    app: project-web
+  type: LoadBalancer
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+
+# #!/bin/bash
+
+# # Number of requests to send per second
+# requests_per_second=1000
+
+# while true; do
+#     # Send multiple curl requests in parallel
+#     for ((i = 0; i < $requests_per_second; i++)); do
+#      curl 'http://127.0.0.1:50624/'
+#     done
+#     # Sleep for 1 second to maintain the rate
+#     sleep 1
+# done

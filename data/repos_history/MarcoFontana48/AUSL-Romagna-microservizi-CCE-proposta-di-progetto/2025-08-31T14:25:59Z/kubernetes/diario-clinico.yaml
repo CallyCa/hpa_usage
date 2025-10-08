@@ -1,0 +1,106 @@
+# namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring-app
+---
+# diario-clinico-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: diario-clinico
+  namespace: monitoring-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: diario-clinico
+  template:
+    metadata:
+      labels:
+        app: diario-clinico
+    spec:
+      containers:
+        - name: diario-clinico
+          image: marcofontana17/ausl_cce_prototipo:diario_clinico-dev-latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: CONFIG_SERVER_HOST_NAME
+              value: "diario-clinico-mongo-db"
+            - name: CONFIG_SERVER_PORT
+              value: "27017"
+            - name: CONFIG_SERVER_DB_NAME
+              value: "diario-clinico-mongo-db"
+            - name: CONFIG_SERVER_DB_USERNAME
+              value: "root"
+            - name: CONFIG_SERVER_DB_PASSWORD
+              value: "password"
+          #          livenessProbe:
+          #            httpGet:
+          #              path: /health
+          #              port: 8080
+          #            initialDelaySeconds: 30
+          #            periodSeconds: 10
+          #            timeoutSeconds: 5
+          #            failureThreshold: 5
+          #          readinessProbe:
+          #            httpGet:
+          #              path: /health
+          #              port: 8080
+          #            initialDelaySeconds: 10
+          #            periodSeconds: 5
+          #            timeoutSeconds: 3
+          #            failureThreshold: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+---
+# diario-clinico-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: diario-clinico
+  namespace: monitoring-app
+spec:
+  selector:
+    app: diario-clinico
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+# diario-clinico-hpa.yaml (horizontal pod autoscaler for diario-clinico)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: diario-clinico-hpa
+  namespace: monitoring-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: diario-clinico
+  minReplicas: 1  # minimum number of replicas to scale down to
+  maxReplicas: 10  # maximum number of replicas to scale up to
+  metrics:
+    # scale based on CPU utilization, others can be added as needed, like 'memory'
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # target CPU utilization percentage to trigger scaling
+  behavior:
+    # define custom scaling behavior (optional)
+    scaleUp:
+      stabilizationWindowSeconds: 0    # scale up immediately
+    scaleDown:
+      stabilizationWindowSeconds: 60   # wait 1 min before scaling down
+---

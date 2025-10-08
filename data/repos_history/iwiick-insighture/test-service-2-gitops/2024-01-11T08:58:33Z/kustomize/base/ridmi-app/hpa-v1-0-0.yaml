@@ -1,0 +1,16 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  annotations: {}
+  name: ridmi-app-v1-0-0
+  labels:
+    app: ridmi-app-v1-0-0
+    applicationId: app_22c5e8b1-c49e-4129-bc98-3103b7e45af2
+    version: v1.0.0
+    organizationId: org_9f875a32-727f-4fb0-aeb6-ad3b32168642
+    projectId: project_88e61e3d-8f14-4fe8-b600-517e8138c28d
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ridmi-app-v1-0-0

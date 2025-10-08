@@ -1,0 +1,108 @@
+# HUMAN TASKS:
+# 1. Ensure Let's Encrypt ClusterIssuer is configured in cert-manager
+# 2. Verify DNS records are properly configured for dashboard.fleettracking.com
+# 3. Review and adjust rate limiting settings based on actual traffic patterns
+# 4. Configure WAF rules if additional security measures are needed
+
+---
+# REQ: External Access - Ingress resource for web dashboard external access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-dashboard-ingress
+  namespace: fleet-tracking
+  labels:
+    app: web-dashboard
+    component: frontend
+    part-of: fleet-tracking-system
+  annotations:
+    # REQ: Load Balancing - NGINX Ingress controller configuration
+    kubernetes.io/ingress.class: "nginx"
+    
+    # REQ: SSL/TLS Security - TLS and certificate configuration
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    # REQ: Performance Requirements - Proxy timeouts and body size limits
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    
+    # REQ: SSL/TLS Security - Security headers configuration
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains";
+      more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';";
+    
+    # REQ: Performance Requirements - Rate limiting configuration
+    nginx.ingress.kubernetes.io/limit-rps: "1000"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+    
+    # REQ: High Availability - Prometheus metrics configuration
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9913"
+
+spec:
+  # REQ: SSL/TLS Security - TLS configuration
+  tls:
+    - hosts:
+        - dashboard.fleettracking.com
+      secretName: web-dashboard-tls
+  
+  # REQ: External Access - Routing rules configuration
+  rules:
+    - host: dashboard.fleettracking.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-dashboard-service
+                port:
+                  number: 80
+
+---
+# REQ: High Availability - PodDisruptionBudget for ingress availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-dashboard-pdb
+  namespace: fleet-tracking
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: web-dashboard
+
+---
+# REQ: Performance Requirements - HorizontalPodAutoscaler for scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-dashboard-hpa
+  namespace: fleet-tracking
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-dashboard
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

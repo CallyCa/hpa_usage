@@ -1,0 +1,129 @@
+# Default values for your projects.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+environment: zeda-dev
+#this replicaCount is needed if hpa is not enabled
+replicaCount: 1
+image:
+  repository: 057611299942.dkr.ecr.us-east-1.amazonaws.com/amnic-grid/zeda-dev
+  tag: "a98b11b"
+  pullPolicy: Always
+# optional list of image pull secrets to use to pull images
+
+amnic:
+  revision: ab7fa6e4-e1f2-4b99-9d05-c6c52251afe0
+  runtimeVersion: v0.0.4
+  # optional image pull secrets
+  imagePullSecrets: []
+  # whether to create a Release CRD when installing charts with Release CRDs included
+  releaseCRD: false
+# HorizontalPodAutoscaler
+hpa:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 1
+  cpuTargetAverageUtilization: 80
+  memoryTargetAverageUtilization: 80
+service:
+  enabled: false
+  name: amnic-grid
+  type: ClusterIP
+  externalPort: 80
+  internalPort: 4444
+  annotations: {}
+routing:
+  external:
+    enabled: true
+    routes:
+      - host: amnic-grid.zeda-dev.zeda.com
+        slug: qnpvnv
+        paths:
+          - ""
+  internal:
+    enabled: true
+    routes:
+      - host: amnic-grid.zeda-dev.internal.zeda.com
+        slug: mohi5k
+        paths:
+          - ""
+rollout:
+  # Used for all three strategies
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 10
+  minReadySeconds: 0
+  # Used for canary and blue_green strategy
+  progressDeadlineAbort: false
+  # This takes affect only when traffic routing is enabled
+  scaleDownDelaySeconds: 30
+  # scaleDownDelayRevisionLimit can't be greater than revisionHistoryLimit
+  scaleDownDelayRevisionLimit: 10
+  abortScaleDownDelaySeconds: 30
+  # Accepted values: canary, blue_green, rolling
+  strategy: rolling
+  # Canary strategy configs
+  canary:
+    # Can't be 0 when maxSurgePercentage is 0
+    maxUnavailable: 0
+    # Can't be 0 when maxUnavailable is 0
+    maxSurgePercentage: 20
+    # Accepted values: host_level, subset_level
+    trafficSplitting: host_level
+    steps:
+      - key: setWeight
+        value: 50
+      - key: setCanaryScale
+        value: {"weight": 50}
+      - key: pause
+        value: {}
+  # Blue-green strategy configs
+  blueGreen:
+    previewReplicaCount: 1
+    autoPromotionEnabled: false
+    autoPromotionSeconds: 300
+  # Rolling strategy configs
+  rolling:
+    maxUnavailable: 25%
+    maxSurgePercentage: 25%
+resources:
+  limits:
+    cpu: 500m
+    memory: 1000M
+  requests:
+    cpu: 500m
+    memory: 1000M
+# default spring boot probe path
+probePath: /ui
+livenessProbe:
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  successThreshold: 1
+  timeoutSeconds: 1
+  # Optional distinct liveness probe path, if empty the probePath is used
+  probePath: "/ui"
+readinessProbe:
+  failureThreshold: 60
+  periodSeconds: 10
+  successThreshold: 1
+  timeoutSeconds: 1
+  # Optional distinct readiness probe path, if empty the probePath is used
+  probePath: "/ui"
+serviceAccount:
+  enabled: false
+  annotations: null
+  #eks.amazonaws.com/role-arn: arn:aws:iam::848288613192:role/dev-runtime-nonprod-cluster-amnic-k8s-irsa-role
+  labels: {}
+#    my-custom-label: value
+secrets:
+  enabled: false
+  config:
+    annotations:
+      amnicRuntimeVersion: v0.0.4
+      updatedAt: Mon Nov 21 12:59:10 IST 2022
+config:
+  disabled: true
+istio:
+  virtualService:
+    internal:
+      enabled: false
+    external:
+      enabled: false

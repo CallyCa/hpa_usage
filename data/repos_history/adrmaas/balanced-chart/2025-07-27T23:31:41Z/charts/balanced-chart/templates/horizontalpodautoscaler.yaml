@@ -1,0 +1,29 @@
+{{- if ((.Values.hpa).enabled) }}
+kind: HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+metadata:
+  name: {{ include "balanced.helpers.name" . }}
+  labels:
+{{ include "balanced.helpers.labels" . | indent 4 }}
+  annotations:
+    {{- with (.Values.hpa.annotations) }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "balanced.helpers.name" . }}
+  minReplicas: {{ default 1 ((.Values.hpa).minReplicas) }}
+  maxReplicas: {{ default 3 ((.Values.hpa).maxReplicas) }}
+  {{- if  ((.Values.hpa).behavior) }}
+  behavior:
+    {{- with ((.Values.hpa).behavior) }}
+    {{- toYaml . | nindent 4 }}
+    {{ end }}
+  {{- end }}
+  metrics:
+    {{- with (.Values.hpa.metrics) }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{ end }}

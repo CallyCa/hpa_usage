@@ -1,0 +1,55 @@
+# https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restaurante-api
+  labels:
+    app: restaurante-api
+spec:
+  selector:
+    matchLabels:
+      app: restaurante-api
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: restaurante-api
+    spec:
+      containers:
+      - name: restaurante-api
+        image: jessicasalmeida/restaurante:1.0.0
+        ports: 
+          - containerPort: 5000
+        env:
+          - name: CART_COLLECTION_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: db-config
+                key: CART_COLLECTION_NAME
+          - name: ORDER_COLLECTION_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: db-config
+                key: ORDER_COLLECTION_NAME
+          - name: PRODUCT_COLLECTION_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: db-config
+                key: PRODUCT_COLLECTION_NAME
+          - name: USER_COLLECTION_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: db-config
+                key: USER_COLLECTION_NAME
+          - name: DB_CONN_STRING
+            valueFrom:
+              configMapKeyRef:
+                name: db-config
+                key: DB_CONN_STRING
+          - name: DB_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: db-config
+                key: DB_NAME
+---
+

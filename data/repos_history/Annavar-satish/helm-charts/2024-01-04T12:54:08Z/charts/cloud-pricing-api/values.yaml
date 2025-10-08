@@ -1,0 +1,203 @@
+# Default values for cloud-pricing-api.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+image:
+  # -- Cloud Pricing API image
+  repository: infracost/cloud-pricing-api
+
+  # -- Image pull policy
+  # pullPolicy: IfNotPresent
+  pullPolicy: Always
+
+  # -- Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+# -- Any image pull secrets
+imagePullSecrets: []
+
+# -- Name override for the deployed app
+nameOverride: ""
+
+# -- Full name override for the deployed app
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Specifies whether a service account should be created
+  create: true
+  # -- Annotations to add to the service account
+  annotations: {}
+  # -- The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# -- Any pod annotations
+podAnnotations: {}
+
+# -- The pod security context
+podSecurityContext: {}
+  # fsGroup: 2000
+
+# -- The container security context
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  # -- Kubernetes service type
+  type: ClusterIP
+  # -- Kubernetes service port
+  port: 80
+
+ingress:
+  # -- Enable the ingress controller resource
+  enabled: false
+  # -- Ingress annotation
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  # extraPaths:
+  #   - path: /*
+  #     backend:
+  #       serviceName: ssl-redirect
+  #       servicePort: use-annotation
+  hosts:
+    - # -- Host name
+      host: cloud-pricing-api.local
+      paths:
+      - # -- Path for host
+        path: /
+
+  # -- TLS configuration
+  tls: []
+  #  - secretName: cloud-pricing-api-tls
+  #    hosts:
+  #      - cloud-pricing-api.local
+
+postgresql:
+  # -- Deploy PostgreSQL servers. See [below](#postgresql) for more details
+  enabled: true
+  # -- Have the secrets mounted as a file instead of env vars
+  usePasswordFile: false
+  # external:
+  #   host:
+  #   port:
+  #   database:
+  #   user:
+  #   password:
+  # -- Use an existing secret with the PostgreSQL password
+  # existingSecret:
+  # -- Name of the PostgreSQL database
+  postgresqlDatabase: cloudpricingapi
+  # -- Name of the PostgreSQL user
+  postgresqlUsername: cloudpricingapi
+
+api:
+  # By default a single static API key will be created for the Cloud Pricing API for your team's CLIs to use.
+  # To specify the API key or disable API keys use the below settings
+  # -- Whether to disable API authentication for the Cloud Pricing API
+  disableSelfHostedInfracostAPIKey: false
+  # -- Specify a custom API key for CLIs to authenticate with this Cloud Pricing API. Not setting this will cause the helm chat to generate one for you.
+  selfHostedInfracostAPIKey: ""
+
+  # -- Replica count
+  replicaCount: 1
+
+  livenessProbe:
+    # -- Enable the liveness probe
+    enabled: true
+    # -- The liveness probe initial delay seconds
+    initialDelaySeconds: 30
+    # -- The liveness probe period seconds
+    periodSeconds: 5
+    # -- The liveness probe timeout seconds
+    timeoutSeconds: 2
+    # -- The liveness probe failure threshold
+    failureThreshold: 3
+    # -- The liveness probe success threshold
+    successThreshold: 1
+  readinessProbe:
+    # -- Enable the readiness probe
+    enabled: true
+    # -- The readiness probe initial delay seconds
+    initialDelaySeconds: 30
+    # -- The readiness probe period seconds
+    periodSeconds: 5
+    # -- The readiness probe timeout seconds
+    timeoutSeconds: 2
+    # -- The readiness probe failure threshold
+    failureThreshold: 3
+    # -- The readiness probe success threshold
+    successThreshold: 1
+  
+  autoscaling:
+    # -- Create a HorizontalPodAutoscaler for the API 
+    enabled: false
+    # -- The minimum replicas for the API autoscaler
+    minReplicas: 1
+    # -- The maximum replicas for the API autoscaler
+    maxReplicas: 10
+    # -- The target CPU threshold for the API autoscaler
+    targetCPUUtilizationPercentage: 80
+    # -- The target memory threshold for the API autoscaler
+    # targetMemoryUtilizationPercentage: 80
+
+  # -- API resource limits and requests
+  resources: {}
+    # We usually recommend not to specify default resources and to leave this as a conscious
+    # choice for the user. This also increases chances charts run on environments with little
+    # resources, such as Minikube. If you do want to specify resources, uncomment the following
+    # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+
+  # -- API node selector
+  nodeSelector: {}
+  # -- API tolerations
+  tolerations: []
+  # -- API affinity
+  affinity: {}
+
+job:
+  # Your company Infracost API key that you got from running `infracost register`. This is used to download the weekly pricing DB dump from our official service.
+  InfracostAPIKey: ""
+  # -- Run the job as a one-off on deploy
+  runInitJob: true
+  # -- Job backoff limit
+  backoffLimit: 6
+  # -- Job schedule
+  schedule: "0 4 * * SUN"
+  # -- History limit for successful jobs
+  successfulJobsHistoryLimit: 5
+  # -- History limit for failed jobs
+  failedJobsHistoryLimit: 5
+  # -- Deadline seconds for the job starting
+  startingDeadlineSeconds: 3600
+
+  # -- Job resource limits and requests
+  resources: {}
+    # We usually recommend not to specify default resources and to leave this as a conscious
+    # choice for the user. This also increases chances charts run on environments with little
+    # resources, such as Minikube. If you do want to specify resources, uncomment the following
+    # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+
+  # -- Job node selector
+  nodeSelector: {}
+  # -- Job tolerations
+  tolerations: []
+  # -- Job affinity
+  affinity: {}

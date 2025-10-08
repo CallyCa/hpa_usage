@@ -1,0 +1,18 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "iguazu.fullname" . }}-dask-worker-scaler
+  labels:
+    app: {{ template "iguazu.name" . }}
+    heritage: {{ .Release.Service | quote }}
+    release: {{ .Release.Name | quote }}
+    chart: {{ template "iguazu.chart" . }}
+    component: dask-worker
+spec:
+  minReplicas: {{ .Values.dask_worker.replicas }}
+  maxReplicas: {{ .Values.dask_worker.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ template "iguazu.fullname" . }}-dask-worker
+  targetCPUUtilizationPercentage: 50

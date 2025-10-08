@@ -1,0 +1,633 @@
+# ArgoCD Application for InErgize Production Deployment
+# GitOps automation with rollback capabilities and compliance validation
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: inergize-production
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: inergize
+    app.kubernetes.io/instance: production
+    environment: production
+  annotations:
+    # Compliance and governance
+    compliance.inergize.com/required: "true"
+    governance.inergize.com/approval-required: "true"
+    # Cost management
+    cost-center: "engineering"
+    billing-group: "saas-platform"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: inergize-production
+  
+  # Source configuration
+  source:
+    repoURL: https://github.com/inergize/infrastructure.git
+    targetRevision: main
+    path: kubernetes
+    helm:
+      valueFiles:
+        - values-production.yml
+      parameters:
+        - name: environment
+          value: production
+        - name: image.tag
+          value: "3.0.0"
+        - name: replicaCount.auth
+          value: "3"
+        - name: replicaCount.linkedin
+          value: "2"
+        - name: replicaCount.analytics
+          value: "3"
+        - name: compliance.linkedin.enabled
+          value: "true"
+        - name: compliance.linkedin.mode
+          value: "ultra_conservative"
+  
+  # Destination configuration
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: inergize-production
+  
+  # Sync policy with automation and safety checks
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - RespectIgnoreDifferences=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  # Health and deployment controls
+  revisionHistoryLimit: 10
+  
+  # Ignore differences for dynamic fields
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Managed by HPA
+    - group: ""
+      kind: Secret
+      jsonPointers:
+        - /data  # Managed by External Secrets
+  
+  # Custom health checks
+  operation:
+    sync:
+      syncStrategy:
+        hook:
+          force: false
+        apply:
+          force: false
+      prune: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        maxDuration: 3m
+        factor: 2
+
+---
+# ArgoCD Project for Production Environment
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: inergize-production
+  namespace: argocd
+  labels:
+    environment: production
+  annotations:
+    compliance.inergize.com/classification: "restricted"
+spec:
+  description: "InErgize Production Environment with Strict Governance"
+  
+  # Source repositories allowed
+  sourceRepos:
+    - 'https://github.com/inergize/infrastructure.git'
+    - 'https://github.com/inergize/applications.git'
+    - 'https://charts.bitnami.com/bitnami'
+    - 'https://prometheus-community.github.io/helm-charts'
+    - 'https://grafana.github.io/helm-charts'
+  
+  # Destination clusters and namespaces
+  destinations:
+    - namespace: inergize-production
+      server: https://kubernetes.default.svc
+    - namespace: inergize-monitoring
+      server: https://kubernetes.default.svc
+    - namespace: inergize-security
+      server: https://kubernetes.default.svc
+  
+  # Cluster resource whitelist
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: admissionregistration.k8s.io
+      kind: ValidatingAdmissionWebhook
+    - group: admissionregistration.k8s.io
+      kind: MutatingAdmissionWebhook
+  
+  # Namespace resource whitelist
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: PersistentVolumeClaim
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: StatefulSet
+    - group: batch
+      kind: Job
+    - group: batch
+      kind: CronJob
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    - group: autoscaling.k8s.io
+      kind: VerticalPodAutoscaler
+    - group: keda.sh
+      kind: ScaledObject
+    - group: external-secrets.io
+      kind: ExternalSecret
+    - group: external-secrets.io
+      kind: SecretStore
+    - group: autoscaling.inergize.com
+      kind: LinkedInAutoscaler
+  
+  # RBAC policies
+  roles:
+    - name: production-admin
+      description: "Full admin access to production environment"
+      policies:
+        - p, proj:inergize-production:production-admin, applications, *, inergize-production/*, allow
+        - p, proj:inergize-production:production-admin, repositories, *, *, allow
+        - p, proj:inergize-production:production-admin, certificates, *, *, allow
+      groups:
+        - inergize:production-admins
+        - inergize:sre-team
+    
+    - name: production-developer
+      description: "Developer read access to production"
+      policies:
+        - p, proj:inergize-production:production-developer, applications, get, inergize-production/*, allow
+        - p, proj:inergize-production:production-developer, applications, sync, inergize-production/*, deny
+        - p, proj:inergize-production:production-developer, repositories, get, *, allow
+      groups:
+        - inergize:developers
+    
+    - name: compliance-auditor
+      description: "Compliance team audit access"
+      policies:
+        - p, proj:inergize-production:compliance-auditor, applications, get, inergize-production/*, allow
+        - p, proj:inergize-production:compliance-auditor, repositories, get, *, allow
+        - p, proj:inergize-production:compliance-auditor, logs, get, inergize-production/*, allow
+      groups:
+        - inergize:compliance-team
+  
+  # Sync windows for controlled deployments
+  syncWindows:
+    - kind: allow
+      schedule: "0 2-4 * * MON-FRI"  # 2-4 AM EST weekdays
+      duration: 2h
+      applications:
+        - inergize-production
+      manualSync: false
+      timeZone: "America/New_York"
+    
+    - kind: deny
+      schedule: "0 0-1,5-23 * * MON-FRI"  # Block other weekday hours
+      duration: 19h
+      applications:
+        - inergize-production
+      manualSync: true  # Allow manual sync with approval
+      timeZone: "America/New_York"
+    
+    - kind: deny
+      schedule: "0 0-23 * * SAT,SUN"  # Block all weekend deployments
+      duration: 24h
+      applications:
+        - inergize-production
+      manualSync: true
+      timeZone: "America/New_York"
+
+---
+# Pre-sync Hook for Compliance Validation
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: compliance-validation-hook
+  namespace: inergize-production
+  labels:
+    app: compliance-validator
+    component: pre-sync-hook
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  template:
+    metadata:
+      labels:
+        app: compliance-validator
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: compliance-validator
+          image: ghcr.io/inergize/compliance-validator:latest
+          imagePullPolicy: Always
+          env:
+            - name: VALIDATION_MODE
+              value: "pre-deployment"
+            - name: LINKEDIN_COMPLIANCE_CHECK
+              value: "strict"
+            - name: SECURITY_SCAN_ENABLED
+              value: "true"
+            - name: NOTIFICATION_WEBHOOK
+              valueFrom:
+                secretKeyRef:
+                  name: monitoring-secrets
+                  key: alertmanager-webhook
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting compliance validation..."
+              
+              # Check LinkedIn compliance settings
+              if ! /app/validate-linkedin-compliance.sh; then
+                echo "❌ LinkedIn compliance validation failed!"
+                exit 1
+              fi
+              
+              # Security vulnerability scan
+              if ! /app/scan-security-vulnerabilities.sh; then
+                echo "❌ Security vulnerability scan failed!"
+                exit 1
+              fi
+              
+              # Validate resource quotas
+              if ! /app/validate-resource-quotas.sh; then
+                echo "❌ Resource quota validation failed!"
+                exit 1
+              fi
+              
+              # Check external dependencies
+              if ! /app/check-external-dependencies.sh; then
+                echo "❌ External dependency check failed!"
+                exit 1
+              fi
+              
+              echo "✅ All compliance validations passed!"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+
+---
+# Post-sync Hook for Health Validation
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: health-validation-hook
+  namespace: inergize-production
+  labels:
+    app: health-validator
+    component: post-sync-hook
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  template:
+    metadata:
+      labels:
+        app: health-validator
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: health-validator
+          image: ghcr.io/inergize/health-validator:latest
+          imagePullPolicy: Always
+          env:
+            - name: VALIDATION_MODE
+              value: "post-deployment"
+            - name: HEALTH_CHECK_TIMEOUT
+              value: "300"  # 5 minutes
+            - name: LINKEDIN_SERVICE_CHECK
+              value: "true"
+            - name: COMPLIANCE_SCORE_MINIMUM
+              value: "85"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting post-deployment health validation..."
+              
+              # Wait for all services to be ready
+              timeout 300 bash -c 'until kubectl get pods -n inergize-production -l app=auth-service --field-selector=status.phase=Running | grep -q Running; do sleep 5; done'
+              timeout 300 bash -c 'until kubectl get pods -n inergize-production -l app=linkedin-service --field-selector=status.phase=Running | grep -q Running; do sleep 5; done'
+              timeout 300 bash -c 'until kubectl get pods -n inergize-production -l app=analytics-service --field-selector=status.phase=Running | grep -q Running; do sleep 5; done'
+              timeout 300 bash -c 'until kubectl get pods -n inergize-production -l app=ai-service --field-selector=status.phase=Running | grep -q Running; do sleep 5; done'
+              timeout 300 bash -c 'until kubectl get pods -n inergize-production -l app=user-service --field-selector=status.phase=Running | grep -q Running; do sleep 5; done'
+              
+              # Validate service health endpoints
+              if ! /app/validate-service-health.sh; then
+                echo "❌ Service health validation failed!"
+                exit 1
+              fi
+              
+              # Check database connectivity
+              if ! /app/validate-database-connectivity.sh; then
+                echo "❌ Database connectivity validation failed!"
+                exit 1
+              fi
+              
+              # Validate LinkedIn compliance score
+              if ! /app/validate-linkedin-compliance-score.sh; then
+                echo "❌ LinkedIn compliance score validation failed!"
+                exit 1
+              fi
+              
+              # Send success notification
+              curl -X POST "$NOTIFICATION_WEBHOOK" \
+                -H "Content-Type: application/json" \
+                -d '{"text":"✅ InErgize production deployment successful and healthy"}'
+              
+              echo "✅ All health validations passed!"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+
+---
+# ArgoCD Notifications for Deployment Events
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-notifications
+    app.kubernetes.io/part-of: argocd
+data:
+  # Slack integration
+  service.slack: |
+    token: $slack-token
+    username: ArgoCD
+    channel: inergize-deployments
+    iconEmoji: ":rocket:"
+  
+  # Webhook integration  
+  service.webhook.compliance: |
+    url: https://compliance.inergize.com/api/webhooks/deployment
+    headers:
+    - name: Authorization
+      value: Bearer $compliance-webhook-token
+  
+  # Email integration
+  service.email: |
+    host: smtp.gmail.com
+    port: 587
+    from: noreply@inergize.com
+    username: $email-username
+    password: $email-password
+  
+  # Templates
+  template.deployment-started: |
+    webhook:
+      compliance:
+        method: POST
+        body: |
+          {
+            "environment": "production",
+            "application": "{{.app.metadata.name}}",
+            "event": "deployment-started",
+            "revision": "{{.app.status.sync.revision}}",
+            "timestamp": "{{.app.status.operationState.startedAt}}",
+            "operator": "{{.app.status.operationState.operation.initiatedBy.username}}"
+          }
+    slack:
+      attachments: |
+        [{
+          "title": "🚀 Deployment Started",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "warning",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Environment", 
+              "value": "Production",
+              "short": true
+            },
+            {
+              "title": "Revision",
+              "value": "{{.app.status.sync.revision}}",
+              "short": true
+            },
+            {
+              "title": "Operator",
+              "value": "{{.app.status.operationState.operation.initiatedBy.username}}",
+              "short": true
+            }
+          ]
+        }]
+        
+  template.deployment-succeeded: |
+    webhook:
+      compliance:
+        method: POST
+        body: |
+          {
+            "environment": "production",
+            "application": "{{.app.metadata.name}}",
+            "event": "deployment-succeeded",
+            "revision": "{{.app.status.sync.revision}}",
+            "timestamp": "{{.app.status.operationState.finishedAt}}",
+            "duration": "{{.app.status.operationState.finishedAt - .app.status.operationState.startedAt}}",
+            "compliance_validated": true
+          }
+    slack:
+      attachments: |
+        [{
+          "title": "✅ Deployment Successful",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "good",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Environment",
+              "value": "Production", 
+              "short": true
+            },
+            {
+              "title": "Revision",
+              "value": "{{.app.status.sync.revision}}",
+              "short": true
+            },
+            {
+              "title": "Duration",
+              "value": "{{.app.status.operationState.finishedAt - .app.status.operationState.startedAt}}s",
+              "short": true
+            }
+          ]
+        }]
+    email:
+      subject: "✅ InErgize Production Deployment Successful"
+      body: |
+        Deployment of {{.app.metadata.name}} to production environment completed successfully.
+        
+        Details:
+        - Revision: {{.app.status.sync.revision}}
+        - Duration: {{.app.status.operationState.finishedAt - .app.status.operationState.startedAt}} seconds
+        - Compliance validation: Passed
+        - Health checks: All services healthy
+        
+        Dashboard: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+        
+  template.deployment-failed: |
+    webhook:
+      compliance:
+        method: POST
+        body: |
+          {
+            "environment": "production",
+            "application": "{{.app.metadata.name}}",
+            "event": "deployment-failed",
+            "revision": "{{.app.status.sync.revision}}",
+            "timestamp": "{{.app.status.operationState.finishedAt}}",
+            "error": "{{.app.status.operationState.message}}",
+            "severity": "high"
+          }
+    slack:
+      attachments: |
+        [{
+          "title": "❌ Deployment Failed",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "danger",
+          "fields": [
+            {
+              "title": "Application",
+              "value": "{{.app.metadata.name}}",
+              "short": true
+            },
+            {
+              "title": "Environment",
+              "value": "Production",
+              "short": true
+            },
+            {
+              "title": "Error",
+              "value": "{{.app.status.operationState.message}}",
+              "short": false
+            }
+          ]
+        }]
+    email:
+      subject: "🚨 InErgize Production Deployment Failed"
+      body: |
+        ALERT: Deployment of {{.app.metadata.name}} to production environment has failed.
+        
+        Error Details:
+        {{.app.status.operationState.message}}
+        
+        Immediate Action Required:
+        1. Check application logs
+        2. Verify compliance settings
+        3. Validate configuration changes
+        4. Consider rollback if necessary
+        
+        Dashboard: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+  
+  # Triggers
+  trigger.deployment-started: |
+    - when: app.status.operationState.phase in ['Running'] and app.status.operationState.operation.sync != null
+      send: [deployment-started]
+  
+  trigger.deployment-succeeded: |
+    - when: app.status.operationState.phase in ['Succeeded'] and app.status.operationState.operation.sync != null
+      send: [deployment-succeeded]
+  
+  trigger.deployment-failed: |
+    - when: app.status.operationState.phase in ['Failed', 'Error'] and app.status.operationState.operation.sync != null
+      send: [deployment-failed]
+  
+  # Subscriptions
+  subscriptions: |
+    - recipients:
+      - slack:inergize-deployments
+      - webhook:compliance
+      triggers:
+      - deployment-started
+      - deployment-succeeded
+      - deployment-failed
+    
+    - recipients:
+      - email:sre-team@inergize.com
+      - email:compliance@inergize.com
+      triggers:
+      - deployment-failed

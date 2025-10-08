@@ -1,0 +1,233 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: proweb-vc-prd-cms-oss-pv
+  labels:
+    alicloud-pvname: proweb-vc-prd-cms-oss-pv
+spec:
+  storageClassName: oss
+  capacity:
+    storage: 100Gi
+  accessModes:
+    - ReadWriteMany
+  flexVolume:
+    driver: "alicloud/oss"
+    options:
+      bucket: "proweb-vc-prd-cms-pv"
+      path: "/"
+      url: "oss-cn-hongkong-internal.aliyuncs.com"
+      otherOpts: "-o max_stat_cache_size=0 -o allow_other"
+      ramRole: "proweb-prd-vc-cms-k8s-oss-access-role"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: proweb-vc-prd-cms-oss-pvc
+  namespace: proweb-vc-prd-cms-ns
+spec:
+  storageClassName: oss
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  selector:
+    matchLabels:
+      alicloud-pvname: proweb-vc-prd-cms-oss-pv
+---
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: proweb-vc-prd-cms-nas
+#   labels:
+#     alicloud-pvname: proweb-vc-prd-cms-nas
+# spec:
+#   storageClassName: nas
+#   capacity:
+#     storage: 100Gi
+#   accessModes:
+#     - ReadWriteMany
+#   flexVolume:
+#     driver: "alicloud/nas"
+#     options:
+#       server: "12eccf498ed-lew43.cn-hongkong.nas.aliyuncs.com"
+#       path: "/"
+#       vers: "4.0"
+# ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: proweb-vc-prd-cms-nas-pvc
+#   namespace: proweb-vc-prd-cms-ns
+# spec:
+#   storageClassName: nas
+#   accessModes:
+#     - ReadWriteMany
+#   resources:
+#     requests:
+#       storage: 100Gi
+#   selector:
+#     matchLabels:
+#       alicloud-pvname: proweb-vc-prd-cms-nas
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proweb-vc-prd-cms
+  namespace: proweb-vc-prd-cms-ns
+  labels:
+    app: proweb-vc-prd-cms
+    Environment: prd
+    Owner: DigitalChannels
+    ProjectName: victoriacoast
+spec:
+  replicas: 1
+  strategy:
+   type: RollingUpdate
+   rollingUpdate:
+     maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: proweb-vc-prd-cms
+  template:
+    metadata:
+      annotations:
+        k8s.aliyun.com/eci-sls-enable: "true"
+        k8s.aliyun.com/acr-service-arns: "acs:ram::5725926127090411:role/k8s-prd-acr-access"
+      labels:
+        app: proweb-vc-prd-cms
+    spec:
+      containers:
+      - name: proweb-vc-prd-cms
+        image: proweb-acr-registry-vpc.cn-hongkong.cr.aliyuncs.com/proweb-prd/proweb-vc-prd-cms-acr-repo:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: VARNAME
+          value: VARVAL
+        - name: aliyun_logs_proweb-vc-prd-cms-log
+          value: stdout
+        - name: aliyun_logs_proweb-vc-prd-cms-log_project
+          value: proweb-vc-prd-cms-log-project
+        - name: aliyun_logs_proweb-vc-prd-cms-log_logstore
+          value: proweb-vc-prd-cms-log
+        - name: aliyun_logs_proweb-vc-prd-cms_machinegroup
+          value: proweb-prd-k8s-cluster
+        resources:
+          requests:
+            memory: "1024Mi"  # Initial memory request
+            cpu: "256m"       # Initial CPU request
+          limits:
+            memory: "1024Mi"  # Maximum memory allowed
+            cpu: "256m"       # Maximum CPU allowed
+        volumeMounts:
+        - name: proweb-vc-prd-cms-oss-pvc
+          mountPath: "/mnt/oss"
+        # - name: proweb-vc-prd-nas-pvc
+        #   mountPath: "/mnt/oss"
+      volumes:
+      - name: proweb-vc-prd-cms-oss-pvc
+        persistentVolumeClaim:
+          claimName: proweb-vc-prd-cms-oss-pvc
+      # - name: proweb-vc-prd-nas-pvc
+      #   persistentVolumeClaim:
+      #     claimName: proweb-vc-prd-nas-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: proweb-vc-prd-cms-service
+  namespace: proweb-vc-prd-cms-ns
+  labels:
+    app: proweb-vc-prd-cms-service
+spec:
+  selector:
+    app: proweb-vc-prd-cms
+  sessionAffinity: None
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: proweb-vc-prd-cms-ingress
+  namespace: proweb-vc-prd-cms-ns
+  labels:
+    ingress: proweb-vc-prd-cms-ingress
+  annotations:
+    alb.ingress.kubernetes.io/healthcheck-enabled: "true"
+    alb.ingress.kubernetes.io/healthcheck-path: "/"
+    alb.ingress.kubernetes.io/healthcheck-protocol: "HTTP"
+    alb.ingress.kubernetes.io/healthcheck-httpversion: "HTTP1.1"
+    alb.ingress.kubernetes.io/healthcheck-method: "HEAD"
+    alb.ingress.kubernetes.io/healthcheck-code: "http_2xx,http_3xx"
+    alb.ingress.kubernetes.io/healthcheck-httpcode: "http_2xx,http_3xx"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "3"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+    alb.ingress.kubernetes.io/healthcheck-connect-port: "80"
+spec:
+  ingressClassName: k8s-alb-https
+  rules:
+    - host: cms.victoriacoast.com.hk
+      http:
+        paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: proweb-vc-prd-cms-service
+              port:
+                number: 80
+  tls:
+  - hosts: 
+    - cms.victoriacoast.com.hk
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-any-any
+  namespace: proweb-vc-prd-cms-ns
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+    - {}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: proweb-vc-prd-cms-hpa
+  namespace: proweb-vc-prd-cms-ns
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: proweb-vc-prd-cms
+  minReplicas: 1
+  maxReplicas: 2
+  # behavior:
+  #   scaleDown:
+  #     stabilizationWindowSeconds: 30 # 30 sec cooldown for scaling down
+  #     policies:
+  #     - type: Percent
+  #       value: 100
+  #       periodSeconds: 900 # <20% CPU for 15 minutes
+  #   scaleUp:
+  #   stabilizationWindowSeconds: 10 # 10 sec cooldown for scaling up
+  #     policies:
+  #     - type: Percent
+  #       value: 100
+  #       periodSeconds: 180 # >20% CPU for 3 minutes
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 20

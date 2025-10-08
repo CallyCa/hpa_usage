@@ -1,0 +1,14 @@
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hello-world-nestjs-hpa
+  namespace: k8s-github-actions
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hello-world-nestjs
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 50

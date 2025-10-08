@@ -1,0 +1,25 @@
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gohttpserver
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gohttpserver
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: Object
+      object:
+        metric:
+          name: http_requests_per_second
+        describedObject:
+          apiVersion: v1
+          kind: Pod
+          name: "*"
+        target:
+          type: Value
+          value: 100000m

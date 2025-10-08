@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netcore-api-deployment
+  labels:
+    app: netcore-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netcore-api
+  template:
+    metadata:
+      labels:
+        app: netcore-api
+    spec:
+      containers:
+      - name: netcore-api
+        image: taugem/netcoreapi:v0.1    
+        resources:
+          requests:
+            memory: "32M"
+            cpu: "250m"
+          limits:
+            memory: "56M"
+            cpu: "500m" 
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: netcore-api-service
+  labels:
+    app: netcore-api
+spec:
+  type: ClusterIP
+  selector:
+    app: netcore-api
+  ports:
+  - name: http
+    port: 5041

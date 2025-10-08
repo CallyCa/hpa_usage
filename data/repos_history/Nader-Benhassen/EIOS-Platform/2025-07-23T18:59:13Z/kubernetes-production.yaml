@@ -1,0 +1,347 @@
+# Kubernetes Production Deployment
+# Complete configuration for hybrid architecture
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hybrid-production
+
+---
+# ConfigMap for shared configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: hybrid-production
+data:
+  NODE_ENV: "production"
+  GO_ENV: "production"
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+  ENABLE_METRICS: "true"
+  ENABLE_TRACING: "true"
+
+---
+# Secret for sensitive data
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+  namespace: hybrid-production
+type: Opaque
+stringData:
+  JWT_SECRET: "your-super-secret-jwt-key-here"
+  DATABASE_URL: "postgresql://user:pass@postgres:5432/db?sslmode=require"
+  REDIS_URL: "redis://:password@redis:6379"
+
+---
+# TypeScript Web Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: typescript-web
+  namespace: hybrid-production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: typescript-web
+  template:
+    metadata:
+      labels:
+        app: typescript-web
+    spec:
+      containers:
+      - name: typescript-web
+        image: your-registry/typescript-web:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: PORT
+          value: "3000"
+        envFrom:
+        - configMapRef:
+            name: app-config
+        - secretRef:
+            name: app-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+---
+# Go Analytics Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-analytics
+  namespace: hybrid-production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: go-analytics
+  template:
+    metadata:
+      labels:
+        app: go-analytics
+    spec:
+      containers:
+      - name: go-analytics
+        image: your-registry/go-analytics:latest
+        ports:
+        - containerPort: 8081
+        env:
+        - name: PORT
+          value: "8081"
+        - name: SERVICE_NAME
+          value: "go-analytics"
+        envFrom:
+        - configMapRef:
+            name: app-config
+        - secretRef:
+            name: app-secrets
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 20
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+---
+# Go Reporting Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-reporting
+  namespace: hybrid-production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: go-reporting
+  template:
+    metadata:
+      labels:
+        app: go-reporting
+    spec:
+      containers:
+      - name: go-reporting
+        image: your-registry/go-reporting:latest
+        ports:
+        - containerPort: 8082
+        env:
+        - name: PORT
+          value: "8082"
+        - name: SERVICE_NAME
+          value: "go-reporting"
+        envFrom:
+        - configMapRef:
+            name: app-config
+        - secretRef:
+            name: app-secrets
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 20
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+---
+# Services
+apiVersion: v1
+kind: Service
+metadata:
+  name: typescript-web
+  namespace: hybrid-production
+spec:
+  selector:
+    app: typescript-web
+  ports:
+  - port: 3000
+    targetPort: 3000
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-analytics
+  namespace: hybrid-production
+spec:
+  selector:
+    app: go-analytics
+  ports:
+  - port: 8081
+    targetPort: 8081
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-reporting
+  namespace: hybrid-production
+spec:
+  selector:
+    app: go-reporting
+  ports:
+  - port: 8082
+    targetPort: 8082
+
+---
+# Ingress with TLS
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hybrid-ingress
+  namespace: hybrid-production
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  tls:
+  - hosts:
+    - api.yourdomain.com
+    secretName: api-tls
+  rules:
+  - host: api.yourdomain.com
+    http:
+      paths:
+      - path: /api/analytics
+        pathType: Prefix
+        backend:
+          service:
+            name: go-analytics
+            port:
+              number: 8081
+      - path: /api/v1/reports
+        pathType: Prefix
+        backend:
+          service:
+            name: go-reporting
+            port:
+              number: 8082
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: typescript-web
+            port:
+              number: 3000
+
+---
+# HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: typescript-web-hpa
+  namespace: hybrid-production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: typescript-web
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# PodDisruptionBudget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: typescript-web-pdb
+  namespace: hybrid-production
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: typescript-web
+
+---
+# NetworkPolicy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hybrid-network-policy
+  namespace: hybrid-production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: hybrid-production
+    - podSelector: {}
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: hybrid-production
+    - podSelector: {}
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+    - protocol: TCP
+      port: 6379  # Redis
+    - protocol: TCP
+      port: 53    # DNS

@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mobin-deployment
+  labels:
+    app: webapp1
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: webapp1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: webapp1
+    spec:
+      containers:
+      - name: mobinwebapp1
+        image: smobinulla/nginxmob:v1
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: 400m
+            memory: "400Mi"
+          requests:
+            cpu: 100m
+            memory: "100Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mobin-webapp1-service
+  labels:
+    app: webapp1
+spec:
+  selector:
+    app: webapp1
+  type: NodePort
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+    nodePort: 30033
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mobin-webapp1-clusterip
+  labels:
+    app: webapp1
+spec:
+  selector:
+    app: webapp1
+  type: ClusterIP
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: deamon1
+spec:
+  selector:
+    matchLabels:
+      app: webapp1
+  template:
+    metadata:
+      name: webapppod
+      labels:
+        app: webapp1
+    spec:
+      containers:
+      - image: grafana/grafana
+        name: grafanacon
+        ports:
+        - containerPort: 3000
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-deploy
+spec:
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 60
+  maxReplicas: 10
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hpa-deploy
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 50

@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app
+spec:
+  selector: 
+    app: my-app
+  ports:
+    - protocol: 'TCP'
+      port: 3000
+      targetPort: 3000
+      name: frontend
+    - protocol: 'TCP'
+      port: 5000
+      targetPort: 5000
+      name: backend
+  type: LoadBalancer
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata: 
+      labels:
+        app: my-app
+    spec: 
+      containers:
+        - name: frontend
+          image: contenthub_flask
+          imagePullPolicy: Never
+        - name: backend
+          image: my-contenthub-app
+          imagePullPolicy: Never
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-app-deployment
+  minReplicas: 3
+  maxReplicas: 5 # Adjust this value based on your requirements
+  targetCPUUtilizationPercentage: 50 # Adjust this value based on your requirements

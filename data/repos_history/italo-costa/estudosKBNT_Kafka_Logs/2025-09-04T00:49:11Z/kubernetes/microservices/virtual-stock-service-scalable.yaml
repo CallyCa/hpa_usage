@@ -1,0 +1,223 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kbnt-scalable
+  labels:
+    environment: scalable-performance
+---
+# =============================================================================
+# Virtual Stock Service - Highly Scalable Deployment
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: virtual-stock-service
+  namespace: kbnt-scalable
+  labels:
+    app: virtual-stock-service
+    component: core-service
+    tier: business-logic
+spec:
+  replicas: 3  # Initial replicas for HA
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 2  # Allow more during scaling
+  selector:
+    matchLabels:
+      app: virtual-stock-service
+  template:
+    metadata:
+      labels:
+        app: virtual-stock-service
+        component: core-service
+        tier: business-logic
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      affinity:
+        # Spread pods across nodes for better availability
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - virtual-stock-service
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: virtual-stock-service
+        image: kbnt/virtual-stock-service:latest
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 8081
+          name: management
+          protocol: TCP
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "kubernetes,scalable"
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-cluster-kafka-bootstrap:9092"
+        - name: DB_HOST
+          value: "postgresql-primary"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: "virtualstock"
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-credentials
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-credentials
+              key: password
+        - name: JAVA_OPTS
+          value: "-Xmx512m -Xms256m -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+UseStringDeduplication -Dspring.profiles.active=kubernetes,scalable"
+        resources:
+          requests:
+            memory: "384Mi"
+            cpu: "200m"
+          limits:
+            memory: "768Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: management
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: management
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+---
+# =============================================================================
+# Virtual Stock Service - Service Definition
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: virtual-stock-service
+  namespace: kbnt-scalable
+  labels:
+    app: virtual-stock-service
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  - name: management
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+  selector:
+    app: virtual-stock-service
+---
+# =============================================================================
+# Horizontal Pod Autoscaler - Advanced Configuration
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: virtual-stock-service-hpa
+  namespace: kbnt-scalable
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: virtual-stock-service
+  minReplicas: 2
+  maxReplicas: 12  # Increased for high scalability
+  metrics:
+  # CPU-based scaling
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  # Memory-based scaling  
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # Custom metrics scaling (requires Prometheus Adapter)
+  - type: Pods
+    pods:
+      metric:
+        name: kafka_producer_records_per_sec
+      target:
+        type: AverageValue
+        averageValue: "100"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60  # Fast scale up
+      policies:
+      - type: Percent
+        value: 100    # Double the replicas
+        periodSeconds: 60
+      - type: Pods
+        value: 2      # Or add 2 pods
+        periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Slower scale down
+      policies:
+      - type: Percent
+        value: 50     # Reduce by half
+        periodSeconds: 60
+---
+# =============================================================================
+# Pod Disruption Budget - High Availability
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: virtual-stock-service-pdb
+  namespace: kbnt-scalable
+spec:
+  minAvailable: 2  # Always keep at least 2 running
+  selector:
+    matchLabels:
+      app: virtual-stock-service
+---
+# =============================================================================
+# Service Monitor for Prometheus Scraping
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: virtual-stock-service-monitor
+  namespace: kbnt-scalable
+  labels:
+    app: virtual-stock-service
+spec:
+  selector:
+    matchLabels:
+      app: virtual-stock-service
+  endpoints:
+  - port: management
+    path: /actuator/prometheus
+    interval: 15s
+    scrapeTimeout: 10s

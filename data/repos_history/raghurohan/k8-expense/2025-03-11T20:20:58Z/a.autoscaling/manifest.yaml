@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: expense
+  labels:                # This is the label of the replicaset. This is used to identify the replicaset only.
+    app: nginx             
+    tier: frontend
+    project: expense
+spec:
+  replicas: 1               # Number of pods to be created
+  selector:
+    matchLabels:         # This should be the label of the pod to which this replicaset will manage          
+      app: nginx             
+      tier: frontend
+      project: expense
+  template:
+    metadata:
+      labels:             # (This is the label of the pod) this label should be same as matchLabels of selector  
+        app: nginx             
+        tier: frontend
+        project: expense
+    spec:
+      containers:
+      - name: frontend
+        image: rohanraghu/frontend:v1
+        containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"  #soft limit 64 megabytes
+            cpu: "250m"
+          limits:
+            memory: "128Mi" #hard limit 128 megabytes max.
+            cpu: "500m"
+        # securityContext:
+        #   capabilities:
+        #     add: ["NET_BIND_SERVICE"]
+---
+
+#autoscaling
+
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend
+  namespace: expense
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 50
+---
+
+# This is the service which will route the traffic to the pods
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: nginx
+  namespace: expense
+spec:
+  type: LoadBalancer
+  selector:           # This is the label of the pod to which this service will route the traffic
+    app: nginx             
+    tier: frontend
+    project: expense    
+  ports:
+  - name: nginx-service
+    port: 80         # Service Port , this is for other containers to communicate with nginx container
+    targetPort: 80   # Container Port
+    protocol: TCP

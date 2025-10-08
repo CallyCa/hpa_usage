@@ -1,0 +1,383 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kutt
+
+---
+# Note: Create secrets separately before applying this manifest:
+# chmod +x create-kutt-secrets.sh
+# ./create-kutt-secrets.sh
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kutt-postgres-data
+  namespace: kutt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: longhorn
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kutt-redis-data
+  namespace: kutt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: longhorn
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kutt-custom
+  namespace: kutt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: longhorn
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kutt-postgres
+  namespace: kutt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kutt-postgres
+  template:
+    metadata:
+      labels:
+        app: kutt-postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: db-name
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: db-password
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: db-user
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - $(POSTGRES_USER)
+            - -d
+            - $(POSTGRES_DB)
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - $(POSTGRES_USER)
+            - -d
+            - $(POSTGRES_DB)
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: kutt-postgres-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: kutt
+spec:
+  selector:
+    app: kutt-postgres
+  ports:
+  - port: 5432
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kutt-redis
+  namespace: kutt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kutt-redis
+  template:
+    metadata:
+      labels:
+        app: kutt-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:alpine
+        ports:
+        - containerPort: 6379
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: kutt-redis-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: kutt
+spec:
+  selector:
+    app: kutt-redis
+  ports:
+  - port: 6379
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kutt-server
+  namespace: kutt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kutt-server
+  template:
+    metadata:
+      labels:
+        app: kutt-server
+    spec:
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:15-alpine
+        command:
+        - sh
+        - -c
+        - |
+          until pg_isready -h postgres -U $(DB_USER) -d $(DB_NAME); do
+            echo "Waiting for PostgreSQL..."
+            sleep 5
+          done
+        env:
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: db-user
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: db-name
+      - name: wait-for-redis
+        image: redis:alpine
+        command:
+        - sh
+        - -c
+        - |
+          until redis-cli -h redis ping; do
+            echo "Waiting for Redis..."
+            sleep 5
+          done
+      containers:
+      - name: kutt
+        image: kutt/kutt:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: DB_CLIENT
+          value: pg
+        - name: DB_HOST
+          value: postgres
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: db-name
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: db-user
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: db-password
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: kutt-secrets
+              key: jwt-secret
+        - name: REDIS_ENABLED
+          value: "true"
+        - name: REDIS_HOST
+          value: redis
+        - name: REDIS_PORT
+          value: "6379"
+        - name: SITE_NAME
+          value: "Starnix Links"
+        - name: DEFAULT_DOMAIN
+          value: "go.starnix.net"
+        - name: LINK_LENGTH
+          value: "6"
+        - name: DISALLOW_ANONYMOUS_LINKS
+          value: "false"
+        volumeMounts:
+        - name: kutt-custom
+          mountPath: /kutt/custom
+        resources:
+          requests:
+            cpu: 300m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 120
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+      volumes:
+      - name: kutt-custom
+        persistentVolumeClaim:
+          claimName: kutt-custom
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kutt-server
+  namespace: kutt
+spec:
+  selector:
+    app: kutt-server
+  ports:
+  - port: 80
+    targetPort: 3000
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kutt-ingress
+  namespace: kutt
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - go.starnix.net
+    secretName: kutt-tls
+  rules:
+  - host: go.starnix.net
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: kutt-server
+            port:
+              number: 80
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: kutt-hpa
+  namespace: kutt
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: kutt-server
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70

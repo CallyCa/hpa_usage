@@ -1,0 +1,41 @@
+{{- if .Values.runnerSet.autoscaling.enabled and .Values.runnerSet.autoscaling.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "runner-set.fullname" . }}-hpa
+  labels:
+    {{- include "runner-set.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: actions.summerwind.dev/v1alpha1
+    kind: RunnerDeployment
+    name: {{ include "runner-set.fullname" . }}
+  minReplicas: {{ .Values.runnerSet.autoscaling.hpa.minReplicas }}
+  maxReplicas: {{ .Values.runnerSet.autoscaling.hpa.maxReplicas }}
+  {{- if .Values.runnerSet.autoscaling.hpa.targetCPUUtilizationPercentage or .Values.runnerSet.autoscaling.hpa.targetMemoryUtilizationPercentage }}
+  metrics:
+    {{- if .Values.runnerSet.autoscaling.hpa.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.runnerSet.autoscaling.hpa.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.runnerSet.autoscaling.hpa.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.runnerSet.autoscaling.hpa.targetMemoryUtilizationPercentage }}
+    {{- end }}
+    {{- with .Values.runnerSet.autoscaling.metrics }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  {{- if .Values.runnerSet.autoscaling.behavior }}
+  behavior:
+    {{- toYaml .Values.runnerSet.autoscaling.behavior | nindent 4 }}
+  {{- end }}
+{{- end }} 

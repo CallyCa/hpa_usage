@@ -1,0 +1,24 @@
+{{- $conf := mustMergeOverwrite (dict) (deepCopy .Values.global) (deepCopy .Values.dashboard) -}}
+{{- if and $conf.enabled $conf.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $conf.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "dashboard.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $conf.name }}
+  minReplicas: {{ $conf.autoscaling.minReplicas }}
+  maxReplicas: {{ $conf.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $conf.autoscaling.targetCPUPercentage }}
+{{- end }}

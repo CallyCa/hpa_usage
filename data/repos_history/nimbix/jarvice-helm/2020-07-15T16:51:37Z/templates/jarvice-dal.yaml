@@ -1,0 +1,325 @@
+{{- if (not (eq "downstream" .Values.jarvice.JARVICE_CLUSTER_TYPE)) }}
+{{- if .Values.jarvice_dal.enabled }}
+{{- if gt .Values.jarvice_dal.replicaCount 1 }}
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: jarvice-dal
+spec:
+  selector:
+    matchLabels:
+      deployment: jarvice-dal
+  minAvailable: {{ .Values.jarvice_dal.pdb.minAvailable }}
+---
+{{- end}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jarvice-dal
+  labels:
+    {{- include "jarvice.release_labels" . | indent 4 }}
+    component: jarvice-dal
+    deployment: jarvice-dal
+    jarvice-system: core
+spec:
+  replicas: {{ .Values.jarvice_dal.replicaCount }}
+  selector:
+    matchLabels:
+      deployment: jarvice-dal
+  template:
+    metadata:
+      labels:
+        {{- include "jarvice.release_labels" . | indent 8 }}
+        component: jarvice-dal
+        deployment: jarvice-dal
+        jarvice-system: core
+      annotations:
+        deployment-date: {{ now | quote }}
+        container.apparmor.security.beta.kubernetes.io/jarvice-dal: unconfined
+    spec:
+      serviceAccountName: jarvice-system
+{{- if .Values.jarvice_dal.hostNetwork }}
+      hostNetwork: true
+{{- end }}
+{{- if (not (empty .Values.jarvice_dal.tolerations)) }}
+      tolerations: {{ .Values.jarvice_dal.tolerations }}
+{{- else if (not (empty .Values.jarvice.tolerations)) }}
+      tolerations: {{ .Values.jarvice.tolerations }}
+{{- end }}
+{{- if (not (empty .Values.jarvice_dal.nodeSelector)) }}
+      nodeSelector: {{ .Values.jarvice_dal.nodeSelector }}
+{{- else if (not (empty .Values.jarvice.nodeSelector)) }}
+      nodeSelector: {{ .Values.jarvice.nodeSelector }}
+{{- end }}
+      affinity:
+        podAntiAffinity:
+        {{- if eq .Values.jarvice_dal.antiAffinity "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: "kubernetes.io/hostname"
+            labelSelector:
+              matchLabels:
+                deployment: jarvice-dal
+        {{- else if eq .Values.jarvice_dal.antiAffinity "soft" }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 5
+            podAffinityTerm:
+              topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  deployment: jarvice-dal
+        {{- end }}
+      imagePullSecrets:
+      - name: jarvice-docker
+      volumes:
+        - name: jarvice-settings
+          configMap:
+            name: {{ .Values.jarvice.settings.configMap }}
+            optional: true
+      containers:
+      - name: jarvice-dal
+        image: {{ .Values.jarvice.JARVICE_SYSTEM_REGISTRY }}/{{ .Values.jarvice.JARVICE_SYSTEM_REPO_BASE }}/jarvice-dal:{{ default .Values.jarvice.JARVICE_IMAGES_TAG .Chart.Annotations.tag }}{{- include "jarvice.version" . }}
+        imagePullPolicy: Always
+        ports:
+          - name: https
+            containerPort: 8443
+          - name: http
+            containerPort: 8000
+        readinessProbe:
+          httpGet:
+            scheme: HTTPS
+            port: https
+            path: /ready
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            scheme: HTTPS
+            port: https
+            path: /live
+          initialDelaySeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 2
+        env:
+          - name: JARVICE_SYSTEM_K8S
+{{- if empty .Values.jarvice.JARVICE_SYSTEM_K8S }}
+            value: "true"
+{{- else }}
+            value: "{{ .Values.jarvice.JARVICE_SYSTEM_K8S }}"
+{{- end }}
+          - name: JARVICE_EXPERIMENTAL
+{{- if empty .Values.jarvice.JARVICE_EXPERIMENTAL }}
+            value: "false"
+{{- else }}
+            value: "{{ .Values.jarvice.JARVICE_EXPERIMENTAL }}"
+{{- end }}
+          - name: JARVICE_JOBS_NAMESPACE
+{{- if empty .Values.jarvice.JARVICE_JOBS_NAMESPACE }}
+            value: {{ .Release.Namespace }}-jobs
+{{- else }}
+            value: {{ .Values.jarvice.JARVICE_JOBS_NAMESPACE }}
+{{- end }}
+          - name: JARVICE_SYSTEM_NAMESPACE
+{{- if empty .Values.jarvice.JARVICE_SYSTEM_NAMESPACE }}
+            value: {{ .Release.Namespace }}
+{{- else }}
+            value: {{ .Values.jarvice.JARVICE_SYSTEM_NAMESPACE }}
+{{- end }}
+          - name: JARVICE_DAL_HTTPS
+            value: "enable"
+          - name: JARVICE_DAL_HTTPS_PORT
+            value: "8443"
+          - name: JARVICE_DAL_HTTP
+            value: "enable"
+          - name: JARVICE_DAL_HTTP_PORT
+            value: "8000"
+          - name: JARVICE_BLOCK_CONF
+            value: ";"
+          - name: JARVICE_SCHED_URL
+            value: "https://jarvice-scheduler:9443"
+          - name: JARVICE_DEFAULT_CLUSTER_URL
+{{- if empty .Values.jarvice.JARVICE_DEFAULT_CLUSTER_URL }}
+{{- if .Values.jarvice_k8s_scheduler.enabled }}
+            value: "http://jarvice-k8s-scheduler:8080"
+{{- else }}
+            value: "http://localhost:8080"
+{{- end }}
+{{- else }}
+            value: "{{ .Values.jarvice.JARVICE_DEFAULT_CLUSTER_URL }}"
+{{- end }}
+          - name: JARVICE_NODE_ENV
+            value: "{{ .Values.jarvice_dal.env.JARVICE_NODE_ENV }}"
+          - name: JARVICE_SITE_DBHOST
+{{- if empty .Values.jarvice_dal.env.JARVICE_SITE_DBHOST }}
+            value: "{{ .Values.jarvice.JARVICE_DBHOST }}"
+{{- else }}
+            value: "{{ .Values.jarvice_dal.env.JARVICE_SITE_DBHOST }}"
+{{- end }}
+          - name: JARVICE_SITE_DBUSER
+{{- if empty .Values.jarvice_dal.env.JARVICE_SITE_DBUSER }}
+            value: "{{ .Values.jarvice.JARVICE_DBUSER }}"
+{{- else }}
+            value: "{{ .Values.jarvice_dal.env.JARVICE_SITE_DBUSER }}"
+{{- end }}
+          - name: JARVICE_SITE_DBPASSWD
+            valueFrom:
+              secretKeyRef:
+                name: jarvice-db
+{{- if empty .Values.jarvice_dal.env.JARVICE_SITE_DBPASSWD }}
+                key: JARVICE_DBPASSWD
+{{- else }}
+                key: JARVICE_SITE_DBPASSWD
+{{- end }}
+          - name: JARVICE_ROOT_USER_CREATE
+            value: "{{ .Values.jarvice_dal.env.JARVICE_ROOT_USER_CREATE }}"
+          - name: JARVICE_ROOT_USER_PASSWD
+            value: "{{ .Values.jarvice_dal.env.JARVICE_ROOT_USER_PASSWD }}"
+          - name: JARVICE_ROOT_USER_EMAIL
+            value: "{{ .Values.jarvice_dal.env.JARVICE_ROOT_USER_EMAIL }}"
+          - name: JARVICE_USER_REGISTRY_VERIFY
+            value: "{{ .Values.jarvice_dal.env.JARVICE_USER_REGISTRY_VERIFY }}"
+          - name: JARVICE_ROOT_USER_VAULT
+            value: "{{ .Values.jarvice_dal.env.JARVICE_ROOT_USER_VAULT }}"
+          - name: JARVICE_ROOT_USER_VAULT_SIZE
+            value: "{{ .Values.jarvice_dal.env.JARVICE_ROOT_USER_VAULT_SIZE }}"
+          - name: JARVICE_PVC_VAULT_NAME
+            value: "{{ .Values.jarvice.JARVICE_PVC_VAULT_NAME }}"
+          - name: JARVICE_PVC_VAULT_STORAGECLASS
+            value: "{{ .Values.jarvice.JARVICE_PVC_VAULT_STORAGECLASS }}"
+          - name: JARVICE_PVC_VAULT_VOLUMENAME
+            value: "{{ .Values.jarvice.JARVICE_PVC_VAULT_VOLUMENAME }}"
+          - name: JARVICE_PVC_VAULT_ACCESSMODES
+            value: "{{ .Values.jarvice.JARVICE_PVC_VAULT_ACCESSMODES }}"
+          - name: JARVICE_PVC_VAULT_SIZE
+            value: "{{ .Values.jarvice.JARVICE_PVC_VAULT_SIZE }}"
+          - name: JARVICE_PVC_VAULT_SUBPATH
+            value: "{{ .Values.jarvice.JARVICE_PVC_VAULT_SUBPATH }}"
+          - name: JARVICE_PVC_VAULT_ZONE
+            value: "{{ .Values.jarvice.JARVICE_PVC_VAULT_ZONE }}"
+          - name: JARVICE_MACHINES_ADD
+            value: '{{ .Values.jarvice_dal.env.JARVICE_MACHINES_ADD }}'
+          - name: JARVICE_CFG_NETWORK
+            value: {{ toYaml .Values.jarvice_dal.env.JARVICE_CFG_NETWORK | indent 12 }}
+        volumeMounts:
+        - name: jarvice-settings
+          mountPath: /etc/jarvice/settings/jarvice-dal
+          readOnly: true
+        resources:
+{{ toYaml .Values.jarvice_dal.resources | indent 10 }}
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            add:
+            - SYS_ADMIN
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jarvice-dal
+  labels:
+    {{- include "jarvice.release_labels" . | indent 4 }}
+    component: jarvice-dal
+spec:
+  type: ClusterIP
+  ports:
+  - protocol: TCP
+    port: 8443
+    targetPort: 8443
+    name: https
+  - protocol: TCP
+    port: 8000
+    targetPort: 8000
+    name: http
+  selector:
+    deployment: jarvice-dal
+---
+{{- if or .Values.jarvice_dal.networkPolicy.enabled (and (eq "<nil>" (toString .Values.jarvice_dal.networkPolicy.enabled)) .Values.jarvice.networkPolicy.enabled) }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jarvice-dal
+spec:
+  podSelector:
+    matchLabels:
+      deployment: jarvice-dal
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: {{ .Release.Namespace }}
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8443
+    - protocol: TCP
+      port: 8000
+  - from:
+    - namespaceSelector:
+        matchLabels:
+{{- if empty .Values.jarvice.JARVICE_BUILDS_NAMESPACE }}
+          name: {{ .Release.Namespace }}-builds
+{{- else }}
+          name: {{ .Values.jarvice.JARVICE_BUILDS_NAMESPACE }}
+{{- end }}
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8443
+  - from:
+    - namespaceSelector:
+        matchLabels:
+{{- if empty .Values.jarvice.JARVICE_PULLS_NAMESPACE }}
+          name: {{ .Release.Namespace }}-pulls
+{{- else }}
+          name: {{ .Values.jarvice.JARVICE_PULLS_NAMESPACE }}
+{{- end }}
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8443
+{{/*
+WARNING: Enabling ingressHost for this service is dangerous.
+DO NOT enable it here without understanding the security implications!
+*/}}
+{{- if (not (empty .Values.jarvice_dal.ingressHost)) }}
+  - from:
+    - namespaceSelector: {}
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8443
+    - protocol: TCP
+      port: 8000
+{{- end }}
+---
+{{- end }}
+{{/*
+WARNING: Enabling ingressHost for this service is dangerous.
+DO NOT enable it here without understanding the security implications!
+*/}}
+{{- if (not (empty .Values.jarvice_dal.ingressHost)) }}
+apiVersion: {{ template "apiVersion.ingress" . }}
+kind: Ingress
+metadata:
+  name: jarvice-dal
+  labels:
+    {{- include "jarvice.release_labels" . | indent 4 }}
+    component: jarvice-dal
+spec:
+  rules:
+  - host: {{ .Values.jarvice_dal.ingressHost }}
+    http:
+      paths:
+      - backend:
+          serviceName: jarvice-dal
+          servicePort: https
+---
+{{- end }}
+{{- end }}
+{{- end }}

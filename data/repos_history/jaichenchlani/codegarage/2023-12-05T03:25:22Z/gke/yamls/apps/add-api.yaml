@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: add-api
+    env: sandbox
+    package: deployment-3
+    provisioned_by: kcc
+  name: add-api
+  namespace: sample
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: add-api
+    env: sandbox
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: add-api
+    env: sandbox
+    package: deployment-3
+    provisioned_by: kcc
+  name: add-api
+  namespace: sample
+spec:
+  selector:
+    matchLabels:
+      app: add-api
+      env: sandbox
+  template:
+    metadata:
+      labels:
+        app: add-api
+        env: sandbox
+        package: deployment-3
+        provisioned_by: kcc
+    spec:
+      containers:
+      - envFrom: null
+        image: docker.io/jaichenchlani/add-api:0.1
+        name: add-api
+        ports:
+        - containerPort: 8080
+          name: http-0
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 10m
+            memory: 128Mi
+          requests:
+            cpu: 5m
+            memory: 32Mi
+      nodeSelector:
+        iam.gke.io/gke-metadata-server-enabled: "true"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  labels:
+    app: add-api
+    env: sandbox
+    package: deployment-3
+    provisioned_by: kcc
+  name: add-api
+  namespace: sample
+spec:
+  maxReplicas: 5
+  metrics:
+  - type: Object
+    object:
+      describedObject:
+        kind: Service
+        name: store-autoscale
+      metric:
+        name: "autoscaling.googleapis.com|gclb-capacity-utilization"
+      target:
+        averageValue: 80
+        type: AverageValue
+  # metrics:
+  # - resource:
+  #     name: cpu
+  #     targetAverageUtilization: 80
+    # type: Resource
+  minReplicas: 2
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: add-api
+---
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  labels:
+    app: add-api
+    env: sandbox
+    package: deployment-3
+    provisioned_by: kcc
+  name: add-api
+  namespace: sample
+spec:
+  endpoints:
+  - interval: 30s
+    port: metrics
+  - interval: 10s
+    path: /stats/prometheus
+    port: 15020
+    scheme: http
+  selector:
+    matchLabels:
+      app: add-api
+      env: sandbox

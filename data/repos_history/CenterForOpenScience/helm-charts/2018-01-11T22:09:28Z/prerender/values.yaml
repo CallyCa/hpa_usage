@@ -1,0 +1,175 @@
+# Default values for prerender.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+replicaCount: 1
+
+image:
+  repository: quay.io/centerforopenscience/prerender
+  tag: latest
+  pullPolicy: Always
+
+antiAffinity: soft
+
+budget:
+  minAvailable: 0
+
+shmSizeLimit: 256Mi
+
+resources: {}
+  #limits:
+  #  cpu: 100m
+  #  memory: 128Mi
+  #requests:
+  #  cpu: 100m
+  #  memory: 128Mi
+
+volumeMounts: []
+#  - mountPath: /code/server.js
+#    name: config
+#    subPath: server.js
+#    readOnly: true
+
+nginx:
+  image:
+    repository: nginx
+    tag: alpine
+    pullPolicy: Always
+
+  resources: {}
+  #limits:
+  #  cpu: 100m
+  #  memory: 128Mi
+  #requests:
+  #  cpu: 100m
+  #  memory: 128Mi
+
+horizontalPodAutoscaler:
+  enabled: false
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 90
+
+service:
+  name: prerender
+  type: ClusterIP
+  externalPort: 3000
+  internalPort: 80
+
+ingress:
+  enabled: false
+  # Used to create an Ingress record.
+  paths:
+    - /
+  hosts:
+    - chart-example.local
+  annotations:
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  tls:
+    # Secrets must be manually created in the namespace.
+    # - secretName: chart-example-tls
+    #   hosts:
+    #     - chart-example.local
+
+configEnvs: {}
+  # ALLOWED_DOMAINS: "domain.name,domain2.name"
+  # PAGE_TTL: 86400
+  # PRERENDER_NUM_WORKERS: "1"
+  # PRERENDER_NUM_ITERATIONS: "40"
+  # PRERENDER_NUM_SOFT_ITERATIONS: "30"
+
+configFiles: {}
+
+secretEnvs:
+  THROTTLE_TOKEN: ''
+  # REDIS_URL: redis://:<password>@s3prerender-redis-redis:6379/0
+
+secretFiles: {}
+
+redis:
+  nameOverride: prerender-redis
+  enabled: true
+
+  image:
+    repository: redis
+    tag: alpine
+    pullPolicy: IfNotPresent
+
+  secretEnvs: {}
+    # REDIS_PASSWORD: ''
+
+  ## Redis command arguments
+  ##
+  ## Can be used to specify command line arguments, for example:
+  ##
+  ## args:
+  ##  - --maxmemory 200mb
+  ##  - --maxmemory-policy volatile-ttl
+  args:
+
+  ## Enable persistence using Persistent Volume Claims
+  ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+  ##
+  persistence:
+    enabled: true
+
+    ## A manually managed Persistent Volume and Claim
+    ## Requires persistence.enabled: true
+    ## If defined, PVC must be created manually before volume will be bound
+    # existingClaim:
+
+    ## redis data Persistent Volume Storage Class
+    ## If defined, storageClassName: <storageClass>
+    ## If set to "-", storageClassName: "", which disables dynamic provisioning
+    ## If undefined (the default) or set to null, no storageClassName spec is
+    ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+    ##   GKE, AWS & OpenStack)
+    ##
+    # storageClass: "-"
+    accessMode: ReadWriteOnce
+    size: 8Gi
+
+  ## Configure resource requests and limits
+  ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  ##
+  resources: {}
+    #limits:
+    #  cpu: 100m
+    #  memory: 256Mi
+    #requests:
+    #  cpu: 100m
+    #  memory: 256Mi
+
+  metrics:
+    enabled: false
+    image:
+      repository: oliver006/redis_exporter
+      tag: v0.11
+      pullPolicy: IfNotPresent
+    port: 9121
+    resources: {}
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9121"
+
+  service:
+    type: ClusterIP
+    loadBalancerIP:
+    #annotations: {}
+    # If using type: LoadBalancer
+    #loadBalancerIP: 0.0.0.0
+    #loadBalancerSourceRanges:
+    #  - 0.0.0.0/0
+    port: 6379
+    externalIPs: []
+
+  networkPolicy:
+    ## Enable creation of NetworkPolicy resources.
+    ##
+    enabled: false
+
+    ## The Policy model to apply. When set to false, only pods with the correct
+    ## client label will have network access to the port Redis is listening
+    ## on. When true, Redis will accept connections from any source
+    ## (with the correct destination port).
+    ##
+    allowExternal: true

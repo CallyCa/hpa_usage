@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: springboot-pi-service
+  labels:
+    app: springboot-pi-service
+    app.openshift.io/runtime: spring-boot
+    app.kubernetes.io/part-of: pi-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: springboot-pi-service
+  template:
+    metadata:
+      labels:
+        app: springboot-pi-service
+    spec:
+      containers:
+        - name: springboot-pi-service
+          image: quay.io/rh_ee_ozimakov/springboot-pi-service:latest
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+              initialDelaySeconds: 3
+              periodSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+              initialDelaySeconds: 3
+              periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: springboot-pi-service
+spec:
+  selector:
+    app: springboot-pi-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: springboot-pi-service-hpa
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: springboot-pi-service
+    apiVersion: apps/v1
+  minReplicas: 3
+  maxReplicas: 30
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+---
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: springboot-pi-service
+spec:
+  to:
+    kind: Service
+    name: springboot-pi-service
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

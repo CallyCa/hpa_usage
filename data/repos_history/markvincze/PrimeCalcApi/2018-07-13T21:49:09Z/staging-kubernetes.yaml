@@ -1,0 +1,141 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: primecalcapi
+  name: primecalcapi-headless
+  namespace: staging
+spec:
+  clusterIP: None
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: http
+  selector:
+    app: primecalcapi
+  sessionAffinity: None
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: primecalcapi
+  namespace: staging
+  labels:
+    app: primecalcapi
+    team: core
+spec:
+  scaleTargetRef:
+    apiVersion: extensions/v1beta1
+    kind: Deployment
+    name: primecalcapi
+  minReplicas: 2
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: primecalcapi
+  namespace: staging
+  labels:
+    app: primecalcapi
+    track: stable
+    team: core
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 20%
+      maxUnavailable: 0
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: primecalcapi
+      track: stable
+  template:
+    metadata:
+      labels:
+        app: primecalcapi
+        team: core
+        track: stable
+        version: 1.0.0-00--00-0
+      annotations:
+        prometheus.io/scrape-nginx-sidecar: "true"
+    spec:
+      containers:
+      - name: primecalcapi
+        image: markvincze/primecalcapi:1
+        resources:
+          limits:
+            cpu: 100m
+            memory: 150Mi
+          requests:
+            cpu: 100m
+            memory: 150Mi
+        ports:
+        - name: http-direct
+          containerPort: 5000
+        livenessProbe:
+          httpGet:
+            path: /status
+            port: 5000
+          initialDelaySeconds: 30
+          timeoutSeconds: 1
+        readinessProbe:
+          httpGet:
+            path: /status
+            port: 5000
+          initialDelaySeconds: 10
+          timeoutSeconds: 60
+          periodSeconds: 60
+      - name: primecalcapi-openresty
+        image: markvincze/openresty:3
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 50m
+            memory: 50Mi
+          requests:
+            cpu: 10m
+            memory: 10Mi
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        - name: nginx-liveness
+          containerPort: 82
+        - name: nginx-readiness
+          containerPort: 81
+        - name: nginx-prom
+          containerPort: 9101
+        env:
+        - name: "OFFLOAD_TO_HOST"
+          value: "localhost"
+        - name: "OFFLOAD_TO_PORT"
+          value: "5000"
+        - name: "SERVICE_NAME"
+          value: "primecalcapi"
+        - name: "NAMESPACE"
+          value: "staging"
+        - name: "HEALT_CHECK_PATH"
+          value: "/status"
+        - name: "ALLOW_CIDRS"
+          value: "allow 0.0.0.0/0;"
+        - name: "ENFORCE_HTTPS"
+          value: "false"
+        livenessProbe:
+          httpGet:
+            path: /liveness
+            port: nginx-liveness
+          initialDelaySeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: nginx-readiness

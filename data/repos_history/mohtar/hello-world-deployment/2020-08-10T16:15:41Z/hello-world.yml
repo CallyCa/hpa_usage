@@ -1,0 +1,38 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-world
+  annotations:
+    flux.weave.works/automated: 'true'
+    flux.weave.works/tag.hello-world: 'glob:master-*'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-world
+  template:
+    metadata:
+      labels:
+        app: hello-world
+    spec:
+      containers:
+        - name: hello-world
+          image: mohtar/hello-world
+          args: [poetry, run, python, hello_world/server.py, '80']
+          env:
+            - name: PYTHONUNBUFFERED
+              value: '1'
+            - name: PYTHONPATH
+              value: .
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-world
+spec:
+  ports:
+  - port: 80
+  selector:
+    app: hello-world

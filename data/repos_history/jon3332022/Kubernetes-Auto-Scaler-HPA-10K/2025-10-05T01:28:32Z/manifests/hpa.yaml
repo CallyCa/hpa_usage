@@ -1,0 +1,156 @@
+# ============================================================================
+# HORIZONTAL POD AUTOSCALER (HPA) - Enterprise Configuration
+# ============================================================================
+# Author: Jonathan Reyes
+# Description: Production-grade auto-scaling with:
+#   - Multiple metrics (CPU, Memory, Custom)
+#   - Conservative scale-down policies
+#   - Aggressive scale-up policies
+#   - Behavior customization
+# ============================================================================
+# Documentation: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/
+# ============================================================================
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: react-app-hpa
+  labels:
+    app: react-app
+    component: frontend
+  annotations:
+    description: "Auto-scales React app based on CPU and memory utilization"
+    
+spec:
+  # ============================================================================
+  # TARGET DEPLOYMENT
+  # ============================================================================
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: react-app
+  
+  # ============================================================================
+  # REPLICA LIMITS
+  # ============================================================================
+  minReplicas: 2              # Minimum for HA (never go below this)
+  maxReplicas: 10             # Maximum for cost control
+  
+  # ============================================================================
+  # SCALING METRICS
+  # ============================================================================
+  metrics:
+  
+  # --------------------------------------------------------------------------
+  # CPU-BASED SCALING (Primary Metric)
+  # --------------------------------------------------------------------------
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70    # Scale when average CPU > 70%
+        # Formula: desired_replicas = ceil(current_replicas * current_utilization / target_utilization)
+        # Example: 2 pods at 140% CPU → ceil(2 * 140 / 70) = 4 pods
+  
+  # --------------------------------------------------------------------------
+  # MEMORY-BASED SCALING (Secondary Metric)
+  # --------------------------------------------------------------------------
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80    # Scale when average memory > 80%
+        # Note: Memory-based scaling can be tricky due to memory leaks
+  
+  # --------------------------------------------------------------------------
+  # CUSTOM METRICS (Advanced - requires metrics adapter)
+  # --------------------------------------------------------------------------
+  # Uncomment to enable custom metrics like requests/second
+  # - type: Pods
+  #   pods:
+  #     metric:
+  #       name: http_requests_per_second
+  #     target:
+  #       type: AverageValue
+  #       averageValue: "1000"    # Scale when > 1000 req/s per pod
+  
+  # - type: Object
+  #   object:
+  #     metric:
+  #       name: requests-per-second
+  #     describedObject:
+  #       apiVersion: networking.k8s.io/v1
+  #       kind: Ingress
+  #       name: react-app-ingress
+  #     target:
+  #       type: Value
+  #       value: "10k"            # Scale when total > 10k req/s
+  
+  # ============================================================================
+  # SCALING BEHAVIOR - Fine-Tuned Control
+  # ============================================================================
+  behavior:
+    
+    # --------------------------------------------------------------------------
+    # SCALE-DOWN POLICIES (Conservative)
+    # --------------------------------------------------------------------------
+    # Goal: Prevent thrashing and maintain stability
+    scaleDown:
+      # Wait 5 minutes before removing pods (allows for traffic fluctuations)
+      stabilizationWindowSeconds: 300
+      
+      # Scaling policies (evaluated together, most conservative wins)
+      policies:
+      
+      # Policy 1: Remove up to 50% of pods every 15 seconds
+      - type: Percent
+        value: 50
+        periodSeconds: 15
+      
+      # Policy 2: Remove maximum 2 pods every 15 seconds
+      - type: Pods
+        value: 2
+        periodSeconds: 15
+      
+      # Select policy that removes FEWER pods (more conservative)
+      selectPolicy: Min
+      
+      # Additional safety: never scale down faster than this
+      # maxScaleDown: 1 pod per minute
+    
+    # --------------------------------------------------------------------------
+    # SCALE-UP POLICIES (Aggressive)
+    # --------------------------------------------------------------------------
+    # Goal: Respond quickly to traffic spikes
+    scaleUp:
+      # Wait only 30 seconds before adding pods (rapid response)
+      stabilizationWindowSeconds: 30
+      
+      # Scaling policies (evaluated together, most aggressive wins)
+      policies:
+      
+      # Policy 1: Double the number of pods every 15 seconds
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      
+      # Policy 2: Add 4 pods every 15 seconds
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+      
+      # Select policy that adds MORE pods (more aggressive)
+      selectPolicy: Max
+      
+      # Additional safety: never scale up faster than this
+      # maxScaleUp: 10 pods per minute
+
+---
+# ============================================================================
+# POD DISRUPTION BUDGET - Already defined in deployment.yaml
+# ============================================================================
+# Included here for reference - ensures at least 1 pod during voluntary disruptions
+# This is critical when HPA scales down during low traffic periods
+# ============================================================================

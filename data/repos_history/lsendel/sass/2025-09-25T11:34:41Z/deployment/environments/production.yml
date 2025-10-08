@@ -1,0 +1,320 @@
+# Production Environment Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: production-config
+  namespace: payment-platform-production
+data:
+  # Application Configuration
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+
+  # Database Configuration
+  DATABASE_HOST: "postgres-production.internal"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "platform_production"
+  DATABASE_SSL_MODE: "require"
+
+  # Redis Configuration
+  REDIS_HOST: "redis-production.internal"
+  REDIS_PORT: "6379"
+  REDIS_SSL: "true"
+
+  # API Configuration
+  API_BASE_URL: "https://api.payment-platform.com"
+  CORS_ALLOWED_ORIGINS: "https://payment-platform.com"
+
+  # Stripe Configuration (Live Mode)
+  STRIPE_WEBHOOK_ENDPOINT_SECRET: "whsec_live_production"
+
+  # Feature Flags
+  FEATURE_PAYMENT_PROCESSING: "true"
+  FEATURE_SUBSCRIPTION_MANAGEMENT: "true"
+  FEATURE_AUDIT_LOGGING: "true"
+  FEATURE_DEBUG_MODE: "false"
+
+  # Performance Settings
+  JVM_OPTS: "-Xmx4g -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+UseStringDeduplication"
+  THREAD_POOL_SIZE: "50"
+  CONNECTION_POOL_SIZE: "20"
+
+  # Security Settings
+  SECURITY_HEADERS_ENABLED: "true"
+  CSRF_PROTECTION_ENABLED: "true"
+  RATE_LIMITING_ENABLED: "true"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-platform-backend-production
+  namespace: payment-platform-production
+  labels:
+    app: payment-platform-backend
+    environment: production
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: payment-platform-backend
+      environment: production
+  template:
+    metadata:
+      labels:
+        app: payment-platform-backend
+        environment: production
+    spec:
+      containers:
+      - name: backend
+        image: payment-platform-backend:production
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "production"
+        envFrom:
+        - configMapRef:
+            name: production-config
+        - secretRef:
+            name: production-secrets
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 90
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: true
+      volumes:
+      - name: logs
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: payment-platform-backend
+              topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-platform-frontend-production
+  namespace: payment-platform-production
+  labels:
+    app: payment-platform-frontend
+    environment: production
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: payment-platform-frontend
+      environment: production
+  template:
+    metadata:
+      labels:
+        app: payment-platform-frontend
+        environment: production
+    spec:
+      containers:
+      - name: frontend
+        image: payment-platform-frontend:production
+        ports:
+        - containerPort: 80
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: VITE_API_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: production-config
+              key: API_BASE_URL
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: true
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: payment-platform-frontend
+              topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-platform-backend-production
+  namespace: payment-platform-production
+spec:
+  selector:
+    app: payment-platform-backend
+    environment: production
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-platform-frontend-production
+  namespace: payment-platform-production
+spec:
+  selector:
+    app: payment-platform-frontend
+    environment: production
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: payment-platform-production-ingress
+  namespace: payment-platform-production
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  tls:
+  - hosts:
+    - payment-platform.com
+    - api.payment-platform.com
+    secretName: production-tls
+  rules:
+  - host: payment-platform.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: payment-platform-frontend-production
+            port:
+              number: 80
+  - host: api.payment-platform.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: payment-platform-backend-production
+            port:
+              number: 80
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-platform-backend-hpa
+  namespace: payment-platform-production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment-platform-backend-production
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-platform-frontend-hpa
+  namespace: payment-platform-production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment-platform-frontend-production
+  minReplicas: 3
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70

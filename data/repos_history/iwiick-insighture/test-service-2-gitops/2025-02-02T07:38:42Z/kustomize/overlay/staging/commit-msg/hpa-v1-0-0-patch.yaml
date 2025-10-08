@@ -1,0 +1,17 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  annotations: {}
+  name: commit-msg-v1-0-0
+  labels:
+    app: commit-msg-v1-0-0
+    applicationId: app_fd93edba-7f37-47ee-936c-184dc8ff8839
+    version: v1.0.0
+    organizationId: org_d2ea4601-f582-4e43-921d-6a60eea704b3
+    projectId: project_f25ad2e4-cf21-410c-b7fb-a8adad864a23
+    environmentId: env_11c7ddba-3fc5-42b4-92b2-2424c944eede
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: commit-msg-v1-0-0

@@ -1,0 +1,21 @@
+{{- if .Values.metabaseHPA.enable }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ template "cas-metabase.fullname" . }}-hpa
+  labels: {{ include "cas-metabase.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: {{ template "cas-metabase.fullname" . }}
+    apiVersion: apps/v1
+  minReplicas: {{ .Values.metabaseHPA.minReplicas }}
+  maxReplicas: {{ .Values.metabaseHPA.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.metabaseHPA.avgUtilization }}
+{{- end }}

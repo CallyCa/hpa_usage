@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mindbox 
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mindbox
+  template:
+    metadata:
+      name: mindbox
+      labels:
+        app: mindbox
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution: # Задаем преимущественное создание подов на нодах из разных зон для отказоустойчивости
+            - weight: 1
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - mindbox
+                topologyKey: topology.kubernetes.io/zone
+          requiredDuringSchedulingIgnoredDuringExecution: # Задаем обязательное создание подов на разных нодах для уменьшения влияния падения ноды на доступность
+            labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                    - mindbox
+            topologyKey: kubernetes.io/hostname
+      containers:
+        - name: mindbox
+          image: mindbox
+          resources:
+            requests: # запрашиваем ресурсы чуть больше средне потребляемого
+              cpu: "0.12" 
+              memory: "140Mi"
+            limits:
+              memory: "140Mi" # по условию потребление памяти ровное все время. Потребление больше запрошенного объема скорее всего будет означать, что что-то пошло не так. Поэтому устанавливаем лимит на память.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10 # так как инициализация может занимать до 10 секунд
+            periodSeconds: 5
+      restartPolicy: Always
+
+---
+
+# для масштабирования в зависимости от нагрузки используем HorizontalPodAutoscaler. 
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mindbox
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mindbox
+  minReplicas: 1
+  maxReplicas: 4 # по условию 4 пода справляются с максимальной нагрузкой
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 90 # масштабируем при среднем потреблении цпу 90% от запрошенного (~ 0.108 cpu), т.e когда под начинает потреблять больше среднего.

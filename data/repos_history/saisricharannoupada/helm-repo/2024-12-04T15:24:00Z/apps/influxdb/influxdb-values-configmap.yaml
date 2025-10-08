@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: influxdb-values
+  namespace: influxdb
+data:
+  values.yaml: |
+    image:
+      repository: litmus.azurecr.io/influxdb
+      tag: 2.7
+      pullPolicy: IfNotPresent
+      ## If specified, use these secrets to access the images
+      pullSecrets:
+        #- influxdb-acr-secret
+    
+    ## Annotations to be added to InfluxDB pods
+    podAnnotations: {}
+    
+    ## Labels to be added to InfluxDB pods
+    podLabels: {}
+    
+    nameOverride: ""
+    fullnameOverride: ""
+    
+    ## Configure resource requests and limits
+    resources: {}
+    
+    ## Node labels for pod assignment
+    nodeSelector: {}
+    
+    ## Tolerations for pod assignment
+    tolerations: []
+    
+    ## Affinity for pod assignment
+    affinity: {}
+    
+    securityContext: {}
+    
+    ## Customize liveness, readiness and startup probes
+    livenessProbe: {}
+    
+    readinessProbe: {}
+    
+    startupProbe:
+      enabled: false
+    
+    ## Extra environment variables to configure influxdb
+    env: {}
+    
+    ## Create default user through docker entrypoint
+    adminUser:
+      organization: "Mars_Incorporated"
+      bucket: "default"
+      user: "admin"
+      retention_policy: "0s"
+      password: "mars_influxdb"
+      token: ""
+    
+    ## Persist data to a persistent volume
+    persistence:
+      enabled: true
+      accessMode: ReadWriteOnce
+      size: 50Gi
+      mountPath: /var/lib/influxdb2
+      subPath: ""
+    
+    ## Add custom volume and volumeMounts
+    # volumes:
+    #   - name: influxdb2-templates
+    #     hostPath:
+    #       path: /data/influxdb2-templates
+    #       type: Directory
+    # mountPoints:
+    #   - name: influxdb2-templates
+    #     mountPath: /influxdb2-templates
+    #     readOnly: true
+    
+    ## Allow executing custom init scripts
+    initScripts:
+      enabled: false
+      scripts:
+        init.sh: |+
+          #!/bin/bash
+          influx apply --force yes -u https://raw.githubusercontent.com/influxdata/community-templates/master/influxdb2_operational_monitoring/influxdb2_operational_monitoring.yml
+    
+    ## Specify a service type
+    service:
+      type: LoadBalancer
+      port: 80
+      targetPort: 8086
+      annotations: {}
+      labels: {}
+      portName: http
+    
+    serviceAccount:
+      create: true
+      name:
+      annotations: {}
+    
+    ingress:
+      enabled: false
+      tls: false
+      hostname: influxdb.foobar.com
+      annotations: {}
+      path: /
+    
+    ## Pod disruption budget configuration
+    pdb:
+      create: true
+      minAvailable: 1

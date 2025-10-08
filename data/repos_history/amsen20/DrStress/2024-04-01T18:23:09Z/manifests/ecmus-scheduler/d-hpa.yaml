@@ -1,0 +1,23 @@
+kind: HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+metadata:
+  name: d-hpa
+  namespace: ecmus
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: d-deployment
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 5
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: scheduler_load_test_requests_per_second
+        target:
+          type: Value
+          averageValue: 5

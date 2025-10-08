@@ -1,0 +1,84 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+    name: basket
+    labels:
+        app: basket
+spec:
+    replicas: 2
+    selector:
+        matchLabels:
+            app: basket
+    revisionHistoryLimit: 5
+    minReadySeconds: 10
+    strategy:
+        type: RollingUpdate
+        rollingUpdate:
+            maxSurge: 2
+            maxUnavailable: 0
+    template:
+        metadata:
+            labels:
+                app: basket
+        spec:
+            containers:
+                - name: basket
+                  image: gcr.io/just-strength-233319/github_kuberton_basket:latest
+                  imagePullPolicy: Always
+                  ports:
+                      - containerPort: 8080
+                        protocol: TCP
+                  # readinessProbe:
+                  #     httpGet:
+                  #         path: /health
+                  #         port: 8080
+                  #     initialDelaySeconds: 10
+                  #     periodSeconds: 10
+                  #     timeoutSeconds: 5
+                  # livenessProbe:
+                  #     httpGet:
+                  #         path: /health
+                  #         port: 8080
+                  #     initialDelaySeconds: 10
+                  #     periodSeconds: 10
+                  #     timeoutSeconds: 5
+                  resources:
+                      limits:
+                          memory: '528M'
+            dnsPolicy: ClusterFirst
+            restartPolicy: Always
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: basket
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1beta1
+    kind: Deployment
+    name: basket
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: basket
+  labels:
+    app: basket
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: basket
+  type: LoadBalancer
+  # loadBalancerIP: 34.76.106.184
+  sessionAffinity: ClientIP

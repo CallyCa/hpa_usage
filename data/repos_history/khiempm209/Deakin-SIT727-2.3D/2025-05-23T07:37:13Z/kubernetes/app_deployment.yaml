@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: trivia-web
+  name: trivia-web
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: trivia-web
+  template:
+    metadata:
+      labels:
+        app: trivia-web
+    spec:
+      serviceAccountName: trivia-web
+      containers:
+      - image: localhost:5000/trivia-app:prod
+        imagePullPolicy: Always
+        name: trivia-web
+        resources:
+          requests:
+            cpu: 100m
+            memory: 30Mi
+          limits:
+            cpu: 100m
+            memory: 30Mi
+        ports:
+        - name: http
+          containerPort: 8000
+        readinessProbe:
+          periodSeconds: 10
+          httpGet:
+            path: /
+            port: http
+        env:
+        - name: SERVER_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: trivia-web
+              key: server_name
+        resources:
+          requests:
+            cpu: 10m
+            memory: 500Mi
+          limits:
+            cpu: 200m
+            memory: 1000Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: trivia-web
+  name: trivia-web
+spec:
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    nodePort: 30092
+  selector:
+    app: trivia-web
+  type: NodePort
+---
+apiVersion: v1
+data:
+  server_name: Trivia Web
+kind: ConfigMap
+metadata:
+  name: trivia-web
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trivia-web
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: trivia-web
+spec:
+  maxReplicas: 5
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: trivia-web
+  targetCPUUtilizationPercentage: 20
+status:
+  currentReplicas: 0
+  desiredReplicas: 0

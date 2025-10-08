@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fiveg-sim
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane-sim
+  namespace: fiveg-sim
+spec:
+  replicas: 1  # Will scale to 200 later
+  selector:
+    matchLabels:
+      app: control-plane-sim
+  template:
+    metadata:
+      labels:
+        app: control-plane-sim
+    spec:
+      containers:
+        - name: busybox-http
+          image: quay.io/midu/busybox:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              yes > /dev/null &
+              while true; do
+                wget -q -O- http://example.com > /dev/null
+                sleep 0.5
+              done
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 100m
+              memory: 64Mi
+      nodeSelector:
+        kubernetes.io/hostname: cnfdc12.t5g-dev.eng.rdu2.dc.redhat.com
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "cnfdc12"
+          effect: "NoSchedule"
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: control-plane-sim-hpa
+  namespace: fiveg-sim
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: control-plane-sim
+  minReplicas: 1
+  maxReplicas: 500
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 20

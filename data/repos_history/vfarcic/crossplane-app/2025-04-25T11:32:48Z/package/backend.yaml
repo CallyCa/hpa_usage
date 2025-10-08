@@ -1,0 +1,521 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: app-backend
+  labels:
+    type: backend
+    location: local
+spec:
+  compositeTypeRef:
+    apiVersion: devopstoolkit.live/v1beta1
+    kind: App
+  mode: Pipeline
+  pipeline:
+  - step: kcl
+    functionRef:
+      name: crossplane-contrib-function-kcl
+    input:
+      apiVersion: krm.kcl.dev/v1alpha1
+      kind: KCLRun
+      metadata:
+        name: kubernetes
+      spec:
+        target: Default
+        source: |+
+          oxr = option("params").oxr
+          ocds = option("params").ocds
+          _name = oxr.metadata.name
+          _spec = oxr.spec
+
+          _metadata = lambda name: str, kind: str -> any {
+              {
+                  name = name
+                  annotations = {
+                      "krm.kcl.dev/ready" = "True"
+                      "krm.kcl.dev/composition-resource-name" = "{}-{}".format(name, kind)
+                  }
+                  labels = {
+                      "app.kubernetes.io/name" = name
+                  }
+              }
+          }
+
+          _items = [
+              {
+                  apiVersion = "apps/v1"
+                  kind = "Deployment"
+                  metadata = _metadata(_name, "deployment")
+                  spec = {
+                      selector.matchLabels = {
+                          "app.kubernetes.io/name" = _name
+                      }
+                      template = {
+                          metadata.labels = {
+                              "app.kubernetes.io/name" = _name
+                          }
+                          spec = {
+                              containers = [{
+                                  image = _spec.image + ":" + _spec.tag
+                                  name = "main"
+                                  livenessProbe = {
+                                      httpGet = {
+                                          path = "/"
+                                          port = _spec.port
+                                      }
+                                      failureThreshold = 10
+                                  }
+                                  readinessProbe = {
+                                      httpGet = {
+                                          path = "/"
+                                          port = _spec.port
+                                      }
+                                      failureThreshold = 10
+                                  }
+                                  resources = {
+                                      limits = {cpu = "250m", memory = "256Mi" }
+                                      requests = {cpu = "125m", memory = "128Mi" }
+                                  }
+                                  ports = [
+                                      {containerPort = _spec.port }
+                                  ]
+                                  if _spec.db?.secret:
+                                      env = [
+                                          {
+                                              name = "DB_ENDPOINT"
+                                              valueFrom.secretKeyRef = {
+                                                  key = "endpoint"
+                                                  name = _spec.db.secret
+                                              }
+                                          }, {
+                                              name = "DB_PASSWORD"
+                                              valueFrom.secretKeyRef = {
+                                                  key = "password"
+                                                  name = _spec.db.secret
+                                              }
+                                          }, {
+                                              name = "DB_PORT"
+                                              valueFrom.secretKeyRef = {
+                                                  key = "port"
+                                                  name = _spec.db.secret
+                                                  optional = True
+                                              }
+                                          }, {
+                                              name = "DB_USERNAME"
+                                              valueFrom.secretKeyRef = {
+                                                  key = "username"
+                                                  name = _spec.db.secret
+                                              }
+                                          }, {
+                                              name = "DB_NAME"
+                                              value = _spec.db.name
+                                          },
+                                      ]
+                              }]
+                          }
+                      }
+                  }
+              }, {
+                  apiVersion = "v1"
+                  kind = "Service"
+                  metadata = _metadata(_name, "service")
+                  spec = {
+                      type = "ClusterIP"
+                      ports = [{
+                          port = _spec.port
+                          targetPort = _spec.port
+                          protocol = "TCP"
+                          name = "http"
+                      }]
+                      selector = {
+                          "app.kubernetes.io/name" = _name
+                      }
+                  }
+              }, {
+                  apiVersion = "networking.k8s.io/v1"
+                  kind = "Ingress"
+                  metadata = {
+                      name = _name
+                      labels = {
+                          "app.kubernetes.io/name" = _name
+                      }
+                      annotations = {
+                          "krm.kcl.dev/ready" = "True"
+                          "krm.kcl.dev/composition-resource-name" = "{}-ingress".format(_name)
+                          "ingress.kubernetes.io/ssl-redirect" = "false"
+                      }
+                  }
+                  spec = {
+                      if _spec.ingressClassName:
+                          ingressClassName = _spec.ingressClassName
+                      rules = [{
+                          host = _spec.host
+                          http = {
+                              paths = [{
+                                  path = "/"
+                                  pathType = "ImplementationSpecific"
+                                  backend.service = {
+                                      name = _name
+                                      port.number = _spec.port
+                                  }
+                              }]
+                          }
+                      }]
+                  }
+              }, {
+                  **oxr
+                  status.host = _spec.host
+              }
+          ]
+
+          if _spec.scaling?.enabled:
+              _items += [{
+                  apiVersion = "autoscaling/v2"
+                  kind = "HorizontalPodAutoscaler"
+                  metadata = _metadata(_name, "hpa")
+                  spec = {
+                      scaleTargetRef = {
+                          apiVersion = "apps/v1"
+                          kind = "Deployment"
+                          name = _name
+                      }
+                      minReplicas = _spec.scaling.min
+                      maxReplicas = _spec.scaling.max
+                      metrics = [{
+                          type = "Resource"
+                          resource = {
+                              name = "cpu"
+                              target = {
+                                  type = "Utilization"
+                                  averageUtilization = 80
+                              }
+                          }
+                      }, {
+                          type = "Resource"
+                          resource = {
+                              name = "memory"
+                              target = {
+                                  type = "Utilization"
+                                  averageUtilization = 80
+                              }
+                          }
+                      }]
+                  }
+              }]
+
+          if _spec.db?.storeName and _spec.db?.secret:
+              _items += [{
+                  apiVersion = "external-secrets.io/v1beta1"
+                  kind = "ExternalSecret"
+                  metadata = _metadata(_name, "external-secret")
+                  spec = {
+                      dataFrom = [{
+                          extract = {
+                              conversionStrategy = "Default"
+                              decodingStrategy = "None"
+                              key = _spec.db.secret
+                              metadataPolicy = "None"
+                          }
+                      }]
+                      refreshInterval = "1h"
+                      secretStoreRef = {
+                          kind = "ClusterSecretStore"
+                          name = _spec.db.storeName
+                      }
+                      target = {
+                          creationPolicy = "Owner"
+                          deletionPolicy = "Retain"
+                          name = _spec.db.secret
+                      }
+                  }
+              }]
+
+          items = _items
+
+  - step: kcl-ci
+    functionRef:
+      name: crossplane-contrib-function-kcl
+    input:
+      apiVersion: krm.kcl.dev/v1alpha1
+      kind: KCLRun
+      metadata:
+        name: ci
+      spec:
+        target: Default
+        source: |
+          import template
+
+          # oxrMock = {
+          #   spec = {
+          #     id = "123"
+          #     parameters = {
+          #       image = "IMAGE"
+          #       repository = {
+          #         enabled = True
+          #         name = "REPO"
+          #       }
+          #       ci = {
+          #         enabled = True
+          #       }
+          #     }
+          #   }
+          # }
+          oxr = option("params").oxr
+          _name = oxr.metadata.name
+          _spec = oxr.spec
+          dxr = {
+            **oxr
+            status.host = _spec.host
+          }
+
+          schema RepositoryFile:
+            apiVersion = "repo.github.upbound.io/v1alpha1"
+            kind = "RepositoryFile"
+            metadata: any
+            spec: RepositoryFileSpec
+
+          schema RepositoryFileSpec:
+            forProvider: RepositoryFileForProvider
+
+          schema RepositoryFileForProvider:
+            branch = "${_name}-ci"
+            commitAuthor = "Crossplane"
+            commitEmail = "github-provider@crossplane.io"
+            commitMessage = "${file} [skip ci]"
+            file: str
+            overwriteOnCreate = True
+            repository = _spec.repository.name
+            content: str
+
+          _metadata = lambda suffix: str, kind: str -> any {
+            {
+              if suffix == "":
+                name = _name
+                annotations = {
+                  "krm.kcl.dev/composition-resource-name" = _name + "-" + kind
+                }
+              else:
+                name = _name + "-" + kind + "-" + suffix
+                annotations = {
+                  "krm.kcl.dev/composition-resource-name" = _name + "-" + kind + "-" + suffix
+                }
+            }
+          }
+
+          _devboxRun = "devbox run --config devbox-ci.json -- ./dot.nu run ci $TAG"
+
+          if not _spec.ci?.runTests:
+            _devboxRun = _devboxRun + " --run_tests false"
+          if not _spec.ci?.buildImages:
+            _devboxRun = _devboxRun + " --build_images false"
+
+          _items = []
+
+          if _spec.ci?.tool == "gha":
+            _items += [
+              RepositoryFile{
+                metadata = _metadata("gha", "file")
+                spec: RepositoryFileSpec{
+                  forProvider: RepositoryFileForProvider{
+                    file = ".github/workflows/ci.yaml"
+                    content = template.execute("""\
+          name: ci
+          run-name: ci
+          on:
+            push:
+              branches:
+                - main
+          jobs:
+            all:
+              runs-on: ubuntu-latest
+              env:
+                TAG: 0.0.$[[ github.run_number ]]
+                FORCE_COLOR: 1
+              steps:
+                - name: Checkout
+                  uses: actions/checkout@v4
+                - name: Set up QEMU
+                  uses: docker/setup-qemu-action@v3
+                - name: Login to ghcr
+                  uses: docker/login-action@v3
+                  with:
+                    registry: ghcr.io
+                    username: vfarcic
+                    password: $[[ secrets.REGISTRY_PASSWORD ]]
+                - name: Install devbox
+                  uses: jetify-com/devbox-install-action@v0.11.0
+                  with:
+                    project-path: devbox-ci.json
+                - name: All
+                  run: |
+                    {{devboxRun}}
+                  env:
+                    REGISTRY_PASSWORD: $[[ secrets.REGISTRY_PASSWORD ]]
+                - name: Commit changes
+                  run: |
+                    git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                    git config --local user.name "github-actions[bot]"
+                    git add .
+                    git commit -m "Release $[[ env.TAG ]] [skip ci]"
+                - name: Push changes
+                  uses: ad-m/github-push-action@master
+                  with:
+                    github_token: $[[ secrets.GITHUB_TOKEN ]]
+                    branch: $[[ github.ref ]]
+          """, { devboxRun: _devboxRun }).replace("[[", "{{").replace("]]", "}}")
+                  }
+                }
+              }
+            ]
+
+          if _spec.ci?.enabled and _spec.repository?.enabled and _spec.repository?.name:
+            _items += [
+              {
+                apiVersion = "repo.github.upbound.io/v1alpha1"
+                kind = "Branch"
+                metadata = _metadata("ci", "branch")
+                spec.forProvider = {
+                  branch = "${_name}-ci"
+                  repository = _spec.repository.name
+                }
+              },
+              RepositoryFile{
+                metadata = _metadata("dot-nu", "file")
+                spec: RepositoryFileSpec{
+                  forProvider: RepositoryFileForProvider{
+                    file = "dot.nu"
+                    content = template.execute("""\
+          \#!/usr/bin/env nu
+
+          def main [] {}
+
+          \# Runs all CI tasks
+          def "main run ci" [
+              tag: string # The tag of the image (e.g., 0.0.1)!
+              manifest = "apps/{{id}}.yaml" # The path to the manifest file
+              --run_tests = true # Whether to run tests
+              --build_images = true # Whether to build images
+          ] {
+
+              if $run_tests {
+                  main run tests --language go
+              }
+
+              if $build_images {
+                  main build image $tag
+              }
+
+              main update composition $tag $manifest
+
+          }
+
+          \# Runs tests
+          def "main run tests" [
+              --language = "go" # The language of the project (e.g., go)
+          ] {
+
+              if $language == "go" {
+                  go test -v $"(pwd)/..."
+              }
+
+          }
+
+          \# Builds and (optionally) pushes container images
+          def "main build image" [
+              tag: string   # The tag of the image (e.g., 0.0.1)
+              --push = true # Whether to push the image to the registry
+          ] {
+
+              docker image build --tag $"{{image}}:latest" .
+
+              docker image tag $"{{image}}:latest" $"{{image}}:($tag)"
+
+              if $push {
+
+                  docker image push $"{{image}}:latest"
+
+                  docker image push $"{{image}}:($tag)"
+              }
+
+          }
+
+          \# Updates the composition
+          def "main update composition" [
+              tag: string # The tag of the image (e.g., 0.0.1)
+              path = "apps/{{id}}.yaml" # The path to the composition file
+          ] {
+
+              open $path | upsert spec.parameters.tag $tag | save $path --force
+
+          }
+          """, {
+            image: _spec.image,
+            id: _name
+          }).replace("\#", "#")
+                  }
+                }
+              },
+              RepositoryFile{
+                metadata = _metadata("devbox", "file")
+                spec: RepositoryFileSpec{
+                  forProvider: RepositoryFileForProvider{
+                    file = "devbox-ci.json"
+                    content = """\
+          {
+            "packages": [
+              "nushell@0.100.0",
+              "go@1.22.3"
+            ],
+            "shell": {
+              "init_hook": [
+                "chmod +x dot.nu"
+              ],
+              "scripts":   {}
+            }
+          }
+          """
+                  }
+                }
+              },
+              RepositoryFile{
+                metadata = _metadata("dockerfile", "file")
+                spec: RepositoryFileSpec{
+                  forProvider: RepositoryFileForProvider{
+                    file = "Dockerfile"
+                    content = """\
+          FROM golang:1.23.3-alpine AS build
+          RUN mkdir /src
+          WORKDIR /src
+          ADD ./go.mod .
+          ADD ./go.sum .
+          ADD ./*.go ./
+          RUN GOOS=linux GOARCH=amd64 go build -o app
+          RUN chmod +x app
+
+          FROM scratch
+          ARG VERSION
+          ENV VERSION=$VERSION
+          ENV DB_PORT=5432 DB_USERNAME=postgres DB_NAME=my-db
+          COPY --from=build /src/app /usr/local/bin/app
+          EXPOSE 8080
+          CMD ["app"]
+          """
+                  }
+                }
+              }, {
+                  apiVersion = "repo.github.upbound.io/v1alpha1"
+                  kind = "PullRequest"
+                  metadata = _metadata("", "pull-request")
+                  spec.forProvider = {
+                      baseRef = "main"
+                      headRef = "${_name}-ci"
+                      body = "Review, merge, enjoy."
+                      title = "CI"
+                      baseRepository = _spec.repository.name
+                  }
+              }
+            ]
+
+          items = _items
+  - step: automatically-detect-ready-composed-resources
+    functionRef:
+      name: crossplane-contrib-function-auto-ready

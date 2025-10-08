@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: courses-ms-deployment
+  namespace: sa-p7
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: courses-ms
+  template:
+    metadata:
+      labels:
+        app: courses-ms
+    spec:
+      containers:
+        - name: courses-ms-container
+          image: jsrmedina/courses-ms:latest
+          ports:
+            - containerPort: 3002
+          env:
+            - name: DATABASE_URL
+              value: "mongodb+srv://admin-sa:sacluster00@clustersa.at5ngtq.mongodb.net/courses_ms?retryWrites=true&w=majority&appName=ClusterSA"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: courses-ms-service
+  namespace: sa-p7
+spec:
+  selector:
+    app: courses-ms
+  ports:
+    - protocol: TCP
+      port: 3002
+      targetPort: 3002
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: courses-ms-hpa
+  namespace: sa-p7
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: courses-ms-deployment
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80

@@ -1,0 +1,21 @@
+{{- if .Values.ai.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-scaled
+  namespace: {{ .Release.Namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-service
+  minReplicas: {{.Values.ai.autoscaling.minReplicas}}
+  maxReplicas: {{.Values.ai.autoscaling.maxReplicas}}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{.Values.ai.autoscaling.cpuUtilization}}
+{{- end }}

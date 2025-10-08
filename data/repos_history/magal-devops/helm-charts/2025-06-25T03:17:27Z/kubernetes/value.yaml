@@ -1,0 +1,559 @@
+kubernetes:
+  base:
+    project: magal-devops-api
+    monoRepo:
+      url: git@github.com:magal-devops/monorepo-gitops.git
+      appsFolder: apps-config
+      revision: main
+    globalRegistry:
+      url: https://index.docker.io/v1/
+    deployConfig:
+      cluster: EKS-PROD
+      environment: production
+    metadata:
+      team: magal-devops
+    namespace:
+      annotations: {}
+  apps:
+    - name: magal-devops-api
+      image:
+        registry: docker.io
+        repository: grafana/synthetic-monitoring-agent
+        pullPolicy: IfNotPresent
+        tag: ""
+      serviceAccount:
+        create: true
+        annotations: {}
+        automountServiceAccountToken: true
+        name: ""
+      kind: Deployment
+      deploymentLabels: {}
+      replicas: 2
+      
+      # Command & Args (only if needed to override Docker defaults)
+      command: []
+      args: []
+      
+      # Essential Environment Variables
+      env:
+        - name: NODE_ENV
+          value: "production"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: magal-devops-api-secret
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: magal-devops-api-secret
+              key: redis-url
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: magal-devops-api-secret
+              key: jwt-secret
+      
+      envFromSecret: ""
+      envFromSecrets: []
+      envFromConfigMaps: []
+      extraSecretMounts: []
+      extraVolumeMounts: []
+      extraInitContainers: []
+      affinity: {}
+      nodeSelector: {}
+      tolerations: []
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 250m
+          memory: 256Mi
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+      deploymentStrategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxUnavailable: 25%
+          maxSurge: 25%
+      readinessProbe:
+        httpGet:
+          path: /api/health
+          port: 3000
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      livenessProbe:
+        httpGet:
+          path: /api/health
+          port: 3000
+        initialDelaySeconds: 60
+        periodSeconds: 30
+        timeoutSeconds: 30
+        failureThreshold: 10
+      service:
+        enabled: true
+        type: ClusterIP
+        annotations: {}
+        labels: {}
+        appProtocol: http
+        port: 8081
+        targetPort: 8081
+             
+      
+      # Enhanced VirtualService Configuration
+      virtualService:
+        enabled: true
+        name: magal-devops-vs
+        annotations: {}
+        labels: {}
+        gateways:
+          - magal-devops-gateway
+        hosts:
+          - magal-devops.com
+          - www.magal-devops.com
+        http:
+          - match:
+              - uri:
+                  prefix: /api/
+            route:
+              - destination:
+                  host: magal-devops-api
+                  port:
+                    number: 8081
+            timeout: 30s
+            retries:
+              attempts: 3
+              perTryTimeout: 10s
+              retryOn: gateway-error,connect-failure,refused-stream
+          - match:
+              - uri:
+                  prefix: /
+            route:
+              - destination:
+                  host: magal-devops-api
+                  port:
+                    number: 8081
+            timeout: 30s
+      
+      # DestinationRule Configuration
+      destinationRule:
+        enabled: true
+        name: magal-devops-dr
+        annotations: {}
+        labels: {}
+        host: magal-devops-api
+        trafficPolicy:
+          loadBalancer:
+            simple: LEAST_CONN
+          connectionPool:
+            tcp:
+              maxConnections: 100
+              connectTimeout: 30s
+              keepAlive:
+                time: 7200s
+                interval: 75s
+            http:
+              http1MaxPendingRequests: 10
+              http2MaxRequests: 100
+              maxRequestsPerConnection: 10
+              maxRetries: 3
+              idleTimeout: 900s
+              h2UpgradePolicy: UPGRADE
+          circuitBreaker:
+            consecutiveGatewayErrors: 5
+            consecutive5xxErrors: 5
+            interval: 30s
+            baseEjectionTime: 30s
+            maxEjectionPercent: 50
+            minHealthPercent: 30
+          outlierDetection:
+            consecutiveGatewayErrors: 5
+            consecutive5xxErrors: 5
+            interval: 30s
+            baseEjectionTime: 30s
+            maxEjectionPercent: 50
+            minHealthPercent: 30
+        subsets:
+          - name: v1
+            labels:
+              version: v1
+          - name: v2
+            labels:
+              version: v2
+      
+      # PeerAuthentication Configuration
+      peerAuthentication:
+        enabled: true
+        name: magal-devops-pa
+        annotations: {}
+        labels: {}
+        selector:
+          matchLabels:
+            app: magal-devops-api
+        mtls:
+          mode: STRICT
+      
+      # AuthorizationPolicy Configuration
+      authorizationPolicy:
+        enabled: true
+        name: magal-devops-authz
+        annotations: {}
+        labels: {}
+        selector:
+          matchLabels:
+            app: magal-devops-api
+        rules:
+          - from:
+              - source:
+                  principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+              - source:
+                  namespaces: ["default", "production"]
+            to:
+              - operation:
+                  methods: ["GET", "POST", "PUT", "DELETE"]
+                  paths: ["/api/*"]
+            when:
+              - key: source.ip
+                notValues: ["10.0.0.0/8"]
+          - from:
+              - source:
+                  namespaces: ["monitoring"]
+            to:
+              - operation:
+                  methods: ["GET"]
+                  paths: ["/api/health", "/metrics"]
+      
+      # ServiceEntry for external dependencies
+      serviceEntry:
+        enabled: true
+        entries:
+          - name: external-database
+            hosts:
+              - database.magal-devops.com
+            ports:
+              - number: 5432
+                name: postgres
+                protocol: TCP
+            location: MESH_EXTERNAL
+            resolution: DNS
+          - name: external-redis
+            hosts:
+              - redis.magal-devops.com
+            ports:
+              - number: 6379
+                name: redis
+                protocol: TCP
+            location: MESH_EXTERNAL
+            resolution: DNS
+          - name: external-api
+            hosts:
+              - api.external-service.com
+            ports:
+              - number: 443
+                name: https
+                protocol: HTTPS
+            location: MESH_EXTERNAL
+            resolution: DNS
+      
+      # Sidecar Configuration
+      sidecar:
+        enabled: true
+        name: magal-devops-sidecar
+        annotations: {}
+        labels: {}
+        workloadSelector:
+          labels:
+            app: magal-devops-api
+        ingress:
+          - port:
+              number: 8081
+              protocol: HTTP
+              name: http
+            defaultEndpoint: 127.0.0.1:8081
+        egress:
+          - port:
+              number: 443
+              protocol: HTTPS
+              name: https
+            hosts:
+              - "./*"
+              - "istio-system/*"
+              - "./database.magal-devops.com"
+              - "./redis.magal-devops.com"
+              - "./api.external-service.com"
+      
+      # Telemetry Configuration
+      telemetry:
+        enabled: true
+
+  
+      
+      # Secret for sensitive data
+      secret:
+        enabled: true
+        name: magal-devops-api-secret
+        annotations: {}
+        labels: {}
+        type: Opaque
+        data: {}
+        stringData:
+          database-url: ""  # postgresql://user:pass@host:port/db
+          redis-url: ""     # redis://:pass@host:port
+          jwt-secret: ""    # your-jwt-secret
+      
+      # HorizontalPodAutoscaler
+      hpa:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 10
+        targetCPUUtilizationPercentage: 70
+        targetMemoryUtilizationPercentage: 80
+      
+      # PodDisruptionBudget
+      pdb:
+        enabled: true
+        minAvailable: 1
+
+      # PrometheusRule for alerting
+      prometheusRule:
+        enabled: true
+        name: magal-devops-api-alerts
+        annotations: {}
+        labels:
+          app: magal-devops-api
+          prometheus: kube-prometheus
+          role: alert-rules
+        groups:
+          - name: magal-devops-api.rules
+            rules:
+              - alert: magal-devopsAPIHighErrorRate
+                expr: rate(istio_requests_total{destination_service_name="magal-devops-api",response_code!~"2.."}[5m]) > 0.1
+                for: 5m
+                labels:
+                  severity: warning
+                  service: magal-devops-api
+                annotations:
+                  summary: "High error rate on magal-devops API"
+                  description: "magal-devops API error rate is {{ $value | humanizePercentage }}"
+              
+              - alert: magal-devopsAPIHighLatency
+                expr: histogram_quantile(0.95, rate(istio_request_duration_milliseconds_bucket{destination_service_name="magal-devops-api"}[5m])) > 1000
+                for: 5m
+                labels:
+                  severity: warning
+                  service: magal-devops-api
+                annotations:
+                  summary: "High latency on magal-devops API"
+                  description: "magal-devops API 95th percentile latency is {{ $value }}ms"
+              
+              - alert: magal-devopsAPIPodCrashLooping
+                expr: rate(kube_pod_container_status_restarts_total{container="magal-devops-api"}[5m]) > 0
+                for: 5m
+                labels:
+                  severity: critical
+                  service: magal-devops-api
+                annotations:
+                  summary: "magal-devops API pod is crash looping"
+                  description: "magal-devops API pod {{ $labels.pod }} is restarting frequently"
+              
+              - alert: magal-devopsAPIMemoryUsage
+                expr: container_memory_usage_bytes{container="magal-devops-api"} / container_spec_memory_limit_bytes{container="magal-devops-api"} > 0.9
+                for: 5m
+                labels:
+                  severity: warning
+                  service: magal-devops-api
+                annotations:
+                  summary: "magal-devops API high memory usage"
+                  description: "magal-devops API memory usage is {{ $value | humanizePercentage }}"
+    
+
+      # EnvoyFilter for advanced configurations
+      envoyFilter: {}
+      
+      # ExternalSecret for AWS Secrets Manager
+      externalSecret:
+        enabled: false
+        name: magal-devops-api-external-secret
+        refreshInterval: 1h
+        secretStoreRef:
+          name: aws-secrets-store
+          kind: SecretStore
+        target:
+          name: magal-devops-api-secret
+          creationPolicy: Owner
+        data:
+          - secretKey: database-url
+            remoteRef:
+              key: magal-devops/database
+              property: url
+          - secretKey: redis-url
+            remoteRef:
+              key: magal-devops/redis
+              property: url
+          - secretKey: jwt-secret
+            remoteRef:
+              key: magal-devops/auth
+              property: jwt-secret
+      
+      # SecretStore for AWS Secrets Manager
+      secretStore:
+        enabled: false
+        name: aws-secrets-store
+        provider:
+          aws:
+            service: SecretsManager
+            region: us-east-1
+            auth:
+              jwt:
+                serviceAccountRef:
+                  name: external-secrets-sa
+      
+      # ClusterSecretStore (optional, for cluster-wide access) 
+      clusterSecretStore:
+        enabled: false
+        name: aws-cluster-secrets-store
+        provider:
+          aws:
+            service: SecretsManager
+            region: us-east-1
+            auth:
+              jwt:
+                serviceAccountRef:
+                  name: external-secrets-sa
+                  namespace: external-secrets-system
+      
+      # Job Configuration (for one-time tasks and migrations)
+      job:
+        enabled: false
+        name: magal-devops-api-migration
+        backoffLimit: 3
+        activeDeadlineSeconds: 1800
+        ttlSecondsAfterFinished: 86400
+        completions: 1
+        parallelism: 1
+        completionMode: NonIndexed
+        suspend: false
+        restartPolicy: Never
+        enableStandardEnvs: true
+        # ArgoCD Hook for Pre-Sync migrations
+        argocd:
+          hook: PreSync
+          hookDeletePolicy: BeforeHookCreation
+          syncWave: "-1"
+        # Migration specific commands
+        command: ["/bin/sh"]
+        args: ["-c", "echo 'Running database migrations...' && npm run migrate"]
+      
+      # CronJob Configuration
+      cronJob:
+        enabled: false
+        name: magal-devops-api-cleanup
+        schedule: "0 2 * * *"
+        timeZone: "UTC"
+        concurrencyPolicy: Forbid
+        suspend: false
+        successfulJobsHistoryLimit: 3
+        failedJobsHistoryLimit: 1
+        startingDeadlineSeconds: 300
+        backoffLimit: 3
+        activeDeadlineSeconds: 3600
+        ttlSecondsAfterFinished: 86400
+        restartPolicy: OnFailure
+        enableStandardEnvs: true
+        argocd:
+          syncWave: "4"
+      
+      # Argo Rollout Configuration (for canary/blue-green deployments)
+      rollout:
+        enabled: false
+        name: magal-devops-api-rollout
+        replicas: 3
+        revisionHistoryLimit: 5
+        progressDeadlineSeconds: 600
+        paused: false
+        enableStandardEnvs: true
+        argocd:
+          syncWave: "1"
+        strategy:
+          type: canary
+          canary:
+            maxSurge: "25%"
+            maxUnavailable: "25%"
+            canaryService: magal-devops-api-canary
+            stableService: magal-devops-api-stable
+            steps:
+              - setWeight: 20
+              - pause:
+                  duration: 30s
+              - setWeight: 40
+              - pause:
+                  duration: 30s
+              - setWeight: 60
+              - pause:
+                  duration: 30s
+              - setWeight: 80
+              - pause:
+                  duration: 30s
+            analysis:
+              templates:
+                - templateName: success-rate
+                - templateName: latency
+              startingStep: 2
+              args:
+                - name: service-name
+                  value: magal-devops-api
+            trafficRouting:
+              istio:
+                virtualService:
+                  name: magal-devops-vs
+                  routes:
+                    - primary
+                destinationRule:
+                  name: magal-devops-dr
+                  canarySubsetName: canary
+                  stableSubsetName: stable
+          # Alternative Blue-Green strategy example
+          # blueGreen:
+          #   activeService: magal-devops-api-active
+          #   previewService: magal-devops-api-preview
+          #   autoPromotionEnabled: false
+          #   scaleDownDelaySeconds: 30
+          #   prePromotionAnalysis:
+          #     templates:
+          #       - templateName: success-rate
+          #     args:
+          #       - name: service-name
+          #         value: magal-devops-api-preview
+          #   postPromotionAnalysis:
+          #     templates:
+          #       - templateName: success-rate
+          #     args:
+          #       - name: service-name
+          #         value: magal-devops-api
+      
+      # Analysis Templates for Rollout
+      analysisTemplates:
+        - name: custom-success-rate
+          metrics:
+            - name: success-rate
+              initialDelay: 30s
+              interval: 30s
+              count: 5
+              successCondition: result[0] >= 0.95
+              failureCondition: result[0] < 0.90
+              provider:
+                prometheus:
+                  address: http://prometheus.monitoring.svc.cluster.local:9090
+                  query: |
+                    sum(rate(istio_requests_total{destination_service_name="{{.args.service-name}}",response_code!~"5.*"}[2m])) / 
+                    sum(rate(istio_requests_total{destination_service_name="{{.args.service-name}}"}[2m]))

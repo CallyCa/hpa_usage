@@ -1,0 +1,67 @@
+apiVersion : apps/v1
+kind: Deployment
+metadata:
+  name: my-web-deployment-with-autoscaling
+  labels:
+    app  : my-k8s-deployment
+    env  : production
+    owner: Yevhenii_Halenko
+spec:
+  selector:
+    matchLabels:
+      project/name: multi-with-autoscaling
+  template:
+    metadata:
+      labels:
+        project/name: multi-with-autoscaling # Service will look for those PODS labels!!!
+    spec:
+      containers:
+        - name : php-app
+          image: re4port/k8sphp:latest
+          ports:
+            - containerPort: 80
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment     # what we are going to autoscale
+    name: my-autoscaling # should match to Deployment metadata.name
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 90
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-lb-service
+  labels:
+    type : service
+    env  : production
+    owner: Yevhenii_Halenko
+spec:
+  selector:
+    project/name: multi-with-autoscaling # Selecting PODS with those labels!!!
+  ports:
+    - name      : my-php-web-app-listener
+      protocol  : TCP
+      port      : 80 # Port on Load Balancer
+      targetPort: 80 # Port on POD
+  type: LoadBalancer

@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: web
+        image: cesarags/gerador-caos-net:v3
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: "3Gi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector:
+    app: web
+  ports:
+  - name: web
+    port: 80
+    targetPort: 8080
+  type: LoadBalancer
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler # HPA
+metadata:
+  name: web
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: ContainerResource # nivel de recurso do container
+    containerResource:
+      container: web # nome do container
+      name: memory # tipo de recurso
+      target: # metrica de destino
+        type: Utilization # tipo de metrica
+        averageUtilization: 50 # 20% de utilização
+  behavior: # comportamento
+    scaleUp: # define as politicas de escala
+      stabilizationWindowSeconds: 10 # tempo de espera para escalar
+      policies: 
+      - type: Percent
+        value: 100 # EX: se tenho 1 replica rodando, entao 100% de 1 é 1, logo, ele vai gerar 1 replica a mais.
+        periodSeconds: 15 
+      - type: Pods
+        value: 2
+        periodSeconds: 15 
+      selectPolicy: Max # escolhera a police que vai gerar o maior numero de pods/replicas. Nesse cenário, a politica de Pod é a que vai gerar o maior numero de pods/replicas.
+    scaleDown: # define as politicas de desescala
+      stabilizationWindowSeconds: 5 # tempo de espera para desescalar
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15 
+      - type: Pods
+        value: 2
+        periodSeconds: 15 
+      selectPolicy: Min  # escolhera a police que vai gerar o menor numero de pods/replicas.
+
+# Sobre   selectPolicy: Max ou Min
+#Max: O HPA seleciona a maior quantidade de pods para escalar
+#Min: O HPA seleciona a menor quantidade de pods para desescalar    
+# HPA Horizontal Pod Autoscaler
+
+#https://chatgpt.com/c/4085a52a-56ca-4d3f-93d7-926efac86259

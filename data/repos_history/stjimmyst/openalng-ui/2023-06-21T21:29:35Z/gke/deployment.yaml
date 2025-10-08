@@ -1,0 +1,45 @@
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "openlang-deployment-ui"
+  namespace: "default"
+  labels:
+    app: "openlang-ui"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "openlang-ui"
+  template:
+    metadata:
+      labels:
+        app: "openlang-ui"
+    spec:
+      containers:
+      - name: "ui-instance"
+        image: "us-central1-docker.pkg.dev/endless-matter-387302/openlang/ui:latest"
+        ports:
+          - containerPort: 3000
+---
+apiVersion: "autoscaling/v2"
+kind: "HorizontalPodAutoscaler"
+metadata:
+  name: "openlang-ui-hpa"
+  namespace: "default"
+  labels:
+    app: "openlang-ui"
+spec:
+  scaleTargetRef:
+    kind: "Deployment"
+    name: "openlang-ui"
+    apiVersion: "apps/v1"
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+  - type: "Resource"
+    resource:
+      name: "cpu"
+      target:
+        type: "Utilization"
+        averageUtilization: 80

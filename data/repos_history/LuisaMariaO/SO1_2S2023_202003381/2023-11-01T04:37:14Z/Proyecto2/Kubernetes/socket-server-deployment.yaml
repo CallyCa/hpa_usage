@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: socket-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: socket-server
+  template:
+    metadata:
+      labels:
+        app: socket-server
+    spec:
+      containers:
+        - name: socket-server
+          image: luisamariao/socket-server:latest
+          ports:
+            - containerPort: 3021
+          env:
+            - name: CLIENTE
+              value: http://localhost:3020
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-socket-server
+  namespace: so1p2
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: socket-server
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 50

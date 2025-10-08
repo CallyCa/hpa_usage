@@ -1,0 +1,36 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-shuffle-kstreams
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: shuffle-kstreams
+  minReplicas: 1
+  maxReplicas: 10
+  behavior:
+    scaleUp:
+#      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          periodSeconds: 60
+          value: 2
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          periodSeconds: 15
+          value: 3
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: "consumer_cpu_utilization_30s"
+#          selector:
+#            matchLabels:
+#              topic: input
+        target:
+          type: Value
+          value: 80
+

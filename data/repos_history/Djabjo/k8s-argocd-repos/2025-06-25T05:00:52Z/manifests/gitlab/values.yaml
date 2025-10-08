@@ -1,0 +1,112 @@
+global:
+  # Application settings
+  application:
+    create: true
+  
+  # Disable unnecessary components
+  ingress:
+    configureCertmanager: false
+    enabled: false
+  minio:
+    enabled: false
+  certmanager:
+    install: false
+  
+  # PostgreSQL configuration
+  psql:
+    host: ""
+    password:
+      secret: gitlab-postgres
+      key: password
+  
+  # Redis configuration
+  redis:
+    password:
+      enabled: false
+      secret: gitlab-redis
+      key: password
+
+# Disable ingress
+nginx-ingress:
+  enabled: false
+
+# Disable cert-manager
+certmanager:
+  install: false
+
+# GitLab configuration
+gitlab:
+  webservice:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 1
+        memory: 2Gi
+
+  sidekiq:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 300m
+        memory: 1Gi
+      limits:
+        cpu: 1
+        memory: 2Gi
+
+  gitlab-shell:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+# Disable runner and registry
+gitlab-runner:
+  install: false
+
+registry:
+  enabled: false
+
+# Disable monitoring
+prometheus:
+  install: false
+grafana:
+  install: false
+
+# PostgreSQL configuration (embedded)
+postgresql:
+  enabled: true
+  image:
+    tag: "13.6"
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  auth:
+    password: ""
+
+# Redis configuration (embedded)
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 200m
+        memory: 512Mi2Mi

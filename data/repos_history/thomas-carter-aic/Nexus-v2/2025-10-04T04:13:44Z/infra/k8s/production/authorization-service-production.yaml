@@ -1,0 +1,290 @@
+# Production Authorization Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authorization-service
+  namespace: auth-services-prod
+  labels:
+    app: authorization-service
+    version: v1
+spec:
+  replicas: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: authorization-service
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: authorization-service
+        version: v1
+      annotations:
+        kuma.io/sidecar-injection: enabled
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: authorization-service
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+      - name: authorization-service
+        image: 002aic/authorization-service:v1.0.0
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        env:
+        - name: AUTHZ_SERVER_PORT
+          value: "8080"
+        - name: AUTHZ_SERVER_MODE
+          value: "production"
+        - name: AUTHZ_DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: authorization-db-secret
+              key: host
+        - name: AUTHZ_DB_PORT
+          value: "5432"
+        - name: AUTHZ_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: authorization-db-secret
+              key: username
+        - name: AUTHZ_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: authorization-db-secret
+              key: password
+        - name: AUTHZ_DB_NAME
+          value: authorization
+        - name: AUTHZ_REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: host
+        - name: AUTHZ_REDIS_PORT
+          value: "6379"
+        - name: AUTHZ_REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: password
+        - name: AUTHZ_JWT_PUBLIC_KEY_URL
+          valueFrom:
+            configMapKeyRef:
+              name: auth-config
+              key: jwt-public-key-url
+        - name: AUTHZ_JWT_ISSUER
+          valueFrom:
+            configMapKeyRef:
+              name: auth-config
+              key: jwt-issuer
+        - name: AUTHZ_JWT_AUDIENCE
+          valueFrom:
+            configMapKeyRef:
+              name: auth-config
+              key: jwt-audience
+        - name: AUTHZ_KEYCLOAK_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: auth-config
+              key: keycloak-base-url
+        - name: AUTHZ_KEYCLOAK_REALM
+          valueFrom:
+            configMapKeyRef:
+              name: auth-config
+              key: keycloak-realm
+        - name: AUTHZ_KEYCLOAK_CLIENT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: auth-config
+              key: keycloak-client-id
+        - name: AUTHZ_KEYCLOAK_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-client-secret
+              key: client-secret
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 1
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: config
+        configMap:
+          name: authorization-config
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - authorization-service
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authorization-service
+  namespace: auth-services-prod
+  labels:
+    app: authorization-service
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: authorization-service
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: authorization-service
+  namespace: auth-services-prod
+---
+# ConfigMap for Authorization Service
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-config
+  namespace: auth-services-prod
+data:
+  jwt-public-key-url: "https://keycloak.002aic.com/realms/002aic/protocol/openid-connect/certs"
+  jwt-issuer: "https://keycloak.002aic.com/realms/002aic"
+  jwt-audience: "002aic-api"
+  keycloak-base-url: "https://keycloak.002aic.com"
+  keycloak-realm: "002aic"
+  keycloak-client-id: "002aic-api"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authorization-config
+  namespace: auth-services-prod
+data:
+  config.yaml: |
+    server:
+      port: 8080
+      mode: production
+    database:
+      host: ${AUTHZ_DB_HOST}
+      port: ${AUTHZ_DB_PORT}
+      user: ${AUTHZ_DB_USER}
+      password: ${AUTHZ_DB_PASSWORD}
+      dbname: authorization
+      sslmode: require
+    redis:
+      host: ${AUTHZ_REDIS_HOST}
+      port: ${AUTHZ_REDIS_PORT}
+      password: ${AUTHZ_REDIS_PASSWORD}
+      db: 0
+    jwt:
+      public_key_url: ${AUTHZ_JWT_PUBLIC_KEY_URL}
+      issuer: ${AUTHZ_JWT_ISSUER}
+      audience: ${AUTHZ_JWT_AUDIENCE}
+    keycloak:
+      base_url: ${AUTHZ_KEYCLOAK_BASE_URL}
+      realm: ${AUTHZ_KEYCLOAK_REALM}
+      client_id: ${AUTHZ_KEYCLOAK_CLIENT_ID}
+      client_secret: ${AUTHZ_KEYCLOAK_CLIENT_SECRET}
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: authorization-service-hpa
+  namespace: auth-services-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: authorization-service
+  minReplicas: 5
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+---
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: authorization-service-pdb
+  namespace: auth-services-prod
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: authorization-service

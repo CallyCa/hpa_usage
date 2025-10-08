@@ -1,0 +1,21 @@
+{{- if .Values.hpaVM }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $.Values.tenant.name }}-vm-pool-hpa
+  namespace: {{ $.Values.tenant.name }}
+spec:
+  maxReplicas: {{ $.Values.repmax }}
+  metrics:
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 60
+  minReplicas: {{ $.Values.repmin }}
+  scaleTargetRef:
+    apiVersion: pool.kubevirt.io/v1alpha1
+    kind: VirtualMachinePool
+    name: {{ $.Values.tenant.name }}-vm-pool

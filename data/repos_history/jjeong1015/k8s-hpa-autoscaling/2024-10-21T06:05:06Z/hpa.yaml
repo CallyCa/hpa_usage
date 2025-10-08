@@ -1,0 +1,24 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: springboot-demo-hpa  # HPA 이름을 Deployment 이름과 일치시킴
+  labels:
+    app: springboot-demo  # 관련 Deployment와 일치하는 라벨
+    managed-by: hpa-controller  # HPA에 의해 관리됨
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1  # 대상 Deployment의 API 버전
+    kind: Deployment  # 스케일링할 대상은 Deployment
+    name: springboot-demo-deployment  # 스케일링할 Deployment 이름
+  minReplicas: 2  # 최소 2개의 Pod 유지
+  maxReplicas: 5  # 최대 5개의 Pod로 확장 가능
+  metrics:
+    - type: Resource  # 리소스 사용량을 기준으로 스케일링
+      resource:
+        name: cpu  # CPU 사용량을 모니터링
+        target:
+          type: Utilization  # CPU 활용도(%)를 기준으로 조정
+          averageUtilization: 20  # 평균 CPU 사용률이 20%가 되면 스케일링
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30  # 스케일링 조정 후 30초 동안 안정화 시간

@@ -1,0 +1,20 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: news-portal-horizontal-pod-autoscaler
+spec:
+  # Who we are targeting for
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: news-portal-deployment
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # based on Milicores
+          averageUtilization: 50

@@ -1,0 +1,33 @@
+
+{{- $fullName := (include "dspace.frontendFullname" .) }}
+{{- if .Values.services.frontend.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "dspace.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $fullName }}
+  {{- with .Values.services.frontend }}
+  minReplicas: {{ .autoscaling.minReplicas }}
+  maxReplicas: {{ .autoscaling.maxReplicas }}
+  metrics:
+    {{- if .autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      target:
+        averageUtilization: {{ .autoscaling.targetCPUUtilizationPercentage }}
+        type: Utilization
+    {{- end }}
+    {{- if .autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      target:
+        averageUtilization: {{ .autoscaling.targetMemoryUtilizationPercentage }}
+        type: Utilization
+    {{- end }}
+  {{- end }}
+{{- end }}

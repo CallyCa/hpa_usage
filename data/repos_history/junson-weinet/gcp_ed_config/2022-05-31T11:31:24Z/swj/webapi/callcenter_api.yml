@@ -1,0 +1,109 @@
+apiVersion: apps/v1     #接口版本
+kind: Deployment        #接口类型
+metadata:   
+  name: callcenter-api        #depolymet名称
+  namespace: api-swj    #命名空间
+  labels:
+    app: callcenter-api       #标签
+spec:
+  selector:
+    matchLabels:
+      app: callcenter-api
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0     #更新时候最大无效pod数量
+      maxSurge: 1           #更新时候每次最多增加pod数量
+  template:
+    metadata:
+      labels:
+        app: callcenter-api       #模板名称必填
+    spec:                   #定义容器模板，该模板可以包含多个容器
+      containers:
+      - name: callcenter-api      #镜像名称
+        resources:          ##CPU内存限制
+          limits:
+            cpu: 300m
+          requests:
+            cpu: 200m
+        image: gcr.io/rd-test-64435/callcenter_api:v22.5.31.1    #镜像地址
+        #如果command和args均没有写，那么用Docker默认的配置。
+        #如果command写了，但args没有写，那么Docker默认的配置会被忽略而且仅仅执行.yaml文件的command（不带任何参数的）。
+        #如果command没写，但args写了，那么Docker默认配置的ENTRYPOINT的命令行会被执行，但是调用的参数是.yaml中的args。
+        #如果如果command和args都写了，那么Docker默认的配置被忽略，使用.yaml的配置。
+        imagePullPolicy: IfNotPresent  #如果不存在则拉取
+        ports:           
+        - containerPort: 10001    #对service暴露端口
+        - containerPort: 10002 
+        - containerPort: 10003 
+        livenessProbe:   #表示container是否处于live状态。如果LivenessProbe失败，LivenessProbe将会通知kubelet对应的container不健康了。
+                         #随后kubelet将kill掉container，并根据RestarPolicy进行进一步的操作。默认情况下LivenessProbe在第一次检测之前初始化值为Success，
+                         #如果container没有提供LivenessProbe，则也认为是Success；
+          httpGet:
+            path: /liveness    #如果没有心跳检测接口就为/
+            scheme: HTTP
+            port: 10001
+          initialDelaySeconds: 180   ##启动后延时多久开始运行检测
+          periodSeconds: 120
+          timeoutSeconds: 5
+        env:        ##通过环境变量的方式，直接传递pod=自定义Linux OS环境变量
+        - name: "ASPNETCORE_ENVIRONMENT"    #ASPNETCORE
+          value: "Kubernetes"
+        - name: "SYS_MODULE" #局策略可使用configMap的配置Key，
+          value: "Callcenter"
+        - name: "SYS_SITE" #设置站台ID
+          value: "SWJ"
+        volumeMounts:   #挂载volumes中定义的磁盘
+        - name: varlog
+          mountPath: /var/log
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+      imagePullSecrets:
+      - name: img-secret
+      volumes:
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: callcenter-api
+  namespace: api-swj
+spec:
+  maxReplicas: 10
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: callcenter-api
+  targetCPUUtilizationPercentage: 95
+---
+#定义对外访问的服务名字和端口
+apiVersion: v1
+kind: Service
+metadata:
+  name: callcenter-svc            #服务名字
+  namespace: api-swj               #命名空间
+spec:
+  selector:
+    app: callcenter-api           #        
+  type: NodePort
+  ports:
+  - protocol: TCP   
+    port: 10001  
+    targetPort: 10001
+    name: webapi
+  - protocol: TCP   
+    port: 10002  
+    targetPort: 10002
+    name: newthrift
+  - protocol: TCP   
+    port: 10003 
+    targetPort: 10003
+    name: oldthrift

@@ -1,0 +1,1341 @@
+---
+# Source: open-match/templates/service-account.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# Include this namespace only when doing `helm template`.
+# helm 2 use namespace to manage its release so `helm install` with this namespace will be broken.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: open-match
+  labels:
+    app: open-match
+    release: open-match
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: baseline
+---
+# Source: open-match/charts/redis/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: true
+metadata:
+  name: open-match-redis
+  namespace: "open-match"
+  labels:
+    app.kubernetes.io/name: redis
+    helm.sh/chart: redis-17.15.4
+    app.kubernetes.io/instance: open-match
+    app.kubernetes.io/managed-by: Helm
+---
+# Source: open-match/templates/service-account.yaml
+# Create a universal service account for open-match-core services.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: open-match-unprivileged-service
+  namespace: open-match
+  annotations:
+    chart: open-match-1.8.0
+    heritage: Helm
+  labels:
+    app: open-match
+    release: open-match
+automountServiceAccountToken: true
+---
+# Source: open-match/charts/redis/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: open-match-redis-configuration
+  namespace: "open-match"
+  labels:
+    app.kubernetes.io/name: redis
+    helm.sh/chart: redis-17.15.4
+    app.kubernetes.io/instance: open-match
+    app.kubernetes.io/managed-by: Helm
+data:
+  redis.conf: |-
+    # User-supplied common configuration:
+    maxclients 100000
+    maxmemory 300000000
+    
+    # End of common configuration
+  master.conf: |-
+    dir /data
+    # User-supplied master configuration:
+    # End of master configuration
+  replica.conf: |-
+    dir /data
+    # User-supplied replica configuration:
+    # End of replica configuration
+---
+# Source: open-match/charts/redis/templates/health-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: open-match-redis-health
+  namespace: "open-match"
+  labels:
+    app.kubernetes.io/name: redis
+    helm.sh/chart: redis-17.15.4
+    app.kubernetes.io/instance: open-match
+    app.kubernetes.io/managed-by: Helm
+data:
+  ping_readiness_local.sh: |-
+    #!/bin/bash
+
+    [[ -f $REDIS_PASSWORD_FILE ]] && export REDIS_PASSWORD="$(< "${REDIS_PASSWORD_FILE}")"
+    [[ -n "$REDIS_PASSWORD" ]] && export REDISCLI_AUTH="$REDIS_PASSWORD"
+    response=$(
+      timeout -s 15 $1 \
+      redis-cli \
+        -h localhost \
+        -p $REDIS_PORT \
+        ping
+    )
+    if [ "$?" -eq "124" ]; then
+      echo "Timed out"
+      exit 1
+    fi
+    if [ "$response" != "PONG" ]; then
+      echo "$response"
+      exit 1
+    fi
+  ping_liveness_local.sh: |-
+    #!/bin/bash
+
+    [[ -f $REDIS_PASSWORD_FILE ]] && export REDIS_PASSWORD="$(< "${REDIS_PASSWORD_FILE}")"
+    [[ -n "$REDIS_PASSWORD" ]] && export REDISCLI_AUTH="$REDIS_PASSWORD"
+    response=$(
+      timeout -s 15 $1 \
+      redis-cli \
+        -h localhost \
+        -p $REDIS_PORT \
+        ping
+    )
+    if [ "$?" -eq "124" ]; then
+      echo "Timed out"
+      exit 1
+    fi
+    responseFirstWord=$(echo $response | head -n1 | awk '{print $1;}')
+    if [ "$response" != "PONG" ] && [ "$responseFirstWord" != "LOADING" ] && [ "$responseFirstWord" != "MASTERDOWN" ]; then
+      echo "$response"
+      exit 1
+    fi
+  ping_readiness_master.sh: |-
+    #!/bin/bash
+
+    [[ -f $REDIS_MASTER_PASSWORD_FILE ]] && export REDIS_MASTER_PASSWORD="$(< "${REDIS_MASTER_PASSWORD_FILE}")"
+    [[ -n "$REDIS_MASTER_PASSWORD" ]] && export REDISCLI_AUTH="$REDIS_MASTER_PASSWORD"
+    response=$(
+      timeout -s 15 $1 \
+      redis-cli \
+        -h $REDIS_MASTER_HOST \
+        -p $REDIS_MASTER_PORT_NUMBER \
+        ping
+    )
+    if [ "$?" -eq "124" ]; then
+      echo "Timed out"
+      exit 1
+    fi
+    if [ "$response" != "PONG" ]; then
+      echo "$response"
+      exit 1
+    fi
+  ping_liveness_master.sh: |-
+    #!/bin/bash
+
+    [[ -f $REDIS_MASTER_PASSWORD_FILE ]] && export REDIS_MASTER_PASSWORD="$(< "${REDIS_MASTER_PASSWORD_FILE}")"
+    [[ -n "$REDIS_MASTER_PASSWORD" ]] && export REDISCLI_AUTH="$REDIS_MASTER_PASSWORD"
+    response=$(
+      timeout -s 15 $1 \
+      redis-cli \
+        -h $REDIS_MASTER_HOST \
+        -p $REDIS_MASTER_PORT_NUMBER \
+        ping
+    )
+    if [ "$?" -eq "124" ]; then
+      echo "Timed out"
+      exit 1
+    fi
+    responseFirstWord=$(echo $response | head -n1 | awk '{print $1;}')
+    if [ "$response" != "PONG" ] && [ "$responseFirstWord" != "LOADING" ]; then
+      echo "$response"
+      exit 1
+    fi
+  ping_readiness_local_and_master.sh: |-
+    script_dir="$(dirname "$0")"
+    exit_status=0
+    "$script_dir/ping_readiness_local.sh" $1 || exit_status=$?
+    "$script_dir/ping_readiness_master.sh" $1 || exit_status=$?
+    exit $exit_status
+  ping_liveness_local_and_master.sh: |-
+    script_dir="$(dirname "$0")"
+    exit_status=0
+    "$script_dir/ping_liveness_local.sh" $1 || exit_status=$?
+    "$script_dir/ping_liveness_master.sh" $1 || exit_status=$?
+    exit $exit_status
+---
+# Source: open-match/charts/redis/templates/scripts-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: open-match-redis-scripts
+  namespace: "open-match"
+  labels:
+    app.kubernetes.io/name: redis
+    helm.sh/chart: redis-17.15.4
+    app.kubernetes.io/instance: open-match
+    app.kubernetes.io/managed-by: Helm
+data:
+  start-master.sh: |
+    #!/bin/bash
+
+    [[ -f $REDIS_PASSWORD_FILE ]] && export REDIS_PASSWORD="$(< "${REDIS_PASSWORD_FILE}")"
+    if [[ -f /opt/bitnami/redis/mounted-etc/master.conf ]];then
+        cp /opt/bitnami/redis/mounted-etc/master.conf /opt/bitnami/redis/etc/master.conf
+    fi
+    if [[ -f /opt/bitnami/redis/mounted-etc/redis.conf ]];then
+        cp /opt/bitnami/redis/mounted-etc/redis.conf /opt/bitnami/redis/etc/redis.conf
+    fi
+    ARGS=("--port" "${REDIS_PORT}")
+    ARGS+=("--protected-mode" "no")
+    ARGS+=("--include" "/opt/bitnami/redis/etc/redis.conf")
+    ARGS+=("--include" "/opt/bitnami/redis/etc/master.conf")
+    exec redis-server "${ARGS[@]}"
+---
+# Source: open-match/templates/om-configmap-default.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: open-match-configmap-default
+  namespace: open-match
+  annotations:
+    chart: open-match-1.8.0
+    heritage: Helm
+  labels:
+    app: open-match
+    component: config
+    release: open-match
+data:
+  matchmaker_config_default.yaml: |-
+    logging:
+      level: debug
+      format: text
+      rpc: false
+    # Open Match applies the exponential backoff strategy for its retryable gRPC calls.
+    # The settings below are the default backoff configuration used in Open Match.
+    # See https://github.com/cenkalti/backoff/blob/v3/exponential.go for detailed explanations
+    backoff:
+      # The initial retry interval (in milliseconds)
+      initialInterval: 100ms
+      # maxInterval caps the maximum time elapsed for a retry interval
+      maxInterval: 500ms
+      # The next retry interval is multiplied by this multiplier
+      multiplier: 1.5
+      # Randomize the retry interval
+      randFactor: 0.5
+      # maxElapsedTime caps the retry time (in milliseconds)
+      maxElapsedTime: 3000ms
+
+    api:
+      backend:
+        hostname: "open-match-backend"
+        grpcport: "50505"
+        httpport: "51505"
+      frontend:
+        hostname: "open-match-frontend"
+        grpcport: "50504"
+        httpport: "51504"
+      query:
+        hostname: "open-match-query"
+        grpcport: "50503"
+        httpport: "51503"
+      synchronizer:
+        hostname: "open-match-synchronizer"
+        grpcport: "50506"
+        httpport: "51506"
+      swaggerui:
+        hostname: "open-match-swaggerui"
+        httpport: "51500"
+
+      # Configurations for api.test and api.scale are used for testing.
+      test:
+        hostname: "open-match-test"
+        grpcport: "50509"
+        httpport: "51509"
+      scale:
+        httpport: "51509"
+
+    redis:
+      # Open Match's default Redis setups
+      hostname: open-match-redis-master.open-match.svc.cluster.local
+      # source value: open-match-core.redis.port = 6379
+      port: 6379
+      usePassword: false
+      passwordPath: /redis-password
+      pool:
+        maxIdle: 200
+        maxActive: 0
+        idleTimeout: 0
+        healthCheckTimeout: 300ms
+
+    telemetry:
+      reportingPeriod: "1m"
+      traceSamplingFraction: "0.01"
+      zpages:
+        enable: "true"
+      prometheus:
+        enable: "false"
+        endpoint: "/metrics"
+        serviceDiscovery: "true"
+      stackdriverMetrics:
+        enable: "false"
+        gcpProjectId: "replace_with_your_project_id"
+        prefix: "open_match"
+---
+# Source: open-match/charts/redis/templates/headless-svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-match-redis-headless
+  namespace: "open-match"
+  labels:
+    app.kubernetes.io/name: redis
+    helm.sh/chart: redis-17.15.4
+    app.kubernetes.io/instance: open-match
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: tcp-redis
+      port: 6379
+      targetPort: redis
+  selector:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: open-match
+---
+# Source: open-match/charts/redis/templates/master/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-match-redis-master
+  namespace: "open-match"
+  labels:
+    app.kubernetes.io/name: redis
+    helm.sh/chart: redis-17.15.4
+    app.kubernetes.io/instance: open-match
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: master
+spec:
+  type: ClusterIP
+  internalTrafficPolicy: Cluster
+  sessionAffinity: None
+  ports:
+    - name: tcp-redis
+      port: 6379
+      targetPort: redis
+      nodePort: null
+  selector:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: open-match
+    app.kubernetes.io/component: master
+---
+# Source: open-match/charts/redis/templates/metrics-svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-match-redis-metrics
+  namespace: "open-match"
+  labels:
+    app.kubernetes.io/name: redis
+    helm.sh/chart: redis-17.15.4
+    app.kubernetes.io/instance: open-match
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: metrics
+spec:
+  type: ClusterIP
+  ports:
+    - name: http-metrics
+      port: 9121
+      protocol: TCP
+      targetPort: metrics
+  selector:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: open-match
+---
+# Source: open-match/templates/backend.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+kind: Service
+apiVersion: v1
+metadata:
+  name: open-match-backend
+  namespace: open-match
+  annotations:
+    chart: open-match-1.8.0
+    heritage: Helm
+  labels:
+    app: open-match
+    component: backend
+    release: open-match
+spec:
+  selector:
+    app: open-match
+    component: backend
+    release: open-match
+  clusterIP: None
+  type: ClusterIP
+  ports:
+  - name: grpc
+    protocol: TCP
+    port: 50505
+  - name: http
+    protocol: TCP
+    port: 51505
+---
+# Source: open-match/templates/frontend.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+kind: Service
+apiVersion: v1
+metadata:
+  name: open-match-frontend
+  namespace: open-match
+  annotations:
+    chart: open-match-1.8.0
+    heritage: Helm
+  labels:
+    app: open-match
+    component: frontend
+    release: open-match
+spec:
+  selector:
+    app: open-match
+    component: frontend
+    release: open-match
+  clusterIP: None
+  type: ClusterIP
+  ports:
+  - name: grpc
+    protocol: TCP
+    port: 50504
+  - name: http
+    protocol: TCP
+    port: 51504
+---
+# Source: open-match/templates/query.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+kind: Service
+apiVersion: v1
+metadata:
+  name: open-match-query
+  namespace: open-match
+  annotations:
+    chart: open-match-1.8.0
+    heritage: Helm
+  labels:
+    app: open-match
+    component: query
+    release: open-match
+spec:
+  selector:
+    app: open-match
+    component: query
+    release: open-match
+  clusterIP: None
+  type: ClusterIP
+  ports:
+  - name: grpc
+    protocol: TCP
+    port: 50503
+  - name: http
+    protocol: TCP
+    port: 51503
+---
+# Source: open-match/templates/swaggerui.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+kind: Service
+apiVersion: v1
+metadata:
+  name: open-match-swaggerui
+  namespace: open-match
+  annotations:
+    chart: open-match-1.8.0
+    heritage: Helm
+  labels:
+    app: open-match
+    component: swaggerui
+    release: open-match
+spec:
+  selector:
+    app: open-match
+    component: swaggerui
+  type: ClusterIP
+  ports:
+  - name: http
+    protocol: TCP
+    port: 51500
+---
+# Source: open-match/templates/synchronizer.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+kind: Service
+apiVersion: v1
+metadata:
+  name: open-match-synchronizer
+  namespace: open-match
+  annotations:
+    chart: open-match-1.8.0
+    heritage: Helm
+  labels:
+    app: open-match
+    component: synchronizer
+    release: open-match
+spec:
+  selector:
+    app: open-match
+    component: synchronizer
+    release: open-match
+  type: ClusterIP
+  ports:
+  - name: grpc
+    protocol: TCP
+    port: 50506
+  - name: http
+    protocol: TCP
+    port: 51506
+---
+# Source: open-match/templates/backend.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-match-backend
+  namespace: open-match
+  annotations:
+    chart: open-match-1.8.0
+    heritage: Helm
+  labels:
+    app: open-match
+    component: backend
+    release: open-match
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: open-match
+      component: backend
+  template:
+    metadata:
+      namespace: open-match
+      annotations:
+        chart: open-match-1.8.0
+        heritage: Helm
+        
+      labels:
+        app: open-match
+        component: backend
+        release: open-match
+    spec:
+      
+      volumes:
+        
+        - name: om-config-volume-default
+          configMap:
+            name: open-match-configmap-default
+        - name: om-config-volume-override
+          configMap:
+            name: open-match-configmap-override
+        
+        
+      serviceAccountName: open-match-unprivileged-service
+      containers:
+      - name: open-match-backend
+        volumeMounts:
+          
+          - name: om-config-volume-default
+            mountPath: /app/config/default
+          - name: om-config-volume-override
+            mountPath: /app/config/override
+          
+          
+        image: "ai-demo-image-cn-beijing.cr.volces.com/game-images/openmatch-backend:1.8.0"
+        ports:
+        - name: grpc
+          containerPort: 50505
+        - name: http
+          containerPort: 51505
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        livenessProbe:
+          httpGet:
+            scheme: HTTP
+            path: /healthz
+            port: 51505
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            scheme: HTTP
+            path: /healthz?readiness=true
+            port: 51505
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 2
+---
+# Source: open-match/templates/frontend.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-match-frontend
+  namespace: open-match
+  annotations:
+    chart: open-match-1.8.0
+    heritage: Helm
+  labels:
+    app: open-match
+    component: frontend
+    release: open-match
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: open-match
+      component: frontend
+  template:
+    metadata:
+      namespace: open-match
+      annotations:
+        chart: open-match-1.8.0
+        heritage: Helm
+        
+      labels:
+        app: open-match
+        component: frontend
+        release: open-match
+    spec:
+      
+      volumes:
+        
+        - name: om-config-volume-default
+          configMap:
+            name: open-match-configmap-default
+        - name: om-config-volume-override
+          configMap:
+            name: open-match-configmap-override
+        
+        
+      serviceAccountName: open-match-unprivileged-service
+      containers:
+      - name: open-match-frontend
+        volumeMounts:
+          
+          - name: om-config-volume-default
+            mountPath: /app/config/default
+          - name: om-config-volume-override
+            mountPath: /app/config/override
+          
+          
+        image: "ai-demo-image-cn-beijing.cr.volces.com/game-images/openmatch-frontend:1.8.0"
+        ports:
+        - name: grpc
+          containerPort: 50504
+        - name: http
+          containerPort: 51504
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        livenessProbe:
+          httpGet:
+            scheme: HTTP
+            path: /healthz
+            port: 51504
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            scheme: HTTP
+            path: /healthz?readiness=true
+            port: 51504
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 2
+---
+# Source: open-match/templates/query.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-match-query
+  namespace: open-match
+  annotations:
+    chart: open-match-1.8.0
+    heritage: Helm
+  labels:
+    app: open-match
+    component: query
+    release: open-match
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: open-match
+      component: query
+  template:
+    metadata:
+      namespace: open-match
+      annotations:
+        chart: open-match-1.8.0
+        heritage: Helm
+        
+      labels:
+        app: open-match
+        component: query
+        release: open-match
+    spec:
+      
+      volumes:
+        
+        - name: om-config-volume-default
+          configMap:
+            name: open-match-configmap-default
+        - name: om-config-volume-override
+          configMap:
+            name: open-match-configmap-override
+        
+        
+      serviceAccountName: open-match-unprivileged-service
+      containers:
+      - name: open-match-query
+        volumeMounts:
+          
+          - name: om-config-volume-default
+            mountPath: /app/config/default
+          - name: om-config-volume-override
+            mountPath: /app/config/override
+          
+          
+        image: "ai-demo-image-cn-beijing.cr.volces.com/game-images/openmatch-query:1.8.0"
+        ports:
+        - name: grpc
+          containerPort: 50503
+        - name: http
+          containerPort: 51503
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        livenessProbe:
+          httpGet:
+            scheme: HTTP
+            path: /healthz
+            port: 51503
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            scheme: HTTP
+            path: /healthz?readiness=true
+            port: 51503
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 2
+---
+# Source: open-match/templates/swaggerui.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-match-swaggerui
+  namespace: open-match
+  annotations:
+    chart: open-match-1.8.0
+    heritage: Helm
+  labels:
+    app: open-match
+    component: swaggerui
+    release: open-match
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open-match
+      component: swaggerui
+  template:
+    metadata:
+      namespace: open-match
+      annotations:
+        chart: open-match-1.8.0
+        heritage: Helm
+      labels:
+        app: open-match
+        component: swaggerui
+        release: open-match
+    spec:
+      
+      volumes:
+        
+        - name: om-config-volume-default
+          configMap:
+            name: open-match-configmap-default
+        - name: om-config-volume-override
+          configMap:
+            name: open-match-configmap-override
+        
+      serviceAccountName: open-match-unprivileged-service
+      containers:
+      - name: open-match-swaggerui
+        volumeMounts:
+          
+          - name: om-config-volume-default
+            mountPath: /app/config/default
+          - name: om-config-volume-override
+            mountPath: /app/config/override
+          
+        image: "ai-demo-image-cn-beijing.cr.volces.com/game-images/openmatch-swaggerui:1.8.0"
+        ports:
+        - name: http
+          containerPort: 51500
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        livenessProbe:
+          httpGet:
+            scheme: HTTP
+            path: /healthz
+            port: 51500
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            scheme: HTTP
+            path: /healthz?readiness=true
+            port: 51500
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 2
+---
+# Source: open-match/templates/synchronizer.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-match-synchronizer
+  namespace: open-match
+  annotations:
+    chart: open-match-1.8.0
+    heritage: Helm
+  labels:
+    app: open-match
+    component: synchronizer
+    release: open-match
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open-match
+      component: synchronizer
+  template:
+    metadata:
+      namespace: open-match
+      annotations:
+        chart: open-match-1.8.0
+        heritage: Helm
+        
+      labels:
+        app: open-match
+        component: synchronizer
+        release: open-match
+    spec:
+      
+      volumes:
+        
+        - name: om-config-volume-default
+          configMap:
+            name: open-match-configmap-default
+        - name: om-config-volume-override
+          configMap:
+            name: open-match-configmap-override
+        
+        
+      serviceAccountName: open-match-unprivileged-service
+      containers:
+      - name: open-match-synchronizer
+        volumeMounts:
+          
+          - name: om-config-volume-default
+            mountPath: /app/config/default
+          - name: om-config-volume-override
+            mountPath: /app/config/override
+          
+          
+        image: "ai-demo-image-cn-beijing.cr.volces.com/game-images/openmatch-synchronizer:1.8.0"
+        ports:
+        - name: grpc
+          containerPort: 50506
+        - name: http
+          containerPort: 51506
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        livenessProbe:
+          httpGet:
+            scheme: HTTP
+            path: /healthz
+            port: 51506
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            scheme: HTTP
+            path: /healthz?readiness=true
+            port: 51506
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 2
+---
+# Source: open-match/templates/backend.yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: open-match-backend
+  namespace: open-match
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: open-match-backend
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+---
+# Source: open-match/templates/frontend.yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: open-match-frontend
+  namespace: open-match
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: open-match-frontend
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+---
+# Source: open-match/templates/query.yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: open-match-query
+  namespace: open-match
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: open-match-query
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+---
+# Source: open-match/charts/redis/templates/master/application.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: open-match-redis-master
+  namespace: "open-match"
+  labels:
+    app.kubernetes.io/name: redis
+    helm.sh/chart: redis-17.15.4
+    app.kubernetes.io/instance: open-match
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/instance: open-match
+      app.kubernetes.io/component: master
+  serviceName: open-match-redis-headless
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+        helm.sh/chart: redis-17.15.4
+        app.kubernetes.io/instance: open-match
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: master
+      annotations:
+        checksum/configmap: 64057079fb1336f653658cc35fbbde063da59ec6b17882b8534437fb6ccfd1cc
+        checksum/health: aff24913d801436ea469d8d374b2ddb3ec4c43ee7ab24663d5f8ff1a1b6991a9
+        checksum/scripts: 43cdf68c28f3abe25ce017a82f74dbf2437d1900fd69df51a55a3edf6193d141
+        checksum/secret: 44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a
+        prometheus.io/port: "9121"
+        prometheus.io/scrape: "true"
+    spec:
+      
+      securityContext:
+        fsGroup: 1001
+      serviceAccountName: open-match-redis
+      automountServiceAccountToken: true
+      affinity:
+        podAffinity:
+          
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: redis
+                    app.kubernetes.io/instance: open-match
+                    app.kubernetes.io/component: master
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+        nodeAffinity:
+          
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: redis
+          image: ai-demo-image-cn-beijing.cr.volces.com/game-images/redis-bitnami:7
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            runAsGroup: 0
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          command:
+            - /bin/bash
+          args:
+            - -c
+            - /opt/bitnami/scripts/start-scripts/start-master.sh
+          env:
+            - name: BITNAMI_DEBUG
+              value: "false"
+            - name: REDIS_REPLICATION_MODE
+              value: master
+            - name: ALLOW_EMPTY_PASSWORD
+              value: "yes"
+            - name: REDIS_TLS_ENABLED
+              value: "no"
+            - name: REDIS_PORT
+              value: "6379"
+          ports:
+            - name: redis
+              containerPort: 6379
+          livenessProbe:
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            # One second longer than command timeout should prevent generation of zombie processes.
+            timeoutSeconds: 6
+            successThreshold: 1
+            failureThreshold: 5
+            exec:
+              command:
+                - sh
+                - -c
+                - /health/ping_liveness_local.sh 5
+          readinessProbe:
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 2
+            successThreshold: 1
+            failureThreshold: 5
+            exec:
+              command:
+                - sh
+                - -c
+                - /health/ping_readiness_local.sh 1
+          resources:
+            limits: {}
+            requests:
+              cpu: 0.5
+              memory: 300Mi
+          volumeMounts:
+            - name: start-scripts
+              mountPath: /opt/bitnami/scripts/start-scripts
+            - name: health
+              mountPath: /health
+            - name: redis-data
+              mountPath: /data
+            - name: config
+              mountPath: /opt/bitnami/redis/mounted-etc
+            - name: redis-tmp-conf
+              mountPath: /opt/bitnami/redis/etc/
+            - name: tmp
+              mountPath: /tmp
+        - name: metrics
+          image: ai-demo-image-cn-beijing.cr.volces.com/game-images/redis-exporter:1.52.0
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            runAsGroup: 0
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          command:
+            - /bin/bash
+            - -c
+            - |
+              if [[ -f '/secrets/redis-password' ]]; then
+              export REDIS_PASSWORD=$(cat /secrets/redis-password)
+              fi
+              redis_exporter
+          env:
+            - name: REDIS_ALIAS
+              value: open-match-redis
+          ports:
+            - name: metrics
+              containerPort: 9121
+          livenessProbe:
+            failureThreshold: 5
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+            tcpSocket:
+              port: metrics
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+            httpGet:
+              path: /
+              port: metrics
+          resources:
+            limits: {}
+            requests: {}
+          volumeMounts:
+      volumes:
+        - name: start-scripts
+          configMap:
+            name: open-match-redis-scripts
+            defaultMode: 0755
+        - name: health
+          configMap:
+            name: open-match-redis-health
+            defaultMode: 0755
+        - name: config
+          configMap:
+            name: open-match-redis-configuration
+        - name: redis-tmp-conf
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: redis-data
+          emptyDir: {}
+---
+# Source: open-match/templates/om-configmap-override.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+---
+# Source: open-match/templates/tests/om-test-role-binding.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+---
+# Source: open-match/templates/tests/om-test-role.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+---
+# Source: open-match/templates/tests/om-test-service-account.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+---
+# Source: open-match/templates/tests/om-test.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+---
+# Source: open-match/templates/tls-secret.yaml
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.

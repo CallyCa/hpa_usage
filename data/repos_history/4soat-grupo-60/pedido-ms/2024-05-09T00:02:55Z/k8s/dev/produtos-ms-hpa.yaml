@@ -1,0 +1,13 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+    name: pedidos-ms
+    namespace: pedidos-ms
+spec:
+    scaleTargetRef:
+        kind: Deployment
+        name: pedidos-ms
+        apiVersion: apps/v1
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 30

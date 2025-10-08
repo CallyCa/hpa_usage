@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iris
+  namespace: ml-system
+  labels:
+    app: iris
+spec:
+  # selector：Deploymentが管理するPodを特定するためのセレクタ
+  selector:
+    matchLabels:
+      app: iris
+  # template：Deploymentが管理するPodの設定
+  template:
+    metadata:
+      labels:
+        app: iris
+      # annotations：Isitoのサイドカーを注入するための設定
+      annotations:
+        sidecar.istio.io/inject: "true"
+        sidecar.istio.io/proxyCPU: "128m"
+        sidecar.istio.io/proxyMemory: "128Mi"
+        proxy.istio.io/config: "{'concurrency':'4'}"
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              preference:
+                matchExpressions:
+                  - key: cloud.google.com/gke-spot
+                    operator: In
+                    values:
+                      - "true"
+      containers:
+        - name: iris
+          image: shibui/ml-system-in-actions:model_in_image_pattern_0.0.1 # コンテナのイメージ
+          imagePullPolicy: Always # イメージの取得方法
+          ports:
+            - containerPort: 8000 # ポート番号
+          resources:
+            limits:
+              cpu: 250m
+              memory: 512Mi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: iris-hpa
+  namespace: ml-system
+  labels:
+    app: iris
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: iris
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50

@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-deployment
+  labels:
+    app: image-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: image-worker
+  template:
+    metadata:
+      labels:
+        app: image-worker
+    spec:
+      containers:
+      - name: worker
+        image: projects-worker-final:latest
+        imagePullPolicy: Never
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        volumeMounts:
+        - name: static-images
+          mountPath: /app/static
+        - name: processed-output
+          mountPath: /app/static/processed
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: static-images
+        hostPath:
+          # Windows: Docker Desktop automáticamente monta C:\Users
+          path: /run/desktop/mnt/host/c/Users/julia/OneDrive/Documents/Cursos/ProgrammingCourse/Chapter-Threads/Projects/static
+          type: Directory
+      - name: processed-output
+        hostPath:
+          path: /run/desktop/mnt/host/c/Users/julia/OneDrive/Documents/Cursos/ProgrammingCourse/Chapter-Threads/Projects/static/processed
+          type: DirectoryOrCreate
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: worker-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: worker-deployment
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 30
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # Configuración de comportamiento para escalado/descalado más rápido
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30  # Por defecto: 300s (5min)
+      policies:
+      - type: Percent
+        value: 100  # Puede duplicar pods inmediatamente
+        periodSeconds: 60
+      - type: Pods
+        value: 2    # O agregar 2 pods por minuto
+        periodSeconds: 60
+      selectPolicy: Max  # Usar la política más agresiva
+    scaleDown:
+      stabilizationWindowSeconds: 60   # Por defecto: 300s (5min) → Ahora 1min
+      policies:
+      - type: Percent
+        value: 50   # Puede remover 50% de pods
+        periodSeconds: 60
+      - type: Pods
+        value: 2    # O remover 2 pods por minuto
+        periodSeconds: 60
+      selectPolicy: Max  # Usar la política más agresiva

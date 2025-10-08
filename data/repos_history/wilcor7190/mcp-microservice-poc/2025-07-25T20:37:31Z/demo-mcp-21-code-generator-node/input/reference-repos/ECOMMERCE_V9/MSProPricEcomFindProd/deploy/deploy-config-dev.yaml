@@ -1,0 +1,306 @@
+---
+kind: Template
+apiVersion: template.openshift.io/v1
+metadata:
+  name: template-ocp
+  annotations:
+    iconClass: icon-nestjs
+message: |-
+  Se han creado los siguientes servicios en su proyecto: ${NAME}.
+objects:
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: '${NAME}'
+    annotations:
+      description: ${DESCRIPTION}
+  spec:
+    ports:
+      - name: ${PORT}-tcp
+        port: ${{PORT}}
+        protocol: TCP
+        targetPort: ${{PORT}}
+    type: ClusterIP
+    selector:
+      name: '${NAME}'
+
+- kind: Route
+  apiVersion: v1
+  metadata:
+    name: '${NAME}'
+  spec:
+    path: "/"
+    to:
+      kind: Service
+      name: '${NAME}'
+    port:
+      targetPort: ${PORT}-tcp
+    tls:
+      termination: edge
+- kind: ImageStream
+  apiVersion: v1
+  metadata:
+    name: '${NAME}'
+    annotations:
+      description: Imagen para el despliegue - ${DESCRIPTION}
+
+- kind: BuildConfig
+  apiVersion: v1
+  metadata:
+    name: '${NAME}'
+    annotations:
+      description: ${DESCRIPTION}
+      template.alpha.openshift.io/wait-for-ready: 'true'
+  spec:
+    source:
+      type: Binary
+    strategy:
+      dockerStrategy:
+        dockerfilePath: Dockerfile
+        env: 
+        - name: 'PORT'
+          value: ${PORT}
+    resources:
+      limits:
+        cpu: '${BUILD_CPU_LIMIT}'
+        memory: '${BUILD_MEMORY_LIMIT}'
+      requests:
+        cpu: '${CPU_REQUEST}'
+        memory: '${MEMORY_REQUEST}'
+    output:
+      to:
+        kind: ImageStreamTag
+        name: "${NAME}:${VERSION}"
+    triggers:
+    - imageChange: {}
+      type: ImageChange
+    - type: ConfigChange
+
+- kind: Secret
+  apiVersion: v1
+  metadata:
+    name: '${NAME}'
+  data: ${{DATA_SECRET}}  
+
+- kind: ConfigMap
+  apiVersion: v1
+  metadata:
+    name: '${NAME}'
+  data: ${{DATA_CONFIGMAP}}   
+  
+- kind: DeploymentConfig
+  apiVersion: apps.openshift.io/v1
+  metadata:
+    name: '${NAME}'
+    annotations:
+      description: ${DESCRIPTION}
+      template.alpha.openshift.io/wait-for-ready: 'true'
+    labels:
+        app: '${NAME}'
+        legado: ${LEGADO}
+        proyecto: ${PROYECTO}
+        subproyecto: ${SUBPROYECTO}
+        tecnologia: ${TECNOLOGIA}
+  spec:
+    replicas: '${{MIN_REPLICAS}}'
+    strategy:
+      type: Rolling
+      activeDeadlineSeconds: 21600
+      resources:
+        limits:
+          cpu: "${DEPLOY_CPU_LIMIT}"
+          memory: "${DEPLOY_MEMORY_LIMIT}"
+        requests:
+          cpu: "${CPU_REQUEST}"
+          memory: "${MEMORY_REQUEST}"
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: "${MAX_SURGE}"
+        maxUnavailable: "${MAX_UNAVAILABLE}"
+        timeoutSeconds: 300
+        updatePeriodSeconds: 1
+    triggers:
+    - type: ImageChange
+      imageChangeParams:
+        automatic: true
+        containerNames:
+          - ${NAME}
+        from:
+          kind: ImageStreamTag
+          name: '${NAME}:${VERSION}'
+    - type: ConfigChange
+    selector:
+      name: '${NAME}'
+    template:
+      metadata:
+        name: '${NAME}'
+        labels:
+          name: '${NAME}'
+      spec:
+        containers:
+        - name: ${NAME}
+          image: ""
+          ports:
+            - containerPort: ${{PORT}}
+              protocol: "TCP"
+          type: "Recreate"
+          resources:
+            limits:
+              cpu: "${CPU_LIMIT}"
+              memory: "${MEMORY_LIMIT}"
+            requests: 
+              cpu: "${CPU_REQUEST}"
+              memory: "${MEMORY_REQUEST}"
+          envFrom:
+            - configMapRef:
+                name: '${NAME}'
+            - secretRef:
+                name: '${NAME}'
+          readinessProbe:
+            tcpSocket:
+              port: ${{PORT}}
+            initialDelaySeconds: 15
+            timeoutSeconds: 1
+            periodSeconds: 20
+            successThreshold: 1
+            failureThreshold: 5
+
+- apiVersion: autoscaling/v2
+  kind: HorizontalPodAutoscaler
+  metadata:
+    name: ${NAME}
+  spec:
+    minReplicas: ${{MIN_REPLICAS}} 
+    maxReplicas: ${{MAX_REPLICAS}}
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 120
+      scaleDown:
+        stabilizationWindowSeconds: 120
+    scaleTargetRef:
+      apiVersion: apps.openshift.io/v1 
+      kind: DeploymentConfig 
+      name: ${NAME}
+    metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: ${{CPU_TARGET_AVERAGE_UTILIZATION}}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: ${{MEMORY_TARGET_AVERAGE_UTILIZATION}}
+
+parameters:
+- name: NAME
+  description: El nombre asignado a todos los objetos frontend definidos en esta plantilla.
+  value: mspropricecomfindprod
+- name: VERSION 
+  description: versión de la aplicación, actualmente se define versión latest para todos los despliegues, en futuro se utilizará un método de versionamiento. 
+  value: latest
+- name: MEMORY_LIMIT
+  description: Cantidad máxima de memoria que puede utilizar el contenedor.
+  value: 300Mi
+- name: CPU_LIMIT
+  description: Cantidad máxima de procesador que puede utilizar el contenedor.
+  value: 200m
+- name: MIN_REPLICAS
+  description: Cantidad minima de pods.
+  value: '1'
+- name: MAX_REPLICAS
+  description: Cantidad maxima de pods.
+  value: '1'
+- name: CPU_TARGET_AVERAGE_UTILIZATION
+  description: El porcentaje de la CPU solicitada que cada pod debería usar idealmente.
+  value: '80'
+- name: MEMORY_TARGET_AVERAGE_UTILIZATION
+  description: El porcentaje de memoria solicitada que cada pod debería usar idealmente.
+  value: '95'
+- name: MAX_SURGE
+  description: Número máximo de pods que se pueden programar por encima del número original de pods.
+  value: 20%
+- name: MAX_UNAVAILABLE
+  description: número máximo de pods que pueden no estar disponibles durante la actualización.
+  value: 0%
+- name: BUILD_MEMORY_LIMIT
+  description: Cantidad máxima de memoria que puede utilizar el contenedor.
+  value: 1Gi
+- name: BUILD_CPU_LIMIT
+  description: Cantidad máxima de procesador que puede utilizar el contenedor.
+  value: 800m
+- name: DEPLOY_MEMORY_LIMIT
+  description: Cantidad máxima de memoria que puede utilizar el contenedor.
+  value: 300Mi
+- name: DEPLOY_CPU_LIMIT
+  description: Cantidad máxima de procesador que puede utilizar el contenedor.
+  value: 300m
+- name: MEMORY_REQUEST
+  description: Cantidad máxima de memoria que puede utilizar el contenedor.
+  value: 10Mi
+- name: CPU_REQUEST
+  description: Cantidad máxima de procesador que puede utilizar el contenedor.
+  value: 10m
+- name: DESCRIPTION 
+  description: Descripción de la aplicación. 
+  value: Esta plantilla define los recursos necesarios para una aplicación NestJS, incluida una configuración de compilación y una configuración de implementación de la aplicación. No incluye una base de datos.
+- name: PORT 
+  description: Puerto a usar para la exposición de la aplicación. 
+  value: "8080"
+- name: PROYECTO 
+  description: Etiqueta del nombre de proyecto 
+  value: 'ecommercev9dev' 
+- name: SUBPROYECTO 
+  description: Etiqueta del nombre de sub-proyecto, si no aplica se define el mismo nombre del proyecto. 
+  value: 'ecommercev9dev' 
+- name: LEGADO 
+  description: Etiqueta de legados definidos para el proyecto, estos van separados por guion bajo "_" (LEGADOA_LEGADOB). 
+  value: MONGO
+- name: TECNOLOGIA 
+  description: Etiqueta de la tecnología a usar, los valores validos serán= SpringBoot-Maven, NodeJS, NestJS. 
+  value: NestJS
+- name: DATA_CONFIGMAP
+  description: "Variables de entorno a usar en deployment. Ejm.= {'ENV_1': 'Valor_1', 'ENV_2': 'Valor_2', ....}"
+  value: |
+    {
+      "API_MAPPING": "/MsProPricEcomFindProd",
+      "API_VERSION": "V1",
+      "CONTROLLER_MESSAGE": "/Message",
+      "CONTROLLER_SKUSOND": "/SkuSond",
+      "HTTP_TIMEOUT": "15000",
+      "LOG_LEVEL": "ALL",
+      "ELASTIC_APM_SERVICE_NAME": "mspropricecomfindprod",
+      "MONGO": "mongodb://bd_user:bd_password@pl-1-eastus2-azure.qremx.mongodb.net:1027,pl-1-eastus2-azure.qremx.mongodb.net:1028,pl-1-eastus2-azure.qremx.mongodb.net:1029/DBPRTEcomFindProd_DE?replicaSet=atlas-89o7hw-shard-0&ssl=true&authSource=admin",
+      "INVENTORYMANAGER": "https://msproductinventorymanage-omndev.apps.r05oof71.eastus2.aroapp.io/products/getChild",
+      "TYPE":"APIMProPricEcomFindProd",
+      "CHANNEL_TYPE": "ChannelRef",
+      "CHANNEL_HREF": "https://broker-comercial.claro.com.co/APIM/PRT/Product/RSProductPriceValidate/V1/ProductPrice/channel/EC_B2C",
+      "CHANNEL_ID": "EC_B2C",
+      "NAMEECOMM": "eCommerce",
+      "CHARACTERISTICTYPE": "ObjectCharacteristic",
+      "CHARACTERISTICNAME": "OMS sku child Configuration",
+      "CHARACTERISTICVALUETYPE": "OMS Backend",
+      "ELASTIC_APM_SERVER_URL": "http://100.69.7.130:8200",
+      "ELASTIC_APM_ENVIRONMENT": "ecommercev9dev",
+      "ELASTIC_APM_CAPTURE_BODY": "all",
+      "ELASTIC_APM_CAPTURE_HEADERS": "true",
+      "ELASTIC_APM_LOG_LEVEL": "off",
+      "ELASTIC_APM_ACTIVE": "true",
+      "KAFKA_TOPIC": "TraceDataTopic",
+      "KAFKA_BROKER": "msbksaleschannelecomm-kafka-bootstrap.ecommercev9dev.svc:9092",
+      "KAFKA_GROUP_ID": "ms-pro-price-ecom-find-prod",
+      "KAFKA_NUMBER_RETRIES": "2",
+      "KAFKA_DELAY_RETRIES": "10000",
+      "KAFKA_COLLECTION_TRACE": "COLPRTEcomEcomFindPro",
+      "KAFKA_EVENT_TYPE": "TraceDataTopic"
+    }
+- name: DATA_SECRET
+  description: "Variables de entorno con datos sensibles a usar en deployment, los valores deben estar codificadas en base64. Ejm.= {'password': 'SG9sYV9tdW5kbyE=', ...}"
+  value: |
+    { 
+      "BD_USER": "RWNvbW1lcmNlVjk=",
+      "BD_PASSWORD": "dkVlQ2t1eG53Rlp4TlI0eQ=="
+    }

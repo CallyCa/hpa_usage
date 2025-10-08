@@ -1,0 +1,20 @@
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: toons-hpa
+  namespace: toons-zone
+  labels:
+    app: toons-hpa
+    env: dev
+    type: front-end
+  annotations:
+    description: "This is a HPA for toons"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: deployment
+    name: toons-deployment
+  minReplicas: 4
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50

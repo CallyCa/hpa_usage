@@ -1,0 +1,242 @@
+# KEDA Auto-scaling for Storm based on Kafka lag and processing metrics
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keda-system
+---
+# KEDA installation (if not already installed)
+# This would typically be done via Helm:
+# helm repo add kedacore https://kedacore.github.io/charts
+# helm install keda kedacore/keda --namespace keda-system --create-namespace
+---
+# Storm Supervisor Auto-scaling based on Kafka lag
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: storm-supervisor-scaler
+  namespace: storm-processing
+spec:
+  scaleTargetRef:
+    name: storm-supervisor
+  pollingInterval: 30  # Check every 30 seconds
+  cooldownPeriod: 300  # Wait 5 minutes between scale actions
+  minReplicaCount: 10  # Minimum supervisors
+  maxReplicaCount: 500 # Maximum supervisors (enterprise scale)
+  
+  triggers:
+  # Kafka lag-based scaling
+  - type: kafka
+    metadata:
+      bootstrapServers: kafka-cluster-kafka-bootstrap.kafka:9092
+      consumerGroup: storm-intelligence-extractor
+      topic: company-urls
+      lagThreshold: "1000"  # Scale up when lag > 1000 messages
+      offsetResetPolicy: latest
+    authenticationRef:
+      name: kafka-auth
+  
+  # Prometheus metrics-based scaling
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus.monitoring:9090
+      metricName: storm_topology_pending_tasks
+      threshold: "500"
+      query: sum(storm_topology_pending_tasks{topology="intelligence-extraction"})
+  
+  # Custom metric: Processing latency
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus.monitoring:9090
+      metricName: storm_processing_latency_p95
+      threshold: "10"  # Scale up when 95th percentile latency > 10 seconds
+      query: histogram_quantile(0.95, rate(storm_bolt_process_latency_seconds_bucket[5m]))
+  
+  # CPU utilization fallback
+  - type: cpu
+    metadata:
+      type: Utilization
+      value: "70"  # Scale up when CPU > 70%
+
+---
+# Storm UI Auto-scaling (less aggressive)
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: storm-ui-scaler
+  namespace: storm-processing
+spec:
+  scaleTargetRef:
+    name: storm-ui
+  pollingInterval: 60
+  cooldownPeriod: 600
+  minReplicaCount: 2
+  maxReplicaCount: 10
+  
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus.monitoring:9090
+      metricName: nginx_ingress_controller_requests_rate
+      threshold: "100"  # Scale UI when request rate > 100/sec
+      query: sum(rate(nginx_ingress_controller_requests[5m]){ingress="storm-ui-ingress"})
+
+---
+# Kafka authentication for KEDA
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kafka-auth-secret
+  namespace: storm-processing
+type: Opaque
+data:
+  username: c3Rvcm0tc2VydmljZQ==  # storm-service (base64)
+  password: c3Rvcm0tcGFzc3dvcmQ=    # storm-password (base64)
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: kafka-auth
+  namespace: storm-processing
+spec:
+  secretTargetRef:
+  - parameter: username
+    name: kafka-auth-secret
+    key: username
+  - parameter: password
+    name: kafka-auth-secret
+    key: password
+
+---
+# HPA for additional scaling (backup mechanism)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: storm-supervisor-hpa
+  namespace: storm-processing
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: storm-supervisor
+  minReplicas: 10
+  maxReplicas: 500
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: storm_pending_tasks_per_pod
+      target:
+        type: AverageValue
+        averageValue: "100"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100  # Allow doubling
+        periodSeconds: 60
+      - type: Pods
+        value: 50   # Add max 50 pods at once
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10   # Reduce by max 10% at once
+        periodSeconds: 60
+
+---
+# Vertical Pod Autoscaler for resource optimization
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: storm-supervisor-vpa
+  namespace: storm-processing
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: storm-supervisor
+  updatePolicy:
+    updateMode: "Auto"  # Automatically update resource requests
+  resourcePolicy:
+    containerPolicies:
+    - containerName: supervisor
+      minAllowed:
+        cpu: "2"
+        memory: "4Gi"
+      maxAllowed:
+        cpu: "16"
+        memory: "32Gi"
+      controlledResources: ["cpu", "memory"]
+
+---
+# PodDisruptionBudget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: storm-nimbus-pdb
+  namespace: storm-processing
+spec:
+  minAvailable: 2  # Keep at least 2 nimbus instances
+  selector:
+    matchLabels:
+      app: storm-nimbus
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: storm-supervisor-pdb
+  namespace: storm-processing
+spec:
+  minAvailable: 80%  # Keep at least 80% of supervisors during disruptions
+  selector:
+    matchLabels:
+      app: storm-supervisor
+
+---
+# Custom Metrics API configuration for Storm metrics
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-metrics-config
+  namespace: keda-system
+data:
+  config.yaml: |
+    rules:
+    - seriesQuery: 'storm_topology_pending_tasks{namespace!="",topology!=""}'
+      resources:
+        overrides:
+          namespace:
+            resource: namespace
+          topology:
+            resource: topology
+      name:
+        matches: "^storm_topology_pending_tasks"
+        as: "storm_pending_tasks_per_topology"
+      metricsQuery: 'sum(storm_topology_pending_tasks{namespace="<<.Namespace>>",topology="<<.Topology>>"}) by (<<.GroupBy>>)'
+    
+    - seriesQuery: 'storm_bolt_process_latency_seconds_bucket{namespace!="",topology!=""}'
+      resources:
+        overrides:
+          namespace:
+            resource: namespace
+          topology:
+            resource: topology
+      name:
+        matches: "^storm_bolt_process_latency_seconds_bucket"
+        as: "storm_processing_latency_p95"
+      metricsQuery: 'histogram_quantile(0.95, sum(rate(storm_bolt_process_latency_seconds_bucket{namespace="<<.Namespace>>",topology="<<.Topology>>"}[5m])) by (le, <<.GroupBy>>))'

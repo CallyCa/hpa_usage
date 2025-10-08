@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microservice4-deployment
+  namespace: sa-p5
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: microservice4
+  template:
+    metadata:
+      labels:
+        app: microservice4
+    spec:
+      containers:
+        - name: microservice4
+          image: zeita/ms4:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5003
+          env:
+          - name: DB_HOST
+            value: "mongodb+srv://zeita03:dbUserPassword@cluster-mongo-sa.pu2gv3r.mongodb.net/ms4_payments?retryWrites=true&w=majority&appName=cluster-mongo-sa"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: microservice4-hpa
+  namespace: sa-p5
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: microservice4-deployment
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: microservice4-service
+  namespace: sa-p5
+spec:
+  selector:
+    app: microservice4
+  ports:
+    - protocol: TCP
+      port: 5003
+      targetPort: 5003
+  type: ClusterIP

@@ -1,0 +1,43 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base/default
+
+nameSuffix: -staging
+
+namespace: staging-octopus
+
+patchesStrategicMerge:
+  - config.yaml
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/environment: staging
+      app.kubernetes.io/instance: api-staging
+      app.kubernetes.io/name: api-staging
+
+transformers:
+  - transformer.yaml
+
+replicas:
+  - name: octopus-deployment
+    count: 1
+
+patchesJson6902:
+  - path: service.yaml
+    target:
+      kind: Service
+      name: octopus-service
+      version: v1
+  - path: ingress.yaml
+    target:
+      group: networking.k8s.io
+      kind: Ingress
+      name: octopus-ingress
+      version: v1
+  - path: hpa.yaml
+    target:
+      group: autoscaling
+      kind: HorizontalPodAutoscaler
+      name: octopus-hpa
+      version: v2

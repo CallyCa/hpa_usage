@@ -1,0 +1,18 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: minha-aplicacao
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: minha-aplicacao
+  minReplicas: 1 # Mínimo de pods
+  maxReplicas: 200 # Máximo de pods (conforme solicitado)
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50 # Escala quando o uso da CPU ultrapassar 50%

@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: channel-depl
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: channel
+  template:
+    metadata:
+      labels:
+        app: channel
+    spec:
+      containers:
+        - name: slack-channel-prod
+          image: gcr.io/ticketing-dev-281211/slack-channel-prod
+          env:
+            - name: MONGO_URI
+              value: mongodb://channel-mongo-srv:27017/channel
+            - name: JWT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: JWT_KEY
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: channel-srv
+  namespace: production
+spec:
+  type: ClusterIP
+  selector:
+    app: channel
+  ports:
+    - name: channel
+      protocol: TCP
+      port: 3000
+      targetPort: 3000

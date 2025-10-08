@@ -1,0 +1,129 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: newapi
+  namespace: {{ .Release.Namespace | default "default"}}
+spec:
+  selector:
+    matchLabels:
+      app: newapi
+  replicas: {{ .Values.newapi.replicas }}
+  template:
+    metadata:
+      labels:
+        app: newapi
+      annotations:
+        diun.enable: "true"
+    spec:
+      {{- if .Values.newapi.nodeSelector }}
+      nodeSelector:
+        label: {{ .Values.newapi.nodeSelector }}
+      {{- end }}
+      {{- if .Values.newapi.tolerations }}
+      tolerations:
+{{ toYaml .Values.newapi.tolerations | indent 8 }}
+      {{- end }}
+      imagePullSecrets:
+      - name: regcred
+      containers:
+      - name: newapi
+        image: {{ .Values.newapi.image }}:{{ .Values.newapi.version }}
+        env:
+        - name: SERVER_PORT
+          value: "8080"
+        - name: KEYCLOAK_DOMAIN
+          value: http://keycloak
+        - name: DB_CONNECTION_STRING
+          valueFrom:
+            configMapKeyRef:
+                name: cdefense-config
+                key: DB_CONNECTION_STRING
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+                name: cdefense-config
+                key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: DB_PASSWORD
+              name: cdefense-secrets
+        ports:
+        - containerPort: 8080
+  #      resources:
+  #        requests:
+  #          memory: "0.5G"
+  #          cpu: "250m"
+  #        limits:
+  #          memory: "1G"
+  #          cpu: "500m"
+      initContainers:
+        - name: check-graphql
+          image: radial/busyboxplus:curl
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until $(curl --connect-timeout 2 --output /dev/null --silent --fail http://graphql/v1/version); do echo waiting for graphql; sleep 10; done; echo connection to graphql ok
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        - name: check-keycloak-pod
+          image: bitnami/kubectl:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - while [ "$(kubectl get pod -l app='keycloak' -o jsonpath='{.items[0].status.phase}')" != "Running" ]; do echo "waiting for keycloak to be ready."; sleep 10; done
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        - name: check-keycloak # WARNING checks logs of the keycloak pod for "Listening on" as such likelier to break as result if developer change the keycloak pod logs
+          image: bitnami/kubectl:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - POD=$(kubectl get pod -l app=keycloak -o jsonpath="{.items[0].metadata.name}") && until kubectl logs $POD|grep "Listening on"; do echo "waiting for keycloak server"; sleep 10; done; echo connection to keycloak ok 
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        - name: check-db
+          image: postgres:14
+          imagePullPolicy: IfNotPresent
+          command: 
+            - sh
+            - -c
+            - until pg_isready -h db -p 5432; do echo waiting for database; sleep 5; done;
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+# ---
+# {{ if .Values.newapi.autoscaling.enabled }}
+# apiVersion: autoscaling/v1
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: newapi
+#   labels:
+#     newapi
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: newapi
+#   minReplicas: {{ .Values.newapi.autoscaling.minReplicas }}
+#   maxReplicas: {{ .Values.newapi.autoscaling.maxReplicas }}
+#   metrics:
+#     {{ if .Values.newapi.autoscaling.targetCPUUtilizationPercentage }}
+#     - type: Resource
+#       resource:
+#         name: cpu
+#         targetAverageUtilization: {{ .Values.newapi.autoscaling.targetCPUUtilizationPercentage }}
+#     {{ end }}
+#     {{ if .Values.newapi.autoscaling.targetMemoryUtilizationPercentage }}
+#     - type: Resource
+#       resource:
+#         name: memory
+#         targetAverageUtilization: {{ .Values.newapi.autoscaling.targetMemoryUtilizationPercentage }}
+#     {{ end }}
+# {{ end }}

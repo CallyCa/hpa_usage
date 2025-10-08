@@ -1,0 +1,113 @@
+# Frontend deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - image: mk0352/prpo2425:frontend
+          name: frontend
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              name: http
+              protocol: TCP
+---
+# Frontend service
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+  selector:
+    app: frontend
+---
+# Backend deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - image: mk0352/prpo2425:backend
+          name: backend
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: backend
+              protocol: TCP
+---
+# Backend service
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: backend
+      protocol: TCP
+  selector:
+    app: backend
+---
+# Database deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      containers:
+        - image: mk0352/prpo2425:db
+          name: db
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5432
+              name: postgres
+              protocol: TCP
+---
+# Database service
+apiVersion: v1
+kind: Service
+metadata:
+  name: db-container
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: postgres
+      protocol: TCP
+  selector:
+    app: db

@@ -1,0 +1,236 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bot4-trading-engine
+  namespace: bot4-trading
+  labels:
+    app: bot4
+    component: trading-engine
+    version: v0.3.0
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: bot4
+      component: trading-engine
+  template:
+    metadata:
+      labels:
+        app: bot4
+        component: trading-engine
+        version: v0.3.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      # High-performance optimizations
+      hostNetwork: false
+      dnsPolicy: ClusterFirst
+      
+      # Anti-affinity for HA
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - bot4
+            topologyKey: kubernetes.io/hostname
+        
+        # Pin to high-performance nodes
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                - high-cpu
+                - trading
+      
+      # Init container for config validation
+      initContainers:
+      - name: config-validator
+        image: bot4/config-validator:v0.3.0
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "Validating configuration..."
+          /app/validate_config --config /config/config.toml
+          echo "Configuration valid!"
+        volumeMounts:
+        - name: config
+          mountPath: /config
+          readOnly: true
+      
+      containers:
+      - name: trading-engine
+        image: bot4/trading-engine:v0.3.0
+        imagePullPolicy: Always
+        
+        # Resource limits for HFT
+        resources:
+          requests:
+            memory: "8Gi"
+            cpu: "4"
+            ephemeral-storage: "10Gi"
+          limits:
+            memory: "16Gi"
+            cpu: "8"
+            ephemeral-storage: "20Gi"
+        
+        # Environment variables
+        env:
+        - name: RUST_LOG
+          value: "info,bot4=debug"
+        - name: RUST_BACKTRACE
+          value: "1"
+        - name: DEPLOYMENT_ENV
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        
+        # Secrets for exchange APIs
+        envFrom:
+        - secretRef:
+            name: exchange-credentials
+        - configMapRef:
+            name: trading-config
+        
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health/liveness
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health/readiness
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        
+        # Startup probe for slow initialization
+        startupProbe:
+          httpGet:
+            path: /health/startup
+            port: 8080
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        
+        # Volume mounts
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+        - name: data
+          mountPath: /app/data
+        - name: logs
+          mountPath: /app/logs
+        - name: tmp
+          mountPath: /tmp
+        
+        # Security context
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - NET_BIND_SERVICE
+        
+        # Ports
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        - name: grpc
+          containerPort: 50051
+          protocol: TCP
+      
+      # Sidecar for monitoring
+      - name: monitoring-sidecar
+        image: bot4/monitoring-sidecar:v0.3.0
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        
+        volumeMounts:
+        - name: logs
+          mountPath: /logs
+          readOnly: true
+        
+        env:
+        - name: PROMETHEUS_ENDPOINT
+          value: "http://prometheus:9090"
+        - name: LOG_LEVEL
+          value: "info"
+      
+      # Priority class for critical workload
+      priorityClassName: high-priority
+      
+      # Service account
+      serviceAccountName: bot4-trading
+      
+      # Volumes
+      volumes:
+      - name: config
+        configMap:
+          name: trading-config
+          defaultMode: 0444
+      - name: data
+        persistentVolumeClaim:
+          claimName: trading-data
+      - name: logs
+        emptyDir:
+          sizeLimit: 5Gi
+      - name: tmp
+        emptyDir:
+          sizeLimit: 1Gi
+      
+      # Termination grace period for clean shutdown
+      terminationGracePeriodSeconds: 60
+      
+      # Image pull secrets
+      imagePullSecrets:
+      - name: docker-registry-secret

@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sharedpw-deployment
+  labels: 
+    app: sharedpw
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sharedpw
+  template:
+    metadata:
+      labels:
+        app: sharedpw
+    spec:
+      containers:
+      - name: sharedpw
+        image: sharedpw-image
+        imagePullPolicy: Never
+        resources:
+          limits:
+            cpu: 50m
+          requests:
+            cpu: 20m
+        ports:
+        - containerPort: 50056
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sharedpw-service
+spec:
+  selector:
+    app: sharedpw
+  ports:
+    - protocol: TCP
+      port: 50056
+      targetPort: 50056
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sharedpw-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sharedpw-deployment
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: 
+          type: Utilization
+          averageUtilization: 50

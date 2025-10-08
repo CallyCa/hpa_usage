@@ -1,0 +1,381 @@
+---
+kind: Template
+apiVersion: v1
+metadata:
+  name: ${NAME}${SUFFIX}-deployment-template
+objects:
+- kind: Secret
+  apiVersion: v1
+  metadata:
+    name: ${NAME}${SUFFIX}
+    labels:
+      name: ${NAME}${SUFFIX}
+      app: ${APP_NAME}${SUFFIX}
+      app-group: ${APP_GROUP}
+      role: ${ROLE}
+      env: ${TAG_NAME}
+  stringData:
+    api-user: ${USER_ID}
+    api-password: ${USER_PASSWORD}
+    admin-user: ${ADMIN_USER_ID}
+    admin-password: ${ADMIN_PASSWORD}
+    file-services-client-username: ${FILE_SERVICES_CLIENT_USERNAME}
+    file-services-client-password: ${FILE_SERVICES_CLIENT_PASSWORD}
+    file-services-client-url: ${FILE_SERVICES_CLIENT_URL}
+    request-application-code: ${REQUEST_APPLICATION_CODE}
+    request-agency-identifier-id: ${REQUEST_AGENCY_IDENTIFIER_ID}
+    request-part-id: ${REQUEST_PART_ID}
+    scss-service-account-guid: ${SCSS_SERVICE_ACCOUNT_GUID}
+    siteminder-user-type: ${ALLOW_SITE_MINDER_USER_TYPE}
+  type: Opaque
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: ${NAME}${SUFFIX}
+    labels:
+      name: ${NAME}${SUFFIX}
+      app: ${APP_NAME}${SUFFIX}
+      app-group: ${APP_GROUP}
+      role: ${ROLE}
+      env: ${TAG_NAME}
+  spec:
+    ports:
+    - name: 8080-tcp
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      name: ${NAME}${SUFFIX}
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    name: ${NAME}${SUFFIX}
+    annotations:
+      description: Defines how to deploy the component
+    labels:
+      name: ${NAME}${SUFFIX}
+      app: ${APP_NAME}${SUFFIX}
+      app-group: ${APP_GROUP}
+      role: ${ROLE}
+      env: ${TAG_NAME}
+  spec:
+    strategy:
+      type: Rolling
+    triggers:
+    - type: ImageChange
+      imageChangeParams:
+        automatic: true
+        containerNames:
+        - ${NAME}${SUFFIX}
+        from:
+          kind: ImageStreamTag
+          namespace: ${IMAGE_NAMESPACE}
+          name: ${NAME}:${TAG_NAME}
+    - type: ConfigChange
+    replicas: 1
+    selector:
+      name: ${NAME}${SUFFIX}
+    template:
+      metadata:
+        name: ${NAME}${SUFFIX}
+        labels:
+          name: ${NAME}${SUFFIX}
+          app: ${APP_NAME}${SUFFIX}
+          app-group: ${APP_GROUP}
+          role: ${ROLE}
+          env: ${TAG_NAME}
+      spec:
+        containers:
+        - name: ${NAME}${SUFFIX}
+          image:  
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 5
+            periodSeconds: 30
+            initialDelaySeconds: 3
+            timeoutSeconds: 40
+            httpGet:
+              path: /api
+              port: 8080
+          livenessProbe:
+            failureThreshold: 5
+            periodSeconds: 60
+            initialDelaySeconds: 30
+            timeoutSeconds: 40
+            httpGet:
+              path: /api
+              port: 8080
+          env:
+          - name: ASPNETCORE_ENVIRONMENT
+            value: ${ASPNETCORE_ENVIRONMENT}
+          - name: ASPNETCORE_URLS
+            value: ${ASPNETCORE_URLS}
+          - name: CORS_DOMAIN
+            value: ${CORS_DOMAIN}
+          - name: FileServicesClient__Username
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: file-services-client-username
+          - name: FileServicesClient__Password
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: file-services-client-password
+          - name: FileServicesClient__Url
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: file-services-client-url
+          - name: LookupServicesClient__Username
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: file-services-client-username
+          - name: LookupServicesClient__Password
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: file-services-client-password
+          - name: LookupServicesClient__Url
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: file-services-client-url
+          - name: LocationServicesClient__Username
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: file-services-client-username
+          - name: LocationServicesClient__Password
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: file-services-client-password
+          - name: LocationServicesClient__Url
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: file-services-client-url
+          - name: Request__ApplicationCd
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: request-application-code
+          - name: Request__AgencyIdentifierId
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: request-agency-identifier-id
+          - name: Request__PartId
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: request-part-id
+          - name: Auth__UserId
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: api-user
+          - name: Auth__UserPassword
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: api-password
+          - name: Auth__SCSSServiceAccountGuid
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: scss-service-account-guid
+          - name: Auth__AllowSiteMinderUserType
+            valueFrom:
+              secretKeyRef:
+                name: ${NAME}${SUFFIX}
+                key: siteminder-user-type
+          - name: WebBaseHref
+            value: ${WEB_BASE_HREF}
+          resources:
+            requests:
+              cpu: ${CPU_REQUEST}
+              memory: ${MEMORY_REQUEST}
+            limits:
+              cpu: ${CPU_LIMIT}
+              memory: ${MEMORY_LIMIT}
+- kind: HorizontalPodAutoscaler
+  apiVersion: autoscaling/v1
+  metadata:
+    name: ${NAME}${SUFFIX}
+    labels:
+      name: ${NAME}${SUFFIX}
+      app: ${APP_NAME}${SUFFIX}
+      app-group: ${APP_GROUP}
+      role: ${ROLE}
+      env: ${TAG_NAME}
+  spec:
+    scaleTargetRef:
+      kind: DeploymentConfig
+      name: ${NAME}${SUFFIX}
+    minReplicas: ${{MIN_REPLICAS}}
+    maxReplicas: ${{MAX_REPLICAS}}
+parameters:
+- name: NAME
+  displayName: Name
+  description: The name assigned to all of the OpenShift resources associated to the
+    server instance.
+  required: true
+  value: api
+- name: SUFFIX
+  displayName: Suffix
+  description: A name suffix used for all objects
+  required: false
+  value: ''
+- name: APP_NAME
+  displayName: App Name
+  description: Used to group components together in the OpenShift console.
+  required: true
+  value: Supreme-Court-Viewer
+- name: APP_GROUP
+  displayName: App Group
+  description: The name assigned to all of the deployments in this project.
+  required: true
+  value: scv
+- name: ROLE
+  displayName: Role
+  description: The role of this service within the application - used for Network
+    Policies
+  required: true
+  value: api
+- name: IMAGE_NAMESPACE
+  displayName: Image Namespace
+  required: true
+  description: The namespace of the OpenShift project containing the imagestream for
+    the application.
+  value: ovjbim-tools
+- name: TAG_NAME
+  displayName: Environment TAG name
+  description: The TAG name for this environment, e.g., dev, test, prod
+  value: dev
+  required: true
+- name: ASPNETCORE_ENVIRONMENT
+  displayName: ASP .Net Core Environment
+  description: ASP .Net Core Environment
+  required: true
+  value: Production
+- name: ASPNETCORE_URLS
+  displayName: ASP .Net Core URLs
+  description: ASP .Net Core URLs
+  required: true
+  value: "http: //+:8080"
+- name: CORS_DOMAIN
+  displayName: CORS Domain
+  description: CORS Domain
+  required: true
+  value: "http: //localhost:8080"
+- name: FILE_SERVICES_CLIENT_USERNAME
+  displayName: File Services Client Username
+  description: File Services Client Username
+  required: true
+  value: ''
+- name: FILE_SERVICES_CLIENT_PASSWORD
+  displayName: File Services Client Password
+  description: File Services Client Password
+  required: true
+  value: ''
+- name: FILE_SERVICES_CLIENT_URL
+  displayName: File Services Client Url
+  description: File Services Client Url
+  required: false
+  value: ''
+- name: REQUEST_APPLICATION_CODE
+  displayName: Request Application Code
+  description: Request Application Code
+  required: true
+  value: ''
+- name: REQUEST_AGENCY_IDENTIFIER_ID
+  displayName: Request Agency Identifier Id
+  description: Request Agency Identifier Id
+  required: true
+  value: ''
+- name: REQUEST_PART_ID
+  displayName: Request Part Id
+  description: Request Part Id
+  required: true
+  value: ''
+- name: USE_AUTHENTICATION
+  displayName: Use Authentication
+  description: Enable or disable the use of authentication on the API.  When set to
+    `False` the API will be unprotected.
+  required: false
+  value: ''
+- name: USER_ID
+  displayName: API Username
+  description: Username for the account that will be used for accessing the API.  Needs
+    to be basee64 encoded.
+  required: true
+  generate: expression
+  from: "[a-zA-Z_][a-zA-Z0-9_]{10}"
+- name: USER_PASSWORD
+  displayName: API Password
+  description: Password for the account that will be used for accessing the API.  Needs
+    to be basee64 encoded.
+  required: true
+  generate: expression
+  from: "[a-zA-Z0-9_~!@#$%^&*()-=<>,.?;:|]{16}"
+- name: ADMIN_USER_ID
+  displayName: API Admin Username
+  description: Username for the API superuser account.  Needs to be basee64 encoded.
+  required: true
+  generate: expression
+  from: "[a-zA-Z_][a-zA-Z0-9_]{10}"
+- name: ADMIN_PASSWORD
+  displayName: API Admin Password
+  description: Password for the API superuser account.  Needs to be basee64 encoded.
+  required: true
+  generate: expression
+  from: "[a-zA-Z0-9_~!@#$%^&*()-=<>,.?;:|]{16}"
+- name: ALLOW_SITE_MINDER_USER_TYPE
+  displayName: Allowed SiteMinder User Type
+  description: Allowed SiteMinder User Type.
+  required: false
+  value: ''
+- name: SCSS_SERVICE_ACCOUNT_GUID
+  displayName: SCSS Service Account GUID
+  description: SCSS Service Account GUID
+  required: false
+  value: ''
+- name: WEB_BASE_HREF
+  displayName: Web Base Href
+  description: The application host path (Web Base Href).
+  value: /scjscv/
+- name: MIN_REPLICAS
+  displayName: Minimum Replicas
+  description: The minimum number of pods to have running.
+  required: true
+  value: "1"
+- name: MAX_REPLICAS
+  displayName: Maximum Replicas
+  description: The maximum number of pods to have running.
+  required: true
+  value: "4"
+- name: CPU_REQUEST
+  displayName: Resources CPU Request
+  description: The resources CPU request (in cores) for this build.
+  required: true
+  value: 10m
+- name: CPU_LIMIT
+  displayName: Resources CPU Limit
+  description: The resources CPU limit (in cores) for this build.
+  required: true
+  value: 300m
+- name: MEMORY_REQUEST
+  displayName: Resources Memory Request
+  description: The resources Memory request (in Mi, Gi, etc) for this build.
+  required: true
+  value: 10Mi
+- name: MEMORY_LIMIT
+  displayName: Resources Memory Limit
+  description: The resources Memory limit (in Mi, Gi, etc) for this build.
+  required: true
+  value: 256Mi

@@ -1,0 +1,123 @@
+# Copyright (c) 2024 Isaac Adams
+# Licensed under the MIT License. See LICENSE file in the project root for full license information.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: crank
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crank
+  namespace: crank
+  labels:
+    app.kubernetes.io/name: crank
+    app.kubernetes.io/instance: crank
+    app.kubernetes.io/version: ${GITHUB_SHA}
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: crank
+      app.kubernetes.io/instance: crank
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: crank
+        app.kubernetes.io/instance: crank
+    spec:
+      securityContext:
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+      containers:
+        - name: crank-container
+          image: ghcr.io/norcalipa/crank/crank:${GITHUB_SHA}
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 20
+            timeoutSeconds: 1
+            periodSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 20
+            timeoutSeconds: 1
+            periodSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "1"
+            limits:
+              memory: "512Mi"
+              cpu: "1"
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                  name: crank-config
+            - secretRef:
+                name: db-connect-credentials
+      imagePullSecrets:
+        - name: ghcr-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crank
+  namespace: crank
+  labels:
+    app.kubernetes.io/name: crank
+    app.kubernetes.io/instance: crank
+    app.kubernetes.io/version: ${GITHUB_SHA}
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+      nodePort: 30800
+  selector:
+    app.kubernetes.io/name: crank
+    app.kubernetes.io/instance: crank
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: crank-hpa
+  namespace: crank
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: crank
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80

@@ -1,0 +1,58 @@
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: 
+  name: apache
+  spec:
+    maxReplicas: 10
+    minReplicas: 4
+    scaleTargetRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: apache
+    metrics:
+      - type: Resource
+        resource: 
+          name: cpu
+          target:
+            averageUtilization: 50
+            type: Utilization
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hpa-apache-deployment
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: apache-app
+  strategy:
+    rollingUpdate: 
+      maxSurge: 50%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      name: hpa-apache-pod
+      labels:
+        app: apache-app
+    spec:
+      containers: 
+        - name: hpa-apache-container
+          image: httpd
+          ports:
+            - comtainerPort: 80
+              protocol: TCP  
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hpa-apache-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: apache-app
+  ports:
+    port: 80
+    targetPort: 80
+    protocol: TCP

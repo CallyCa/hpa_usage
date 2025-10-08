@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: visaas-pp-reader
+  labels:
+    app: visaas-pp-reader
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: visaas-pp-reader
+  minReadySeconds: 100
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 5
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: visaas-pp-reader
+    spec:
+      containers:
+      - name: visaas-pp-reader
+        image: 759971283879.dkr.ecr.ap-south-1.amazonaws.com/reader:1.0.0-3
+        ports:
+        - containerPort: 8080
+        env:
+        - name: XMS
+          value: "-Xms256M"
+        - name: XMX
+          value: "-Xmx512M"
+        - name: projectid
+          value: "242"
+        - name: env
+          value: "prod-new"
+        - name: apikey
+          valueFrom:
+            secretKeyRef:
+              name: visaas-gitlab-secret
+              key: apikey
+        - name: folderfilepath
+          value: "pp-reader/config"
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "512Mi"
+          limits:
+            cpu: "300m"
+            memory: "1024Mi"
+        volumeMounts:
+        - name: efs-storage
+          mountPath: /app/logs/
+      volumes:
+      - name: efs-storage
+        persistentVolumeClaim:
+          claimName: efs-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: visaas-pp-reader
+spec:
+  selector:
+    app: visaas-pp-reader
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: visaas-pp-reader-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: visaas-pp-reader
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 300
+        - type: Percent
+          value: 20
+          periodSeconds: 300

@@ -1,0 +1,17 @@
+  
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: image
+spec:
+  minReplicas: 1
+  maxReplicas: 6
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: teastore-image
+  metrics:
+  - type: External
+    external:
+      metricName: datadogmetric@default:image-cpu
+      targetAverageValue: 80

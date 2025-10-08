@@ -1,0 +1,217 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+    name: local
+    namespace: argocd
+spec:
+    description: Project for local k8s cluster
+    sourceRepos:
+        - https://github.com/nazmang/k8s.git
+        - https://kubernetes-sigs.github.io/external-dns/
+    destinations:
+        - namespace: '*'
+          server: https://kubernetes.default.svc
+    clusterResourceWhitelist:
+        - group: '*'
+          kind: '*'
+    namespaceResourceWhitelist:
+        - group: '*'
+          kind: '*'
+    orphanedResources:
+        warn: true
+sops:
+    kms: []
+    gcp_kms: []
+    azure_kv: []
+    hc_vault: []
+    age:
+        - recipient: age1wp7n5rlrjdqjx7hpkfv35ejwauuggyncl0cu4zllcq59a696sudqnucqfe
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA3ODdtczFLRVlwdE5kMXpQ
+            QU04NEo2ZmJpZ2hXUTRDdUw2N3lWUzZUNmhnCmxzVEVJMi9JOW1vV1hnMWRNRVZD
+            QzFFb3pGbzRQc2lLYnJld2pFK3l4ZHMKLS0tIHp3aUh0MHl6dnR6b01NT0x1NWx5
+            L2c5QzdGNG5BWFNYc2RDek9Qa1Y4MVUKrTGXLIbQ2WN38Ms6KEayaGzKBd5IdOmo
+            FywL++HeSoBt6jz/1Iz2Sg3y1rmjkyr6M+NZHxV0xJLOdGyDxwhQXg==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2025-09-11T18:51:53Z"
+    mac: ENC[AES256_GCM,data:X7aVLMffuZ0s7+r7eZfblmOqZ/aOoWmNns+SGryR8oIvc5rFcFewnoGUApnGiHr37NCCqZvD2EQkjYsw0+Yb1N9zpN1ZwvX7OTsnPi3ElRvYyCFNGYJO7eExwB2JPlTLuqiKKV4xPLrtxvfqm53cJsdpqCT8qKJ52CJg2IFnIm4=,iv:Q9qkABBgp4g1UYcjDldZbjpsoGnkajrBNk/D+ttmT+A=,tag:paO/5rAEIBq/7vZzQgqBpA==,type:str]
+    pgp: []
+    encrypted_regex: ^(SOPS_AGE_KEY|.*password.*|.*PASSWORD.*|.*Secret.*|email|.*USERNAME.*|MIKROTIK_BASEURL|access-token)$
+    version: 3.7.1
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+    name: apps-root
+    namespace: argocd
+spec:
+    project: local
+    source:
+        repoURL: https://github.com/nazmang/k8s.git
+        targetRevision: HEAD
+        path: apps/
+    destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+    syncPolicy:
+        automated:
+            prune: true
+            selfHeal: true
+        syncOptions:
+            - CreateNamespace=true
+sops:
+    kms: []
+    gcp_kms: []
+    azure_kv: []
+    hc_vault: []
+    age:
+        - recipient: age1wp7n5rlrjdqjx7hpkfv35ejwauuggyncl0cu4zllcq59a696sudqnucqfe
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA3ODdtczFLRVlwdE5kMXpQ
+            QU04NEo2ZmJpZ2hXUTRDdUw2N3lWUzZUNmhnCmxzVEVJMi9JOW1vV1hnMWRNRVZD
+            QzFFb3pGbzRQc2lLYnJld2pFK3l4ZHMKLS0tIHp3aUh0MHl6dnR6b01NT0x1NWx5
+            L2c5QzdGNG5BWFNYc2RDek9Qa1Y4MVUKrTGXLIbQ2WN38Ms6KEayaGzKBd5IdOmo
+            FywL++HeSoBt6jz/1Iz2Sg3y1rmjkyr6M+NZHxV0xJLOdGyDxwhQXg==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2025-09-11T18:51:53Z"
+    mac: ENC[AES256_GCM,data:X7aVLMffuZ0s7+r7eZfblmOqZ/aOoWmNns+SGryR8oIvc5rFcFewnoGUApnGiHr37NCCqZvD2EQkjYsw0+Yb1N9zpN1ZwvX7OTsnPi3ElRvYyCFNGYJO7eExwB2JPlTLuqiKKV4xPLrtxvfqm53cJsdpqCT8qKJ52CJg2IFnIm4=,iv:Q9qkABBgp4g1UYcjDldZbjpsoGnkajrBNk/D+ttmT+A=,tag:paO/5rAEIBq/7vZzQgqBpA==,type:str]
+    pgp: []
+    encrypted_regex: ^(SOPS_AGE_KEY|.*password.*|.*PASSWORD.*|.*Secret.*|email|.*USERNAME.*|MIKROTIK_BASEURL|access-token)$
+    version: 3.7.1
+---
+apiVersion: v1
+kind: Secret
+metadata:
+    name: sops-age-key
+    namespace: argocd
+type: Opaque
+stringData:
+    SOPS_AGE_KEY: ENC[AES256_GCM,data:QhDnfpm0wS5S7ZvWMDKDW5xd6VXCd5wlREJ0YZhR18mfM8rQUce+/WhqMtFYzKCruubFHxREw3JUtqjonQhblhORd/eGLA95kBE=,iv:lJj/hexrSMbZevRwRKsoyNCpIL5lMOs0NRpgH9k/0UM=,tag:kkYzMpUk1ADsxQrmNECJ1w==,type:str]
+sops:
+    kms: []
+    gcp_kms: []
+    azure_kv: []
+    hc_vault: []
+    age:
+        - recipient: age1wp7n5rlrjdqjx7hpkfv35ejwauuggyncl0cu4zllcq59a696sudqnucqfe
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA3ODdtczFLRVlwdE5kMXpQ
+            QU04NEo2ZmJpZ2hXUTRDdUw2N3lWUzZUNmhnCmxzVEVJMi9JOW1vV1hnMWRNRVZD
+            QzFFb3pGbzRQc2lLYnJld2pFK3l4ZHMKLS0tIHp3aUh0MHl6dnR6b01NT0x1NWx5
+            L2c5QzdGNG5BWFNYc2RDek9Qa1Y4MVUKrTGXLIbQ2WN38Ms6KEayaGzKBd5IdOmo
+            FywL++HeSoBt6jz/1Iz2Sg3y1rmjkyr6M+NZHxV0xJLOdGyDxwhQXg==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2025-09-11T18:51:53Z"
+    mac: ENC[AES256_GCM,data:X7aVLMffuZ0s7+r7eZfblmOqZ/aOoWmNns+SGryR8oIvc5rFcFewnoGUApnGiHr37NCCqZvD2EQkjYsw0+Yb1N9zpN1ZwvX7OTsnPi3ElRvYyCFNGYJO7eExwB2JPlTLuqiKKV4xPLrtxvfqm53cJsdpqCT8qKJ52CJg2IFnIm4=,iv:Q9qkABBgp4g1UYcjDldZbjpsoGnkajrBNk/D+ttmT+A=,tag:paO/5rAEIBq/7vZzQgqBpA==,type:str]
+    pgp: []
+    encrypted_regex: ^(SOPS_AGE_KEY|.*password.*|.*PASSWORD.*|.*Secret.*|email|.*USERNAME.*|MIKROTIK_BASEURL|access-token)$
+    version: 3.7.1
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+    name: argocd-application-controller-hpa
+    namespace: argocd
+spec:
+    scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: argocd-argo-cd-app-controller
+    minReplicas: 1
+    maxReplicas: 3
+    metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+                type: Utilization
+                averageUtilization: 70
+        - type: Resource
+          resource:
+            name: memory
+            target:
+                type: Utilization
+                averageUtilization: 95
+# ---
+# apiVersion: argoproj.io/v1alpha1
+# kind: ConfigManagementPlugin
+# metadata:
+#   name: sops-decrypt
+#   namespace: argocd
+# spec:
+#   version: v1.0
+#   init:
+#     command: ["/bin/sh", "-c"]
+#     args:
+#       - |
+#         set -euo pipefail
+#         echo "[CMP:init] preparing sops binary (v3.10.2)..."
+#         VERSION="v3.10.2"
+#         ARCH=$(uname -m)
+#         case "$ARCH" in
+#           x86_64|amd64) ARCH="amd64" ;;
+#           aarch64|arm64) ARCH="arm64" ;;
+#           armv7l|armv7) ARCH="arm" ;;
+#           *) echo "[CMP:init] Unsupported arch: $ARCH"; exit 1 ;;
+#         esac
+#         OS=$(uname -s | tr '[:upper:]' '[:lower:]') # linux/darwin
+#         URL="https://github.com/getsops/sops/releases/download/v${VERSION}/sops-v${VERSION}.${OS}.${ARCH}"
+#         echo "[CMP:init] Downloading SOPS from: $URL"
+#         # -fS: fail on http error and show errors, -L for redirects
+#         curl -fSL -o /tmp/sops "${URL}"
+#         chmod +x /tmp/sops
+#         /tmp/sops --version || (echo "[CMP:init] sops failed to run"; exit 1)
+#         echo "[CMP:init] sops ready at /tmp/sops (v${VERSION})"
+#   generate:
+#     command: ["/bin/sh", "-c"]
+#     args:
+#       - |
+#         set -euo pipefail
+#         echo "[CMP:generate] start"
+#         # Prefer system sops if present, otherwise use downloaded /tmp/sops
+#         if command -v sops >/dev/null 2>&1 ; then
+#           SOPS_BIN=$(command -v sops)
+#         elif [ -x /tmp/sops ]; then
+#           SOPS_BIN=/tmp/sops
+#         else
+#           echo "[CMP:generate] sops not found"; exit 1
+#         fi
+#         echo "[CMP:generate] using sops: ${SOPS_BIN}"
+#         # Decrypt all .env.enc -> .env (in the repo/directory)
+#         for f in $(find . -type f -name '*.env.enc' 2>/dev/null || true); do
+#           out="${f%.enc}"
+#           echo "[CMP:generate] decrypting ${f} -> ${out}"
+#           "${SOPS_BIN}" --decrypt --output "${out}" "${f}"
+#         done
+#         # Optional: decrypt argocd.values.enc -> argocd.values.yaml (if used)
+#         if [ -f "argocd.values.enc.yaml" ]; then
+#           echo "[CMP:generate] decrypting argocd.values.enc.yaml -> argocd.values.yaml"
+#           "${SOPS_BIN}" --decrypt --output argocd.values.yaml argocd.values.enc.yaml
+#         fi
+#         echo "[CMP:generate] running kustomize build ."
+#         kustomize build .
+#   discover:
+#     fileName: "kustomization.yaml"
+sops:
+    kms: []
+    gcp_kms: []
+    azure_kv: []
+    hc_vault: []
+    age:
+        - recipient: age1wp7n5rlrjdqjx7hpkfv35ejwauuggyncl0cu4zllcq59a696sudqnucqfe
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA3ODdtczFLRVlwdE5kMXpQ
+            QU04NEo2ZmJpZ2hXUTRDdUw2N3lWUzZUNmhnCmxzVEVJMi9JOW1vV1hnMWRNRVZD
+            QzFFb3pGbzRQc2lLYnJld2pFK3l4ZHMKLS0tIHp3aUh0MHl6dnR6b01NT0x1NWx5
+            L2c5QzdGNG5BWFNYc2RDek9Qa1Y4MVUKrTGXLIbQ2WN38Ms6KEayaGzKBd5IdOmo
+            FywL++HeSoBt6jz/1Iz2Sg3y1rmjkyr6M+NZHxV0xJLOdGyDxwhQXg==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2025-09-11T18:51:53Z"
+    mac: ENC[AES256_GCM,data:X7aVLMffuZ0s7+r7eZfblmOqZ/aOoWmNns+SGryR8oIvc5rFcFewnoGUApnGiHr37NCCqZvD2EQkjYsw0+Yb1N9zpN1ZwvX7OTsnPi3ElRvYyCFNGYJO7eExwB2JPlTLuqiKKV4xPLrtxvfqm53cJsdpqCT8qKJ52CJg2IFnIm4=,iv:Q9qkABBgp4g1UYcjDldZbjpsoGnkajrBNk/D+ttmT+A=,tag:paO/5rAEIBq/7vZzQgqBpA==,type:str]
+    pgp: []
+    encrypted_regex: ^(SOPS_AGE_KEY|.*password.*|.*PASSWORD.*|.*Secret.*|email|.*USERNAME.*|MIKROTIK_BASEURL|access-token)$
+    version: 3.7.1

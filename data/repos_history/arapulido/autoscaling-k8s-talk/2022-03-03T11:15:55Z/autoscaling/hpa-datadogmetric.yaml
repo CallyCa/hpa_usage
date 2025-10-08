@@ -1,0 +1,17 @@
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hitsexternal
+  namespace: ecommerce
+spec:
+  minReplicas: 1
+  maxReplicas: 3
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend 
+  metrics:
+  - type: External
+    external:
+      metricName: datadogmetric@ecommerce:frontend-hits
+      targetAverageValue: 1

@@ -1,0 +1,210 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: boilerplate 
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: "sitemap-pvc"
+  namespace: boilerplate
+spec:
+  storageClassName: azurefile-csi
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-app-deployment
+  namespace: boilerplate
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: test-app
+  template:
+    metadata:
+      labels:
+        app: test-app
+    spec:
+      containers:
+        - name: test-app
+          image: boilerplateacr.azurecr.io/web_app:0.0.1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: sitemap
+              mountPath: /data/generated
+              readOnly: true
+      volumes:
+        - name: sitemap
+          persistentVolumeClaim:
+            claimName: "sitemap-pvc"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-nginx-clusterip-service
+  namespace: boilerplate
+spec:
+  type: ClusterIP
+  selector:
+    app: test-app
+  ports:
+    - name: web
+      port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+  namespace: boilerplate
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: pedroalejandropt.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: app-nginx-clusterip-service
+            port:
+              number: 80
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hey-boilerplate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: "sitemap-pvc"
+  namespace: hey-boilerplate
+spec:
+  storageClassName: azurefile-csi
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hey-app-deployment
+  namespace: hey-boilerplate
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: hey-app
+  template:
+    metadata:
+      labels:
+        app: hey-app
+    spec:
+      containers:
+        - name: hey-app
+          image: boilerplateacr.azurecr.io/web_app:0.0.2
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: sitemap
+              mountPath: /data/generated
+              readOnly: true
+      volumes:
+        - name: sitemap
+          persistentVolumeClaim:
+            claimName: "sitemap-pvc"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hey-app-nginx-clusterip-service
+  namespace: hey-boilerplate
+spec:
+  type: ClusterIP
+  selector:
+    app: hey-app
+  ports:
+    - name: web
+      port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hey-app-ingress
+  namespace: hey-boilerplate
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: hey.pedroalejandropt.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: hey-app-nginx-clusterip-service
+            port:
+              number: 80
+
+
+# ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: "sitemap-pvc"
+# spec:
+#   storageClassName: azurefile-csi
+#   accessModes:
+#     - ReadWriteMany
+#   resources:
+#     requests:
+#       storage: 10Mi
+
+## Useful Config
+
+## Policies
+# ---
+# apiVersion: policy/v1
+# kind: PodDisruptionBudget
+# metadata:
+#   name: "${APP_NAME}-policy"
+# spec:
+#   minAvailable: 1
+#   selector:
+#     matchLabels:
+#       app: "${APP_NAME}"
+
+## AutoScaling
+# ---
+# apiVersion: autoscaling/v2
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: "application-hpa"
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: "${APP_NAME}"
+#   minReplicas: 1 ## ${REPLICAS_MIN}
+#   maxReplicas: 3 ## ${REPLICAS_MAX}
+#   metrics:
+#     - type: Resource
+#       resource:
+#         name: memory ## or cpu
+#         target:
+#           type: AverageValue
+#           averageValue: 100 ## ${MEMORY_SCALE_THRESHOLD}

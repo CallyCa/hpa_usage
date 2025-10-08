@@ -1,0 +1,22 @@
+{{- if .Values.fastapi.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-fastapi-autoscaler
+  labels:
+    app: {{ .Release.Name }}-fastapi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: {{ .Release.Name }}-fastapi
+  minReplicas: {{ .Values.fastapi.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.fastapi.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.fastapi.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

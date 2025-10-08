@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service-deployment
+  labels:
+    app: user-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        io.kompose.network/app-network: "true"
+        app: user-service
+    spec:
+      imagePullSecrets:
+        - name: acr-credentials
+      containers:
+        - image: user-service
+          imagePullPolicy: Always
+          name: user-service
+          ports:
+            - containerPort: 3002
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          env:
+            - name: DB_URL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: DB_URL_USER
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  labels:
+    app: user-service-k8s
+spec:
+  type: ClusterIP
+  ports:
+    - name: "user-service-port"
+      port: 3002
+      targetPort: 3002
+  selector:
+    app: user-service

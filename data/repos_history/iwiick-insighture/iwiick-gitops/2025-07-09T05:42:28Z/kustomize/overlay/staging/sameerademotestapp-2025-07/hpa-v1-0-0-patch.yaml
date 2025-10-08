@@ -1,0 +1,17 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  annotations: {}
+  name: sameerademotestapp-2025-07-v1-0-0
+  labels:
+    app: sameerademotestapp-2025-07-v1-0-0
+    applicationId: app_59fd8f89-8908-437e-862c-3c39bd0696b7
+    version: v1.0.0
+    organizationId: org_5bdc6e05-06b5-4d67-91b9-f020de5fdd93
+    projectId: project_82f4100c-84e8-48e5-ba8e-3d53f7e54908
+    environmentId: env_c39087ff-6627-4b57-a1f4-736bd6d2be0e
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sameerademotestapp-2025-07-v1-0-0

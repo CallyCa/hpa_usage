@@ -1,0 +1,92 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: XXXX
+  namespace: XXXX
+provisioner: disk.csi.azure.com
+parameters:
+  skuName: XXXX
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: XXXX
+  namespace: XXXX
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: XXXX
+  resources:
+    requests:
+      storage: XXXX
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: XXXX
+  namespace: XXXX
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: wordpress:5.8.3-php7.4-apache
+          ports:
+          - containerPort: XXXX
+            protocol: XXXX
+          volumeMounts:
+            - name: XXXX
+              mountPath: /var/www
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: XXXX
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: XXXX
+                  key: MYSQL_ROOT_PASSWORD
+            - name: WORDPRESS_DB_USER
+              value: root
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+      volumes:
+        - name: wordpress-data
+          persistentVolumeClaim:
+            claimName: XXXX
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress
+spec:
+  maxReplicas: XXXX # define max replica count
+  minReplicas: XXXX  # define min replica count
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress
+  targetCPUUtilizationPercentage: XXXX # target CPU utilization
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: XXXX
+  namespace: XXXX
+spec:
+  type: XXXX
+  selector:
+    app: XXXX
+  ports:
+  - port: XXXX
+    protocol: TCP
+    targetPort: XXXX

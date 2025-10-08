@@ -1,0 +1,252 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "${ parameters.canonicalName }"
+  namespace: "${ parameters.namespace }"
+  labels:
+    team: "${ parameters.team }"
+    tags.datadoghq.com/env: "${ parameters.namespace }"
+    tags.datadoghq.com/service: "${ parameters.canonicalName }"
+    tags.datadoghq.com/version: "${trigger.artifacts.$[type == 'docker/image'].version}"
+spec:
+  replicas: "${ #toInt( parameters.minReplicas ) }"
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: "${ parameters.canonicalName }"
+  template:
+    metadata:
+      annotations:
+        "ad.datadoghq.com/${ parameters.canonicalName }.logs": '[{ "service":"${ parameters.canonicalName }", "source":"${ parameters.canonicalName }", "team":"${ parameters.team }", "canonicalName":"${ parameters.canonicalName }" }]'
+        "ad.datadoghq.com/${ parameters.canonicalName }.tags": '{ "team":"${ parameters.team }", "canonicalName":"${ parameters.canonicalName }" }'
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
+      labels:
+        app: "${ parameters.canonicalName }"
+        version: latest
+        team: "${ parameters.team }"
+        tags.datadoghq.com/env: "${ parameters.namespace }"
+        tags.datadoghq.com/service: "${ parameters.canonicalName }"
+        tags.datadoghq.com/version: "${trigger.artifacts.$[type == 'docker/image'].version}"
+    spec:
+      imagePullSecrets:
+        - name: tcxregsecret
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+      containers:
+        - name: "${ parameters.canonicalName }"
+          image: tcxcontainers.azurecr.io/tcx/maintenancerepairservicev1
+          env:
+            - name: ENV
+              value: "${ parameters.namespace }"
+            - name: APP_ENV
+              value: "${ parameters.namespace }"
+            - name: CANONICALNAME
+              value: "${ parameters.canonicalName }"
+            - name: LOGLEVEL
+              value: "${ parameters.loglevel ?: 'info' }"
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_TRACE_AGENT_PORT
+              value: "8126"
+            - name: DD_PROPAGATION_STYLE_INJECT
+              value: "Datadog,B3"
+            - name: DD_PROPAGATION_STYLE_EXTRACT
+              value: "Datadog,B3"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: DD_ENV
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/env']
+            - name: DD_SERVICE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/service']
+            - name: DD_VERSION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/version']
+            - name: DD_LOGS_INJECTION
+              value: "true"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              cpu: 500m
+          ports:
+            - containerPort: 80
+              name: http
+### Health checks: section start (remove the leading hash on each line and retain all spaces to ensure proper YAML alignment)
+#          readinessProbe:
+#            httpGet:
+#              path: /status/ready # endpoint for readiness check; must return a 200 while pod is ready
+#              port: 80
+#              scheme: HTTP
+#            initialDelaySeconds: 2 # number of seconds to wait after the pod comes up before it starts testing
+#            periodSeconds: 10 # interval in seconds between tests
+#            timeoutSeconds: 2 # number of seconds before a test will implicitly fail, if no success was returned in that time
+#            successThreshold: 1 # has to pass a test this number of times contiguously before it can transition to a success
+#            failureThreshold: 3 # has to fail a test this number of times contiguously before it can transition to a failure
+#          livenessProbe:
+#            httpGet:
+#              path: /status/live # endpoint for liveness check; must return a 200 while pod is live
+#              port: 80
+#              scheme: HTTP
+#            initialDelaySeconds: 2 # number of seconds to wait after the pod comes up before it starts testing
+#            periodSeconds: 10 # interval in seconds between tests
+#            timeoutSeconds: 2 # number of seconds before a test will implicitly fail, if no success was returned in that time
+#            successThreshold: 1 # has to pass a test this number of times contiguously before it can transition to a success
+#            failureThreshold: 6 # has to fail a test this number of times contiguously before it can transition to a failure
+### Health checks: section end
+### Keyvault mappings: section start (remove the leading hash on each line and retain all spaces to ensure proper YAML alignment)
+          volumeMounts:
+            - name: azure-vault-projection
+              mountPath: "/kvmnt"
+              readOnly: true
+      volumes:
+        - name: azure-vault-projection
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: "${ parameters.canonicalName }"
+            nodePublishSecretRef:
+              name: kvcreds
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1alpha1
+kind: SecretProviderClass
+metadata:
+  name: "${ parameters.canonicalName }"
+  namespace: "${ parameters.namespace }"
+  labels:
+    team: "${ parameters.team }"
+spec:
+  provider: azure
+  parameters:
+    keyvaultName: ${parameters.keyvault}
+    objects: |
+      array:
+        - |
+          objectName: ${ parameters.namespace }-DB-CONNECTION-STRING
+          objectType: secret
+        - |
+          objectName: ${ parameters.namespace }-DATABASE-NAME
+          objectType: secret
+        - |
+          objectName: ${ parameters.namespace }-LOG-MINIMUM-LEVEL-DEFAULT
+          objectType: secret
+        - |
+          objectName: ${ parameters.namespace }-LOG-TRACE
+          objectType: secret
+        - |
+          objectName: ${parameters.namespace}-PRODUCER-CRYPTOKEY
+          objectType: secret
+        - |
+         objectName: ${ parameters.namespace }-AUDIT-EVENT-TYPE
+         objectType: secret
+        - |
+         objectName: ${ parameters.namespace }-TTC-SERVICES-CONFIG-REPAIR-INVOICE-ENDPOINT
+         objectType: secret
+        - |
+         objectName: ${ parameters.namespace }-TTC-SERVICES-CONFIG-AUDIT-ENDPOINT
+         objectType: secret
+    resourceGroup: "${parameters.keyvaultResourceGroup}"
+    subscriptionId: "${parameters.keyvaultSubscriptionId}"
+    tenantId: "${parameters.keyvaultTenantId}"
+### Keyvault mappings: section end
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "${ parameters.canonicalName }"
+  labels:
+    app: "${ parameters.canonicalName }"
+    team: "${ parameters.team }"
+  namespace: "${ parameters.namespace }"
+spec:
+  ports:
+    - port: 80
+      name: http
+  selector:
+    app: "${ parameters.canonicalName }"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: "${ parameters.canonicalName }"
+  namespace: "${ parameters.namespace }"
+  labels:
+    team: "${ parameters.team }"
+spec:
+  host: "${ parameters.canonicalName }"
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+  subsets:
+    - name: v2
+      labels:
+        version: latest
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: "${ parameters.canonicalName }"
+  namespace: "${ parameters.namespace }"
+  labels:
+    team: "${ parameters.team }"
+spec:
+  hosts:
+  - "${ parameters.apiGatewayHost }"
+  gateways:
+  - istio-system/api-cloud-gateway
+  http:
+  - match:
+    - uri:
+        prefix: "/${ parameters.canonicalName }/"
+    rewrite:
+      uri: "/"
+    route:
+    - destination:
+        host: "${ parameters.canonicalName }"
+        subset: v2
+      weight: 100
+---
+#apiVersion: networking.istio.io/v1alpha3
+#kind: VirtualService
+#metadata:
+#  name: "${ parameters.canonicalName }"
+#  namespace: "${ parameters.namespace }"
+#  labels:
+#    team: "${ parameters.team }"
+#spec:
+#  gateways:
+#    - "tcx-ingress"
+#  hosts:
+#    - "${ parameters.hosts }"
+#  http:
+#    - route:
+#        - destination:
+#            host: "${ parameters.canonicalName }"
+#            subset: v2
+#          weight: 100
+#---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: "${ parameters.canonicalName }"
+  namespace: "${ parameters.namespace }"
+  labels:
+    team: "${ parameters.team }"
+spec:
+  maxReplicas: "${ #toInt( parameters.maxReplicas ) }"
+  minReplicas: "${ #toInt( parameters.minReplicas ) }"
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: "${ parameters.canonicalName }"
+  targetCPUUtilizationPercentage: 50

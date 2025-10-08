@@ -1,0 +1,23 @@
+{{ if gt (atoi (toString .Values.maxReplicas)) (atoi (toString .Values.replicas)) }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-counter
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}-counter
+  minReplicas: {{ .Values.replicas }}
+  maxReplicas: {{ .Values.maxReplicas }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 0
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          averageUtilization: 90
+          type: Utilization
+{{ end }}

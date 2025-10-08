@@ -1,0 +1,12 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: chrome-headless-autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: extensions/v1beta1
+    kind: Deployment
+    name: chrome-headless-deployment
+  minReplicas: 10
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 60

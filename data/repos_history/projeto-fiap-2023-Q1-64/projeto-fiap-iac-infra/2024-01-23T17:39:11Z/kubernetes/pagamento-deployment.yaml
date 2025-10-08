@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: projetofiap-pagamento-deployment
+  labels:
+    app: projetofiap-pagamento-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: projetofiap-pagamento-deployment
+  template:
+    metadata:
+      labels:
+        app: projetofiap-pagamento-deployment
+    spec:
+      containers:
+        - name: c-projetofiap-deployment
+          image: 168173199034.dkr.ecr.us-east-1.amazonaws.com/projeto-fiap-pagamento:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: opaque-app-secret
+                  key: SPRING_DATASOURCE_URL
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: opaque-app-secret
+                  key: SPRING_DATASOURCE_USERNAME
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opaque-app-secret
+                  key: SPRING_DATASOURCE_PASSWORD
+          livenessProbe:
+            httpGet:
+              path: /pagamento/liveness
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 350m
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: projetofiap-pagamento-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: deployment
+    name: projetofiap-pagamento-deployment
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 90
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: pagamento
+spec:
+  selector:
+    app: projetofiap-pagamento-deployment
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080

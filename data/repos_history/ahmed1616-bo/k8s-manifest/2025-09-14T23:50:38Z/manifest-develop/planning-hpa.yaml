@@ -1,0 +1,57 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: planning-hpa
+  namespace: esprit-portail-entreprise-dev
+  labels:
+    app: portail-entreprise
+    component: autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: planning
+
+  # Nombre minimum et maximum de pods
+  minReplicas: 2    
+  maxReplicas: 5    
+
+  # Métriques surveillées (CPU et Mémoire)
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80    # Scale si CPU > 50%
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80   # Scale si RAM > 60%
+
+  # Stratégie de scaling
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300   # Attendre 5 minutes avant de réduire
+      policies:
+      - type: Percent
+        value: 25          # Réduire au max de 25% toutes les 60s
+        periodSeconds: 60
+      - type: Pods
+        value: 2           # Ou réduire de max 2 pods toutes les 60s
+        periodSeconds: 60
+      selectPolicy: Min    # Choisit la politique la plus restrictive (sécurité)
+
+    scaleUp:
+      stabilizationWindowSeconds: 60    # Attendre 1 minute avant d’augmenter
+      policies:
+      - type: Percent
+        value: 50          # Augmenter de max 50% toutes les 30s
+        periodSeconds: 60
+      - type: Pods
+        value: 1          
+        periodSeconds: 60
+      selectPolicy: Max    # Choisit la politique la plus agressive (rapidité)
+

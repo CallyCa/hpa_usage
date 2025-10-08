@@ -1,0 +1,43 @@
+{{- define "psb1-helm-base-chart.hpa" -}}
+{{- $ := index . 0 -}}
+{{- $containerName := index . 1 -}}
+{{- $containerValues := index ($.Values.containers) $containerName -}}
+{{- if and $containerValues.enabled $containerValues.hpa.enabled (not $containerValues.keda.enabled) -}}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $containerName }}
+  namespace: {{ $.Values.global.namespace | default "default" }}
+  labels:
+    {{- include "psb1-helm-base-chart.labels" (list $ $containerName) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $containerName }}
+  minReplicas: {{ $containerValues.hpa.minReplicas }}
+  maxReplicas: {{ $containerValues.hpa.maxReplicas }}
+  metrics:
+    {{- if $containerValues.hpa.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $containerValues.hpa.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if $containerValues.hpa.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $containerValues.hpa.targetMemoryUtilizationPercentage }}
+    {{- end }}
+  behavior:
+    {{- if $containerValues.hpa.behavior }}
+    {{- toYaml $containerValues.hpa.behavior | nindent 4 }}
+    {{- end }}
+{{- end }}
+{{- end -}}

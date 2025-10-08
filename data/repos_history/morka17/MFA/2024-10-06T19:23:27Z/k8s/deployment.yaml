@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodejs-mfa
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nodejs-mfa
+  template:
+    metadata:
+      labels:
+        app: nodejs-mfa
+    spec:
+      containers:
+      - name: nodejs-mfa
+        image: morka17/mfa:latest
+        ports:
+        - containerPort: 3000
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        imagePullPolicy: Always
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nodejs-mfa-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nodejs-mfa
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50

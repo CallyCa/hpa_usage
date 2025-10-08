@@ -1,0 +1,152 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-extractor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: data-extractor
+spec:
+  replicas: {{ .Values.dataExtractor.replicas }}
+  selector:
+    matchLabels:
+      app: data-extractor
+  template:
+    metadata:
+      labels:
+        app: data-extractor
+    spec:
+      containers:
+      - name: data-extractor
+        image: {{ .Values.dataExtractor.image.repository }}:{{ .Values.dataExtractor.image.tag }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        env:
+        {{- range $key, $value := .Values.dataExtractor.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        - name: POSTGRES_URL
+          value: "http://postgres-service:{{ .Values.postgres.port }}"
+        ports:
+        - containerPort: {{ .Values.dataExtractor.port }}
+        resources:
+          requests:
+            cpu: "30m"
+            memory: "64Mi"
+          limits:
+            cpu: "40m"
+            memory: "128Mi"
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-extractor-service
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: data-extractor
+  ports:
+  - protocol: TCP
+    port: {{ .Values.dataExtractor.servicePort }}
+    targetPort: {{ .Values.dataExtractor.port }}
+  type: ClusterIP
+
+---
+
+{{- if .Values.dataExtractor.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: data-extractor-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: data-extractor
+  minReplicas: 1
+  maxReplicas: {{ .Values.dataExtractor.hpa.maxReplicas | default 1}}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.ocrWorker.hpa.cpuTarget | default 80 }} 
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.ocrWorker.hpa.memoryTarget | default 80 }} 
+{{- if .Values.cilium.enabled }}
+    - type: Object
+      object:
+        describedObject:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: data-extractor
+        metric:
+          name: hubble_flows_per_pod
+        target:
+          type: Value
+          value: "2000m" 
+    - type: Object
+      object:
+        describedObject:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: data-extractor
+        metric:
+          name: hubble_http_request_latency_average
+        target:
+          type: Value
+          value: "60m" 
+    - type: Object
+      object:
+        describedObject:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: data-extractor
+        metric:
+          name: hubble_http_5XX_response_ratio
+        target:
+          type: Value
+          value: "0.1"  
+{{- end }}
+{{- if .Values.istio.enabled }}
+    - type: Object
+      object:
+        describedObject:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: data-extractor
+        metric:
+          name: istio_requests_per_pod
+        target:
+          type: Value
+          value: "2000m" 
+    - type: Object
+      object:
+        describedObject:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: data-extractor
+        metric:
+          name: istio_request_latency_average
+        target:
+          type: Value
+          value: "60m" 
+    - type: Object
+      object:
+        describedObject:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: data-extractor
+        metric:
+          name: istio_5xx_error_ratio
+        target:
+          type: Value
+          value: "0.01"  
+{{- end }}
+{{- end }}

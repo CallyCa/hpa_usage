@@ -1,0 +1,32 @@
+apiVersion: helm.fluxcd.io/v1
+kind: HelmRelease
+metadata:
+  name: reaction-kafka-connect
+  namespace: staging
+spec:
+  releaseName: reaction-kafka-connect
+  chart:
+    git: git@github.com:sportsdirect/sdi-releases.git
+    path: charts/reaction-kafka-connect
+    ref: develop
+  values:
+    horizontalPodAutoscaler:
+      enabled: true
+      averageUtilization: 70
+      min: 1
+      max: 5
+    image:
+      repository: docker.io/reactioncommerce/reaction-kafka-connect
+      tag: 13985b30e691499150ff026255bb6fdf05e531a3
+    imagePullSecrets:
+      - name: reaction-docker-hub
+    config:
+      connectBootstrapServers: "b-1.staging.zby85f.c5.kafka.us-east-1.amazonaws.com:9092,b-2.staging.zby85f.c5.kafka.us-east-1.amazonaws.com:9092,b-3.staging.zby85f.c5.kafka.us-east-1.amazonaws.com:9092"
+      connectRestAdvertisedHostName: kafka-connect-staging.ems-test.io
+    resources:
+      requests:
+        memory: 2Gi
+        cpu: "1"
+      limits:
+        memory: 3Gi
+        cpu: "2"

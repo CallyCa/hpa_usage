@@ -1,0 +1,36 @@
+
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: matching-service-hpa
+  namespace: development
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: matching-service-development-dev
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: cpu
+        target:
+          type: Utilization # CPU utilization target
+          averageValue: "100m" # 100 millicpu or 0.1 cpu
+  behaviors:
+    - type: Scale
+      scaleUp:
+        stabilizationWindowSeconds: 60 # wait 60s before increasing number of pods
+        policies:
+        - type: Pods
+          value: 1 # increase 1 pod at a time
+          periodSeconds: 240 # wait at least 240 before another scaling operation
+      scaleDown:
+        stabilizationWindowSeconds: 60
+        policies:
+        - type: Pods
+          value: 1 # decrease 1 pod at a time
+          periodSeconds: 240 # wait at least 240 before another scaling operation
+

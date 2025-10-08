@@ -1,0 +1,35 @@
+# 메트릭 서버 설치 (파드의 자원상황 모니터링 툴)
+# kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+
+# Horizontal pod autoscaler (수평확장)
+# 컨테이너 자동 확장
+#  10분이 지나고 나서 부하가 없을시에 자동으로 기본 POD 대수로 돌아옴
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+# 어떤 상황에 어떤것을 늘릴지 정해야함
+metadata:
+  name: want-hpa
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: want-deployment
+  minReplicas: 1
+  maxReplicas: 3
+  # CPU 사용률이 50% 넘어가면 실행
+  targetCPUUtilizationPercentage: 50 
+
+# 부하 테스트 쉘스크립트
+# kubctl exec -it 파드명 /bin/bash -n sm
+# while true; do curl http://ordersystem-service/product/list; sleep 1; done
+
+# 부하 모니터링
+# -w : whatch 옵션을 의미
+# kubectl get hpa ordersystem-hpa -n sm -w 
+
+#
+
+
+

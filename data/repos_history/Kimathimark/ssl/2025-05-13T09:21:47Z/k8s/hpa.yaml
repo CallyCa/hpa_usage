@@ -1,0 +1,43 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: flask-app-hpa
+  namespace: trialnamespace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: flask-deployment
+  minReplicas: 1
+  maxReplicas: 5
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0  # No delay in scaling up
+      selectPolicy: Max  # Selects the policy that gives the highest value for scaling
+      policies:
+        - type: Pods
+          value: 2  # Scale up by 2 pods
+          periodSeconds: 30  # Scaling happens every 30 seconds
+        - type: Percent
+          value: 50  # Scale up by 50% of the current replicas
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 60  # Wait 60 seconds before scaling down to prevent rapid scale-down
+      selectPolicy: Max  # Selects the policy that gives the highest value for scaling
+      policies:
+        - type: Percent
+          value: 50  # Scale down by 50% of the current replicas
+          periodSeconds: 30  # Scaling down happens every 30 seconds
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60  # Target average CPU utilization at 60%
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70  # Target average memory utilization at 70%

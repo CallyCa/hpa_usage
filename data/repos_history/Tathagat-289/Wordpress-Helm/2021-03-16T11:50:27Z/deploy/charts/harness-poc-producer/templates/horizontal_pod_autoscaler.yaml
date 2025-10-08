@@ -1,0 +1,18 @@
+{{- if .Values.hpa.enabled }}
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+{{- include "default.labels" . | indent 4 }}
+  annotations:
+{{- include "default.annotations" . | indent 4 }}
+spec:
+  minReplicas: {{ .Values.replicas }}
+  maxReplicas: {{ default 1 .Values.hpa.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}
+  targetCPUUtilizationPercentage: {{ .Values.hpa.cpuPercentage }}
+{{- end }}

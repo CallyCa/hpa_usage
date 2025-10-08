@@ -1,0 +1,25 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: hpa-require-cpu-metric
+spec:
+  validationFailureAction: enforce
+  rules:
+  - name: ensure-cpu-utilization-metric
+    match:
+      resources:
+        kinds:
+        - HorizontalPodAutoscaler
+    validate:
+      message: "HPA must include a CPU utilization metric."
+      foreach:
+      - list: "spec.metrics"
+        deny:
+          conditions:
+            all:
+            - key: "{{element.type}}"
+              operator: NotEquals
+              value: Resource
+            - key: "{{element.resource.name}}"
+              operator: NotEquals
+              value: cpu

@@ -1,0 +1,185 @@
+replicaCount: 1
+image:
+  repository: public.ecr.aws/perfectscale-io/psc-exporter
+  pullPolicy: Always
+  tag: "v1.0.43"
+initContainer:
+  image:
+    repository: public.ecr.aws/perfectscale-io/alpine
+    tag: 3.19-init
+settings:
+  deployKubeStateMetrics: true
+  serviceId: "psc-exporter"
+  env: "prod"
+  logLevel: "INFO"
+  httpPort: ":8080"
+  psUrl: "https://api.app.perfectscale.io/psc-tenant-manager"
+  uploadPolicyUrl: "https://api.app.perfectscale.io/psc-presigned-policy"
+  telemetryUrl: "https://api.app.perfectscale.io/psc-telemetry"
+  pushTelemetryFrequency: "1m"
+  scrapingInterval: "30s"
+  ksmTimeout: "30s"
+  kubeAPITimeoutSec: "3"
+  cAdvisorNumWorkers: "30"
+  k8sClientBurst: "150"
+  k8sClientQPS: "100"
+  enablePProf: false
+  enableOomDebug: false
+  podRegex: ""
+  containerRegex: ""
+  # supported resilience levels: low, medium, high, highest
+  # deprecated field since we introduced the clusterOptimizationPolicy
+  clusterResilienceLevel: "medium"
+  # supported optimization policies: MaxSavings, Balanced, ExtraHeadroom, MaxHeadroom
+  clusterOptimizationPolicy: "Balanced"
+  clusterName: ""
+  collectorNumWorkers: "4"
+  #  ksmAddress: "http://kube-state-metrics:8080"
+  scraper:
+    ksmMetricsPort: "8080"
+    labelSelector: ""
+    fieldSelector: ""
+    scrapeExternalKSM: false
+    scrapeNamespace: ""
+    ksmImageName: "kube-state-metrics"
+  httpProxyEnabled: false
+  httpProxy: "" #example: http://squid-proxy-service.default:3128
+  httpsProxy: "" #example$ http://squid-proxy-service.default:3128
+  noProxy: "" #example: ".cluster.local,.svc.cluster.local,172.20.0.1," the line must end with a coma, 172.20.0.1 it is KUBERNETES_SERVICE_HOST, API SERVICE
+secret:
+  create: false
+  name: "perfectscale-secret"
+  clientSecret: ""
+  clientId: ""
+service:
+  type: ClusterIP
+  port: 80
+resources:
+  requests:
+    cpu: 200m
+    memory: 300Mi
+## Additional labels to set in the all objects. Together with standard labels from the chart
+additionalLabels: {}
+podLabels: {}
+## Annotations to add to the deployment
+annotations: {}
+## Annotations to add to the pod
+podAnnotations: {}
+## Pods Service Account
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+## Role Based Access
+## Ref: https://kubernetes.io/docs/admin/authorization/rbac/
+##
+rbac:
+  create: true
+# Pod security context.
+# Ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
+securityContext:
+  runAsNonRoot: true
+  fsGroup: 1002
+  runAsGroup: 1002
+  runAsUser: 1002
+## Specify security settings for a Container
+## Allows overrides and additional options compared to (Pod) securityContext
+## Ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  seccompProfile:
+    type: RuntimeDefault
+## Pod Priority
+## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/
+priorityClass:
+  enabled: false
+  create: false
+  name: perfectscale-exporter
+  preemptionpolicy: PreemptLowerPriority
+  value: '1000000'
+# Pod toleration rules.
+# Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+tolerations: {}
+# Pod node selector rules.
+# Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+nodeSelector: {}
+# Pod affinity rules.
+# Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+affinity: {}
+serviceMonitor:
+  # When set true then use a ServiceMonitor to configure scraping
+  enable: false
+  # Set how frequently Prometheus should scrape
+  interval: 30s
+  # Set path to the metrics
+  path: /metrics
+  # Set timeout for scrape
+  timeout: 10s
+  # Additional Label to the serviceMonitor
+  # labels:
+  #   prometheus: kube-prometheus
+  # Additional Annotations to the serviceMonitor
+  annotations: {}
+# requires serviceMonitor.enable=true
+prometheusRule:
+  enable: false
+  team: default
+  # warning by default, can be warning/critical
+  severity: warning
+  # Additional Label to the prometheusRule
+  labels:
+    release: prometheus
+  # Additional Annotations to the prometheusRule
+  annotations: {}
+  cAdvisorScraping:
+    timeRange: "30m"
+    threshold: 0.3
+grafana:
+  dashboard:
+    enabled: false
+    namespace: monitoring
+    # Additional Label to the dashboard configmap
+    labels:
+      grafana_dashboard: "1"
+kube-state-metrics:
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+  prometheusScrape: false
+  metricLabelsAllowlist:
+    - nodes=[*]
+    - pods=[*]
+    - namespaces=[*]
+  metricAnnotationsAllowList:
+    - pods=[*]
+  collectors:
+    - cronjobs
+    - daemonsets
+    - deployments
+    - endpoints
+    - horizontalpodautoscalers
+    - jobs
+    - namespaces
+    - nodes
+    - persistentvolumeclaims
+    - persistentvolumes
+    - poddisruptionbudgets
+    - pods
+    - replicasets
+    - replicationcontrollers
+    - resourcequotas
+    - statefulsets
+    - storageclasses
+    - volumeattachments
+    - limitranges
+    - resourcequotas
+  resources:
+    requests:
+      cpu: 200m
+      memory: 200M

@@ -1,0 +1,13 @@
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: consumer-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: consumer
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 50  # Escala cuando el uso del CPU supera el 50%

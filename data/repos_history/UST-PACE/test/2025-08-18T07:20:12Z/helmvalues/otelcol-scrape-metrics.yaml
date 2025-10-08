@@ -1,0 +1,269 @@
+clusterRole:
+  create: true
+  rules:
+  - apiGroups:
+    - ""
+    resources:
+    - nodes
+    - nodes/proxy
+    - services
+    - endpoints
+    - pods
+    - events
+    - namespaces
+    - namespaces/status
+    - pods/status
+    - replicationcontrollers
+    - replicationcontrollers/status
+    - resourcequotas
+    verbs:
+    - get
+    - list
+    - watch
+  - nonResourceURLs:
+    - /metrics
+    verbs:
+    - get
+  - apiGroups:
+    - apps
+    resources:
+    - daemonsets
+    - deployments
+    - replicasets
+    - statefulsets
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - extensions
+    resources:
+    - daemonsets
+    - deployments
+    - replicasets
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - batch
+    resources:
+    - jobs
+    - cronjobs
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - autoscaling
+    resources:
+    - horizontalpodautoscalers
+    verbs:
+    - get
+    - list
+    - watch
+config:
+  connectors:
+    servicegraph: {}
+    spanmetrics: {}
+  exporters:
+    otlphttp/grafana_cloud:
+      auth:
+        authenticator: basicauth/grafana_cloud
+      endpoint: https://otlp-gateway-prod-ap-south-1.grafana.net/otlp
+  extensions:
+    basicauth/grafana_cloud:
+      client_auth:
+        password: ${env:GF_CLOUD_OTLP_PASSWORD}
+        username: ${env:GF_CLOUD_OTLP_USERNAME}
+    basicauth/server:
+      htpasswd:
+        inline: |
+          ${env:BASIC_AUTH_USERNAME}:${env:BASIC_AUTH_PASSWORD}
+  processors:
+    cumulativetodelta: null
+    filter/histograms:
+      error_mode: ignore
+      metrics:
+        metric:
+        - type == METRIC_DATA_TYPE_HISTOGRAM
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 65
+      spike_limit_percentage: 20
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          auth:
+            authenticator: basicauth/server
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+    prometheus:
+      config:
+        scrape_configs:
+        - bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          job_name: integrations/kubernetes/kube-apiserver
+          kubernetes_sd_configs:
+          - role: endpoints
+          metric_relabel_configs:
+          - action: keep
+            regex: apiserver_.*
+            source_labels:
+            - __name__
+          relabel_configs:
+          - action: keep
+            regex: default;kubernetes;https
+            source_labels:
+            - __meta_kubernetes_namespace
+            - __meta_kubernetes_service_name
+            - __meta_kubernetes_endpoint_port_name
+          scheme: https
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            insecure_skip_verify: true
+        - bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          job_name: integrations/kubernetes/cadvisor
+          kubernetes_sd_configs:
+          - role: node
+          metric_relabel_configs:
+          - action: keep
+            regex: container_.*|machine_.*
+            source_labels:
+            - __name__
+          relabel_configs:
+          - replacement: kubernetes.default.svc.cluster.local:443
+            target_label: __address__
+          - regex: (.+)
+            replacement: /api/v1/nodes/$${1}/proxy/metrics/cadvisor
+            source_labels:
+            - __meta_kubernetes_node_name
+            target_label: __metrics_path__
+          scheme: https
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            insecure_skip_verify: false
+            server_name: kubernetes
+        - bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          job_name: integrations/kubernetes/kubelet
+          kubernetes_sd_configs:
+          - role: node
+          metric_relabel_configs:
+          - action: keep
+            regex: container_cpu_usage_seconds_total|kubelet_.*
+            source_labels:
+            - __name__
+          relabel_configs:
+          - replacement: kubernetes.default.svc.cluster.local:443
+            target_label: __address__
+          - regex: (.+)
+            replacement: /api/v1/nodes/$${1}/proxy/metrics
+            source_labels:
+            - __meta_kubernetes_node_name
+            target_label: __metrics_path__
+          scheme: https
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            insecure_skip_verify: false
+            server_name: kubernetes
+        - job_name: integrations/kubernetes/kube-state-metrics
+          kubernetes_sd_configs:
+          - role: pod
+          metric_relabel_configs:
+          - action: keep
+            regex: kube_.*
+            source_labels:
+            - __name__
+          relabel_configs:
+          - action: keep
+            regex: kube-state-metrics
+            source_labels:
+            - __meta_kubernetes_pod_label_app_kubernetes_io_name
+        - job_name: integrations/node_exporter
+          kubernetes_sd_configs:
+          - role: pod
+          metric_relabel_configs:
+          - action: keep
+            regex: node_cpu.*|node_filesystem.*|node_memory.*|node_load.*
+            source_labels:
+            - __name__
+          relabel_configs:
+          - action: keep
+            regex: prometheus-node-exporter.*
+            source_labels:
+            - __meta_kubernetes_pod_label_app_kubernetes_io_name
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_pod_node_name
+            target_label: instance
+          - action: replace
+            source_labels:
+            - __meta_kubernetes_namespace
+            target_label: namespace
+  service:
+    extensions:
+    - basicauth/server
+    - health_check
+    - basicauth/grafana_cloud
+    pipelines:
+      logs:
+        exporters:
+        - otlphttp/grafana_cloud
+        receivers:
+        - otlp
+      logs/k8s_events:
+        exporters:
+        - otlphttp/grafana_cloud
+        receivers:
+        - otlp
+      metrics:
+        exporters:
+        - otlphttp/grafana_cloud
+        receivers:
+        - otlp
+        - prometheus
+extraEnvs:
+- name: BASIC_AUTH_USERNAME
+  valueFrom:
+    secretKeyRef:
+      key: username
+      name: otel-collector-creds
+- name: BASIC_AUTH_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      key: password
+      name: otel-collector-creds
+- name: GF_CLOUD_OTLP_USERNAME
+  valueFrom:
+    secretKeyRef:
+      key: GF_CLOUD_OTLP_USERNAME
+      name: otel-collector-creds
+- name: GF_CLOUD_OTLP_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      key: GF_CLOUD_OTLP_PASSWORD
+      name: otel-collector-creds
+image:
+  repository: otel/opentelemetry-collector-contrib
+mode: deployment
+ports:
+  jaeger-compact:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  otlp-http:
+    enabled: true
+  zipkin:
+    enabled: false
+resources:
+  limits:
+    cpu: 300m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+service:
+  enabled: true

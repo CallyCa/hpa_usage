@@ -1,0 +1,26 @@
+{{ if .Values.datapusher.hpa.enable }}
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Values.general.projectId }}-datapusher-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Values.general.projectId }}-datapusher
+  minReplicas: {{ .Values.datapusher.hpa.minReplicas | default 1 }}
+  maxReplicas: {{ .Values.datapusher.hpa.maxReplicas | default 5 }}
+  metrics:
+  {{ if .Values.datapusher.hpa.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: {{ .Values.datapusher.hpa.targetCPUUtilizationPercentage }}
+  {{ end }}
+  {{ if .Values.datapusher.hpa.targetMemoryUtilizationPercentage}}
+    - type: Resource
+      resource:
+        name: memory
+        targetAverageUtilization: {{ .Values.datapusher.hpa.targetMemoryUtilizationPercentage }}
+  {{ end }}
+{{ end }}

@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grpc-client-rust
+  namespace: sopes1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: grpc-client-rust
+  template:
+    metadata:
+      labels:
+        app: grpc-client-rust
+    spec:
+      containers:
+        - name: grpc-client-rust
+          image: roldyoran/rust-grcp:version4
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "0.1"
+            limits:
+              memory: "128Mi"
+              cpu: "0.3"
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rust-client-service #DNS
+  namespace: sopes1
+spec:
+  selector:
+    app: grpc-client-rust
+  ports:
+    - protocol: TCP
+      port: 8080 # Entrada
+      targetPort: 8080 # Salida
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: grpc-client-rust-hpa
+  namespace: sopes1
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: grpc-client-rust
+  minReplicas: 2 # Mínimo 2 pods
+  maxReplicas: 3 # Máximo número de pods
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50 # Escalar si el uso promedio de CPU excede el 50%

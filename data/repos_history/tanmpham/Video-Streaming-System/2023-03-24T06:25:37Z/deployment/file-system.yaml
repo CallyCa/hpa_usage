@@ -1,0 +1,49 @@
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: filesystem
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 3010
+  selector:
+    app: filesystem
+---
+# Pods
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: filesystem-deploy
+  labels:
+    app: filesystem
+spec:
+  selector:
+    matchLabels:
+      app: filesystem
+  minReadySeconds: 4
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: filesystem
+    spec:
+      terminationGracePeriodSeconds: 1
+      volumes:
+        - name: videos-storage
+          persistentVolumeClaim:
+            claimName: shared-pvc
+      containers:
+        - name: filesystem
+          image: phamminhtan2k2/video-streaming-file:v1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3010
+          volumeMounts:
+            - mountPath: '/app/public/videos'
+              name: videos-storage

@@ -1,0 +1,17 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  annotations: {}
+  name: msg-v1-0-0
+  labels:
+    app: msg-v1-0-0
+    applicationId: app_d550f9d0-76cd-4c94-be2c-da7afbdb6f33
+    version: v1.0.0
+    organizationId: org_d2ea4601-f582-4e43-921d-6a60eea704b3
+    projectId: project_f25ad2e4-cf21-410c-b7fb-a8adad864a23
+    environmentId: env_3f34e2e8-6902-4eee-a0bb-281989189458
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: msg-v1-0-0

@@ -1,0 +1,66 @@
+{{- if and .Values.autoscaling .Values.autoscaling.enabled }}
+{{- if semverCompare ">=1.23-0" .Capabilities.KubeVersion.GitVersion -}}
+apiVersion: autoscaling/v2
+{{- else -}}
+apiVersion: autoscaling/v2beta2
+{{- end }}
+
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "global-one.fullname" . }}
+  labels:
+    {{- include "global-one.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "global-one.fullname" . }}
+
+  {{- with .Values.autoscaling }}
+  minReplicas: {{ .minReplicas | default 1 }}
+  maxReplicas: {{ .maxReplicas | default 3 }}
+  metrics:
+    {{- if .metrics }}
+    {{- range .metrics }}
+    - type: Resource
+      resource:
+        name: {{ .name }}
+        target:
+          type: {{ .type }}
+          averageUtilization: {{ .value }}
+    {{- end }}
+    {{- else }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+    {{- end }}
+
+  {{- with .behavior }}
+  behavior:
+
+    {{ if .scaleUp }}
+    scaleUp:
+      policies:
+        {{- range .scaleUp }}
+        - type: {{ .type }}
+          value: {{ .value | default 1 }}
+          periodSeconds: {{ .periodSeconds | default 15 }}
+        {{- end }}
+    {{ end }}
+
+    {{ if .scaleDown }}
+    scaleUp:
+      policies:
+        {{- range .scaleDown }}
+        - type: {{ .type }}
+          value: {{ .value | default 1 }}
+          periodSeconds: {{ .periodSeconds | default 15 }}
+        {{- end }}
+    {{ end }}
+
+  {{- end }}
+  {{- end }}
+{{- end }}

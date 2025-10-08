@@ -1,0 +1,68 @@
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: podinfo
+spec:
+  # deployment reference
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  # HPA reference
+  autoscalerRef:
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    name: podinfo
+  service:
+    # service port
+    port: 80
+    # container port
+    targetPort: 9898
+    # Contour request timeout
+    timeout: 15s
+    # Contour retry policy
+    retries:
+      attempts: 3
+      perTryTimeout: 5s
+      # supported values for retryOn - https://projectcontour.io/docs/main/config/api/#projectcontour.io/v1.RetryOn
+      retryOn: "5xx"
+  # define the canary analysis timing and KPIs
+  analysis:
+    # schedule interval (default 60s)
+    interval: 30s
+    # max number of failed metric checks before rollback
+    threshold: 5
+    # max traffic percentage routed to canary
+    # percentage (0-100)
+    maxWeight: 50
+    # canary increment step
+    # percentage (0-100)
+    stepWeight: 10
+    # Contour Prometheus checks
+    metrics:
+      - name: request-success-rate
+        # minimum req success rate (non 5xx responses)
+        # percentage (0-100)
+        thresholdRange:
+          min: 99
+        interval: 1m
+      - name: request-duration
+        # maximum req duration P99 in milliseconds
+        thresholdRange:
+          max: 500
+        interval: 30s
+    # testing
+    webhooks:
+      - name: acceptance-test
+        type: pre-rollout
+        url: http://flagger-loadtester.a-team/
+        timeout: 30s
+        metadata:
+          type: bash
+          cmd: curl -sd 'test' http://podinfo-canary.a-team/token | grep token
+      - name: load-test
+        url: http://flagger-loadtester.a-team/
+        type: rollout
+        timeout: 5s
+        metadata:
+          cmd: hey -z 1m -q 10 -c 2 -host podinfo.35.231.180.96.nip.io http://envoy.projectcontour
