@@ -10,4 +10,4 @@ __pypackages__/
 
 .env
 
-data/.cache/
+data/.cache
