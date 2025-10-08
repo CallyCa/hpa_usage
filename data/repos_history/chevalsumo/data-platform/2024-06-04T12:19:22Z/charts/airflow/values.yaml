@@ -1,9 +1,0 @@
-airflow:
-  extraPipPackages:
-    - "boto3=1.34.118"
-    - "apache-airflow-providers-amazon"
-  config:
-    AIRFLOW__CORE__DAGS_FOLDER: s3://data-platform-chevalsumo/airflow/dags
-    AIRFLOW__CORE__REMOTE_LOGGING: True
-    AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3://data-platform-chevalsumo/airflow/logs
-    AIRFLOW__CORE__ENCRYPT_S3_LOGS: False

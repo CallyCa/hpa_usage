@@ -1,6 +1,0 @@
-kube-state-metrics:
-  fullnameOverride: kube-state-metrics
-  image:
-    repository: registry.k8s.io/kube-state-metrics/kube-state-metrics
-    tag: v2.8.0@sha256:5658d0011a41779ef114f3508143a0e67e4169f64333d0337e731d191ab7edb8
-    pullPolicy: IfNotPresent
