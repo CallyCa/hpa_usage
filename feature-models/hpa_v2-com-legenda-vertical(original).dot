@@ -1,0 +1,241 @@
+digraph HPA_v2 {
+  rankdir=TB
+  graph [fontname="Arial" fontsize=10 pad=0.4 nodesep=0.4 ranksep=0.6 label="HPA Feature Model — autoscaling/v2 (GA STABLE)" labelloc=t labeljust=l fontsize=13]
+  node  [fontname="Arial" fontsize=10 shape=box style=filled fillcolor=white]
+  edge  [fontname="Arial" fontsize=9]
+
+  subgraph cluster_legend {
+    rankdir=TB
+    label="Legend" fontsize=9 style=filled fillcolor="#f5f5f5" color="#999999"
+    node [shape=plaintext style="" fillcolor="" fontsize=9 margin="0.05,0.02"]
+    l1 [label="━━━━━  Mandatory (bold edge)"]
+    l2 [label="━━○━━  Optional (circle end)"]
+    l3 [label="    △    Alternative group"]
+    l4 [label="- - - -   Requires (dashed)"]
+    l5 [label="■  White   = since v1"]
+    l6 [label="■  Orange  = new in v2beta1"]
+    l7 [label="■  Green   = new in v2beta2"]
+    l8 [label="■  Blue    = unified in v2 GA"]
+    l1 -> l2 -> l3 -> l4 -> l5 -> l6 -> l7 -> l8 [style=invis]
+  }
+
+  // Root
+  HPA [label="HorizontalPodAutoscaler\n(autoscaling/v2 — STABLE)" fillcolor=white]
+
+  apiVersion [label="apiVersion" fillcolor=white]
+  kind_root  [label="kind"       fillcolor=white]
+  metadata   [label="metadata"   fillcolor=white]
+  spec       [label="spec"       fillcolor=white]
+  status     [label="status"     fillcolor=white]
+
+  HPA -> apiVersion [penwidth=2 arrowhead=none]
+  HPA -> kind_root  [penwidth=2 arrowhead=none]
+  HPA -> metadata   [penwidth=2 arrowhead=none]
+  HPA -> spec       [penwidth=2 arrowhead=none]
+  HPA -> status     [arrowhead=odot penwidth=1]
+
+  meta_name   [label="name"        fillcolor=white]
+  meta_ns     [label="namespace"   fillcolor=white]
+  meta_labels [label="labels"      fillcolor=white]
+  meta_ann    [label="annotations" fillcolor=white]
+  metadata -> meta_name   [penwidth=2 arrowhead=none]
+  metadata -> meta_ns     [arrowhead=odot penwidth=1]
+  metadata -> meta_labels [arrowhead=odot penwidth=1]
+  metadata -> meta_ann    [arrowhead=odot penwidth=1]
+
+  // ── spec ──────────────────────────────────────────────────────────────
+  scaleTargetRef [label="scaleTargetRef" fillcolor=white]
+  replicas_grp   [label="Replicas"       fillcolor=white]
+  metrics_grp    [label="Metrics\n(spec.metrics[ ])" fillcolor="#FFE0B2" color="#E65100"]
+  behavior       [label="Behavior"       fillcolor="#d4f1d4" color="#006400"]
+
+  spec -> scaleTargetRef [penwidth=2 arrowhead=none]
+  spec -> replicas_grp   [penwidth=2 arrowhead=none]
+  spec -> metrics_grp    [arrowhead=odot penwidth=1 color="#E65100"]
+  spec -> behavior       [arrowhead=odot penwidth=1 color="#006400"]
+
+  str_kind [label="kind"       fillcolor=white]
+  str_name [label="name"       fillcolor=white]
+  str_api  [label="apiVersion" fillcolor=white]
+  scaleTargetRef -> str_kind [penwidth=2 arrowhead=none]
+  scaleTargetRef -> str_name [penwidth=2 arrowhead=none]
+  scaleTargetRef -> str_api  [arrowhead=odot penwidth=1]
+
+  alt_kind [label="△" shape=triangle fillcolor=white width=0.3 height=0.3]
+  str_kind -> alt_kind [penwidth=2 arrowhead=none]
+  k_deploy [label="Deployment"         fillcolor=white]
+  k_rs     [label="ReplicaSet"         fillcolor=white]
+  k_ss     [label="StatefulSet"        fillcolor=white]
+  k_rc     [label="Replication\nController" fillcolor=white]
+  alt_kind -> k_deploy [penwidth=2 arrowhead=none]
+  alt_kind -> k_rs     [penwidth=2 arrowhead=none]
+  alt_kind -> k_ss     [penwidth=2 arrowhead=none]
+  alt_kind -> k_rc     [penwidth=2 arrowhead=none]
+
+  minR [label="minReplicas\n(default=1)" fillcolor=white]
+  maxR [label="maxReplicas"              fillcolor=white]
+  replicas_grp -> minR [arrowhead=odot penwidth=1]
+  replicas_grp -> maxR [penwidth=2 arrowhead=none]
+
+  // ── MetricSpec (orange from v2beta1) ──────────────────────────────────
+  metricspec [label="MetricSpec\n(array)" fillcolor="#FFE0B2" color="#E65100"]
+  metrics_grp -> metricspec [arrowhead=odot penwidth=1 color="#E65100"]
+
+  alt_type [label="△" shape=triangle fillcolor="#FFE0B2" color="#E65100" width=0.3 height=0.3]
+  metricspec -> alt_type [penwidth=2 arrowhead=none color="#E65100"]
+
+  m_resource [label="Resource"            fillcolor="#FFE0B2" color="#E65100"]
+  m_object   [label="Object"              fillcolor="#FFE0B2" color="#E65100"]
+  m_pods     [label="Pods"                fillcolor="#FFE0B2" color="#E65100"]
+  m_external [label="External"            fillcolor="#FFE0B2" color="#E65100"]
+  m_cr       [label="Container\nResource" fillcolor="#FFE0B2" color="#E65100"]
+  alt_type -> m_resource [penwidth=2 arrowhead=none color="#E65100"]
+  alt_type -> m_object   [penwidth=2 arrowhead=none color="#E65100"]
+  alt_type -> m_pods     [penwidth=2 arrowhead=none color="#E65100"]
+  alt_type -> m_external [penwidth=2 arrowhead=none color="#E65100"]
+  alt_type -> m_cr       [penwidth=2 arrowhead=none color="#E65100"]
+
+  // Resource children — name is orange, target is NEW BLUE (unified MetricTarget)
+  res_name   [label="name"              fillcolor="#FFE0B2" color="#E65100"]
+  res_target [label="target\n(MetricTarget)" fillcolor="#cce5ff" color="#0066cc" fontcolor=black]
+  m_resource -> res_name   [penwidth=2 arrowhead=none color="#E65100"]
+  m_resource -> res_target [penwidth=2 arrowhead=none color="#0066cc"]
+
+  alt_res_name [label="△" shape=triangle fillcolor="#FFE0B2" color="#E65100" width=0.3 height=0.3]
+  res_name -> alt_res_name [penwidth=2 arrowhead=none color="#E65100"]
+  r_cpu [label="cpu"    fillcolor="#FFE0B2" color="#E65100"]
+  r_mem [label="memory" fillcolor="#FFE0B2" color="#E65100"]
+  alt_res_name -> r_cpu [penwidth=2 arrowhead=none color="#E65100"]
+  alt_res_name -> r_mem [penwidth=2 arrowhead=none color="#E65100"]
+
+  // MetricTarget (unified blue — replaces per-type target syntax)
+  mt_type [label="type"          fillcolor="#cce5ff" color="#0066cc"]
+  res_target -> mt_type [penwidth=2 arrowhead=none color="#0066cc"]
+  alt_mt [label="△" shape=triangle fillcolor="#cce5ff" color="#0066cc" width=0.3 height=0.3]
+  mt_type -> alt_mt [penwidth=2 arrowhead=none color="#0066cc"]
+  mt_util [label="Utilization\n(averageUtilization)" fillcolor="#cce5ff" color="#0066cc"]
+  mt_val  [label="Value"                              fillcolor="#cce5ff" color="#0066cc"]
+  mt_avg  [label="AverageValue\n(averageValue)"       fillcolor="#cce5ff" color="#0066cc"]
+  alt_mt -> mt_util [penwidth=2 arrowhead=none color="#0066cc"]
+  alt_mt -> mt_val  [penwidth=2 arrowhead=none color="#0066cc"]
+  alt_mt -> mt_avg  [penwidth=2 arrowhead=none color="#0066cc"]
+
+  // Object children — metric (MetricIdentifier) is new blue
+  obj_metric [label="metric\n(MetricIdentifier)" fillcolor="#cce5ff" color="#0066cc"]
+  obj_target [label="target\n(MetricTarget)"     fillcolor="#cce5ff" color="#0066cc"]
+  m_object -> obj_metric [penwidth=2 arrowhead=none color="#0066cc"]
+  m_object -> obj_target [penwidth=2 arrowhead=none color="#0066cc"]
+
+  mi_name [label="name"     fillcolor="#cce5ff" color="#0066cc"]
+  mi_sel  [label="selector" fillcolor="#cce5ff" color="#0066cc"]
+  obj_metric -> mi_name [penwidth=2 arrowhead=none color="#0066cc"]
+  obj_metric -> mi_sel  [arrowhead=odot penwidth=1 color="#0066cc"]
+
+  // Pods children
+  pods_metric [label="metric\n(MetricIdentifier)" fillcolor="#cce5ff" color="#0066cc"]
+  pods_target [label="target\n(MetricTarget)"     fillcolor="#cce5ff" color="#0066cc"]
+  m_pods -> pods_metric [penwidth=2 arrowhead=none color="#0066cc"]
+  m_pods -> pods_target [penwidth=2 arrowhead=none color="#0066cc"]
+
+  // External children
+  ext_metric [label="metric\n(MetricIdentifier)" fillcolor="#cce5ff" color="#0066cc"]
+  ext_target [label="target\n(MetricTarget)"     fillcolor="#cce5ff" color="#0066cc"]
+  m_external -> ext_metric [penwidth=2 arrowhead=none color="#0066cc"]
+  m_external -> ext_target [penwidth=2 arrowhead=none color="#0066cc"]
+
+  // ContainerResource children
+  cr_name [label="name"      fillcolor="#FFE0B2" color="#E65100"]
+  cr_cont [label="container" fillcolor="#FFE0B2" color="#E65100"]
+  cr_tgt  [label="target\n(MetricTarget)" fillcolor="#cce5ff" color="#0066cc"]
+  m_cr -> cr_name [penwidth=2 arrowhead=none color="#E65100"]
+  m_cr -> cr_cont [penwidth=2 arrowhead=none color="#E65100"]
+  m_cr -> cr_tgt  [penwidth=2 arrowhead=none color="#0066cc"]
+
+  // ── Behavior (green from v2beta2, unchanged in v2) ────────────────────
+  scaleUp   [label="scaleUp"   fillcolor="#d4f1d4" color="#006400"]
+  scaleDown [label="scaleDown" fillcolor="#d4f1d4" color="#006400"]
+  behavior -> scaleUp   [arrowhead=odot penwidth=1 color="#006400"]
+  behavior -> scaleDown [arrowhead=odot penwidth=1 color="#006400"]
+
+  su_sw  [label="stabilization\nWindowSeconds" fillcolor="#d4f1d4" color="#006400"]
+  su_sp  [label="selectPolicy"                 fillcolor="#d4f1d4" color="#006400"]
+  su_pol [label="policies"                     fillcolor="#d4f1d4" color="#006400"]
+  scaleUp -> su_sw  [arrowhead=odot penwidth=1 color="#006400"]
+  scaleUp -> su_sp  [arrowhead=odot penwidth=1 color="#006400"]
+  scaleUp -> su_pol [arrowhead=odot penwidth=1 color="#006400"]
+
+  alt_su_sp [label="△" shape=triangle fillcolor="#d4f1d4" color="#006400" width=0.3 height=0.3]
+  su_sp -> alt_su_sp [penwidth=2 arrowhead=none color="#006400"]
+  su_max [label="Max"      fillcolor="#d4f1d4" color="#006400"]
+  su_min [label="Min"      fillcolor="#d4f1d4" color="#006400"]
+  su_dis [label="Disabled" fillcolor="#d4f1d4" color="#006400"]
+  alt_su_sp -> su_max [penwidth=2 arrowhead=none color="#006400"]
+  alt_su_sp -> su_min [penwidth=2 arrowhead=none color="#006400"]
+  alt_su_sp -> su_dis [penwidth=2 arrowhead=none color="#006400"]
+
+  su_hpa [label="HPAScaling\nPolicy (array)" fillcolor="#d4f1d4" color="#006400"]
+  su_pol -> su_hpa [arrowhead=odot penwidth=1 color="#006400"]
+  su_t  [label="type"          fillcolor="#d4f1d4" color="#006400"]
+  su_v  [label="value"         fillcolor="#d4f1d4" color="#006400"]
+  su_ps [label="periodSeconds" fillcolor="#d4f1d4" color="#006400"]
+  su_hpa -> su_t  [penwidth=2 arrowhead=none color="#006400"]
+  su_hpa -> su_v  [penwidth=2 arrowhead=none color="#006400"]
+  su_hpa -> su_ps [penwidth=2 arrowhead=none color="#006400"]
+
+  alt_su_type [label="△" shape=triangle fillcolor="#d4f1d4" color="#006400" width=0.3 height=0.3]
+  su_t -> alt_su_type [penwidth=2 arrowhead=none color="#006400"]
+  su_pods    [label="Pods"    fillcolor="#d4f1d4" color="#006400"]
+  su_percent [label="Percent" fillcolor="#d4f1d4" color="#006400"]
+  alt_su_type -> su_pods    [penwidth=2 arrowhead=none color="#006400"]
+  alt_su_type -> su_percent [penwidth=2 arrowhead=none color="#006400"]
+
+  sd_sw  [label="stabilization\nWindowSeconds" fillcolor="#d4f1d4" color="#006400"]
+  sd_sp  [label="selectPolicy"                 fillcolor="#d4f1d4" color="#006400"]
+  sd_pol [label="policies"                     fillcolor="#d4f1d4" color="#006400"]
+  scaleDown -> sd_sw  [arrowhead=odot penwidth=1 color="#006400"]
+  scaleDown -> sd_sp  [arrowhead=odot penwidth=1 color="#006400"]
+  scaleDown -> sd_pol [arrowhead=odot penwidth=1 color="#006400"]
+
+  alt_sd_sp [label="△" shape=triangle fillcolor="#d4f1d4" color="#006400" width=0.3 height=0.3]
+  sd_sp -> alt_sd_sp [penwidth=2 arrowhead=none color="#006400"]
+  sd_max [label="Max"      fillcolor="#d4f1d4" color="#006400"]
+  sd_min [label="Min"      fillcolor="#d4f1d4" color="#006400"]
+  sd_dis [label="Disabled" fillcolor="#d4f1d4" color="#006400"]
+  alt_sd_sp -> sd_max [penwidth=2 arrowhead=none color="#006400"]
+  alt_sd_sp -> sd_min [penwidth=2 arrowhead=none color="#006400"]
+  alt_sd_sp -> sd_dis [penwidth=2 arrowhead=none color="#006400"]
+
+  sd_hpa [label="HPAScaling\nPolicy (array)" fillcolor="#d4f1d4" color="#006400"]
+  sd_pol -> sd_hpa [arrowhead=odot penwidth=1 color="#006400"]
+  sd_t  [label="type"          fillcolor="#d4f1d4" color="#006400"]
+  sd_v  [label="value"         fillcolor="#d4f1d4" color="#006400"]
+  sd_ps [label="periodSeconds" fillcolor="#d4f1d4" color="#006400"]
+  sd_hpa -> sd_t  [penwidth=2 arrowhead=none color="#006400"]
+  sd_hpa -> sd_v  [penwidth=2 arrowhead=none color="#006400"]
+  sd_hpa -> sd_ps [penwidth=2 arrowhead=none color="#006400"]
+
+  alt_sd_type [label="△" shape=triangle fillcolor="#d4f1d4" color="#006400" width=0.3 height=0.3]
+  sd_t -> alt_sd_type [penwidth=2 arrowhead=none color="#006400"]
+  sd_pods    [label="Pods"    fillcolor="#d4f1d4" color="#006400"]
+  sd_percent [label="Percent" fillcolor="#d4f1d4" color="#006400"]
+  alt_sd_type -> sd_pods    [penwidth=2 arrowhead=none color="#006400"]
+  alt_sd_type -> sd_percent [penwidth=2 arrowhead=none color="#006400"]
+
+  // ── status ────────────────────────────────────────────────────────────
+  st_obsgen [label="observedGeneration" fillcolor=white]
+  st_last   [label="lastScaleTime"      fillcolor=white]
+  st_rep    [label="Replicas Status"    fillcolor=white]
+  st_cur_m  [label="Current Metrics"    fillcolor="#FFE0B2" color="#E65100"]
+  st_cond   [label="Conditions"         fillcolor="#FFE0B2" color="#E65100"]
+
+  status -> st_obsgen [arrowhead=odot penwidth=1]
+  status -> st_last   [arrowhead=odot penwidth=1]
+  status -> st_rep    [penwidth=2 arrowhead=none]
+  status -> st_cur_m  [arrowhead=odot penwidth=1 color="#E65100"]
+  status -> st_cond   [arrowhead=odot penwidth=1 color="#E65100"]
+
+  st_cur [label="currentReplicas" fillcolor=white]
+  st_des [label="desiredReplicas" fillcolor=white]
+  st_rep -> st_cur [penwidth=2 arrowhead=none]
+  st_rep -> st_des [penwidth=2 arrowhead=none]
+}
