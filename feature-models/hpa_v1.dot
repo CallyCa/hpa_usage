@@ -1,0 +1,106 @@
+digraph HPA_v1 {
+  rankdir=TB
+  graph [fontname="Arial" fontsize=10 pad=0.4 nodesep=0.4 ranksep=0.6 label="HPA Feature Model — autoscaling/v1" labelloc=t labeljust=l fontsize=13]
+  node  [fontname="Arial" fontsize=10 shape=box style=filled fillcolor=white strokecolor=black]
+  edge  [fontname="Arial" fontsize=9]
+
+  // ── Legend ────────────────────────────────────────────────────────────
+  subgraph cluster_legend {
+    rankdir=TB
+    label="Legend" fontsize=9 style=filled fillcolor="#f5f5f5" color="#999999"
+    node [shape=plaintext style="" fillcolor="" fontsize=9 margin="0.05,0.02"]
+    l1 [label="━━━━━  Mandatory (bold edge)"]
+    l2 [label="━━○━━  Optional (circle end)"]
+    l3 [label="    △    Alternative group"]
+    l4 [label="- - - -   Requires (dashed)"]
+    l5 [label="■  White  = since v1"]
+    l1 -> l2 -> l3 -> l4 -> l5 [style=invis]
+  }
+
+  // ── Root ──────────────────────────────────────────────────────────────
+  HPA [label="HorizontalPodAutoscaler\n(autoscaling/v1)" fillcolor=white]
+
+  // ── Top-level ─────────────────────────────────────────────────────────
+  apiVersion [label="apiVersion" fillcolor=white]
+  kind_root  [label="kind"       fillcolor=white]
+  metadata   [label="metadata"   fillcolor=white]
+  spec       [label="spec"       fillcolor=white]
+  status     [label="status"     fillcolor=white]
+
+  HPA -> apiVersion [penwidth=2 arrowhead=none]
+  HPA -> kind_root  [penwidth=2 arrowhead=none]
+  HPA -> metadata   [penwidth=2 arrowhead=none]
+  HPA -> spec       [penwidth=2 arrowhead=none]
+  HPA -> status     [arrowhead=odot penwidth=1]
+
+  // ── metadata ──────────────────────────────────────────────────────────
+  meta_name      [label="name"              fillcolor=white]
+  meta_ns        [label="namespace"         fillcolor=white]
+  meta_labels    [label="labels"            fillcolor=white]
+  meta_ann       [label="annotations"       fillcolor=white]
+  meta_genname   [label="generateName"      fillcolor=white]
+
+  metadata -> meta_name    [penwidth=2 arrowhead=none]
+  metadata -> meta_ns      [arrowhead=odot penwidth=1]
+  metadata -> meta_labels  [arrowhead=odot penwidth=1]
+  metadata -> meta_ann     [arrowhead=odot penwidth=1]
+  metadata -> meta_genname [arrowhead=odot penwidth=1]
+
+  // ── spec ──────────────────────────────────────────────────────────────
+  scaleTargetRef [label="scaleTargetRef"             fillcolor=white]
+  replicas_grp   [label="Replicas"                   fillcolor=white]
+  targetCPU      [label="targetCPU\nUtilization\nPercentage" fillcolor=white]
+
+  spec -> scaleTargetRef [penwidth=2 arrowhead=none]
+  spec -> replicas_grp   [penwidth=2 arrowhead=none]
+  spec -> targetCPU      [arrowhead=odot penwidth=1]
+
+  // scaleTargetRef children
+  str_kind [label="kind"       fillcolor=white]
+  str_name [label="name"       fillcolor=white]
+  str_api  [label="apiVersion" fillcolor=white]
+
+  scaleTargetRef -> str_kind [penwidth=2 arrowhead=none]
+  scaleTargetRef -> str_name [penwidth=2 arrowhead=none]
+  scaleTargetRef -> str_api  [arrowhead=odot penwidth=1]
+
+  // kind alternatives
+  alt_kind [label="△" shape=triangle fillcolor=white width=0.3 height=0.3]
+  str_kind -> alt_kind [penwidth=2 arrowhead=none]
+  k_deploy [label="Deployment"           fillcolor=white]
+  k_rs     [label="ReplicaSet"           fillcolor=white]
+  k_ss     [label="StatefulSet"          fillcolor=white]
+  k_rc     [label="Replication\nController" fillcolor=white]
+  alt_kind -> k_deploy [penwidth=2 arrowhead=none]
+  alt_kind -> k_rs     [penwidth=2 arrowhead=none]
+  alt_kind -> k_ss     [penwidth=2 arrowhead=none]
+  alt_kind -> k_rc     [penwidth=2 arrowhead=none]
+
+  // Replicas children
+  minR [label="minReplicas\n(default=1)" fillcolor=white]
+  maxR [label="maxReplicas"              fillcolor=white]
+  replicas_grp -> minR [arrowhead=odot penwidth=1]
+  replicas_grp -> maxR [penwidth=2 arrowhead=none]
+
+  // ── status ────────────────────────────────────────────────────────────
+  st_obsgen  [label="observedGeneration"          fillcolor=white]
+  st_last    [label="lastScaleTime"               fillcolor=white]
+  st_rep     [label="Replicas Status"             fillcolor=white]
+  st_metrics [label="Metrics Status"              fillcolor=white]
+
+  status -> st_obsgen  [arrowhead=odot penwidth=1]
+  status -> st_last    [arrowhead=odot penwidth=1]
+  status -> st_rep     [penwidth=2 arrowhead=none]
+  status -> st_metrics [arrowhead=odot penwidth=1]
+
+  st_cur  [label="currentReplicas"                fillcolor=white]
+  st_des  [label="desiredReplicas"                fillcolor=white]
+  st_ccpu [label="currentCPU\nUtilizationPercentage" fillcolor=white]
+
+  st_rep     -> st_cur  [penwidth=2 arrowhead=none]
+  st_rep     -> st_des  [penwidth=2 arrowhead=none]
+  st_metrics -> st_ccpu [arrowhead=odot penwidth=1]
+
+  // requires link (dashed)
+  st_ccpu -> targetCPU [style=dashed arrowhead=none]
+}
