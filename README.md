@@ -153,12 +153,6 @@ os.environ["GITHUB_TOKEN"] = "ghp_replace_this_with_your_token"
 
 Option B is useful for quick experiments, but the variable disappears when the Colab runtime is reset. Option A works better when the notebook expects `python-dotenv` to load credentials from `.env`.
 
-### 6. Security notes
-
-Treat the GitHub token like a password. If a token is accidentally committed, pasted into a shared notebook, or exposed in a public artifact, revoke it immediately in GitHub and create a new one.
-
-For anonymous review, do not include a real `.env` file, token value, personal GitHub username, or original repository URL in the artifact package.
-
 ## Environment Setup
 
 The notebooks were designed to run both locally and in Google Colab.
@@ -198,8 +192,6 @@ This path is temporary and is recreated when the Colab runtime is reset. To pers
 import os
 os.environ["HPA_PROJECT_DIR"] = "/content/drive/MyDrive/Colab Notebooks/hpa"
 ```
-
-For anonymous review, avoid using paths, URLs, or repository names that reveal author identity.
 
 ## Required Data Files
 
