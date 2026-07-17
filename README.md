@@ -1,300 +1,242 @@
-# HPA Usage in Public GitHub Repositories
+# Characterizing Horizontal Pod Autoscaler Usage in Open-Source Kubernetes Projects
 
-This repository contains the research artifacts used to mine, classify, and analyze Kubernetes Horizontal Pod Autoscaler (HPA) configuration files from public GitHub repositories.
+Replication package for the SBES 2026 paper *Characterizing Horizontal Pod Autoscaler Usage in Open-Source Kubernetes Projects: A Large-Scale Empirical Study*
 
-The artifact is organized as a three-notebook pipeline. Each notebook can be executed independently when the required intermediate data files are already available in `data/`, but the recommended execution order is from Notebook 1 to Notebook 3.
+The package contains the mined dataset and the analysis notebooks used to study how Kubernetes Horizontal Pod Autoscaler (HPA) manifests are configured, maintained, and underutilized in public GitHub repositories. It reproduces the tables, figures, and statistics reported in the paper, including the HPA Feature Richness Score (HFRS), the configuration archetypes, and the six configuration smells.
 
-## Repository Structure
+**Paper:** `paper/sbes2026-hpa.pdf` in this package.
 
-```text
-.
-├── 1_mine_hpa_usage.ipynb
-├── 2_classify_hpa_minimal_version.ipynb
-├── 3_msr_repository_analysis_minimal_version.ipynb
-├── data/
-├── feature-models/
-├── research/
-├── utils.py
-├── requirements.txt
-├── LICENSE
-└── README.md
-```
+**Archived version:** <https://doi.org/10.5281/zenodo.21415776>
 
-### Main directories and files
+## What is included
 
 | Path | Description |
 |---|---|
-| `1_mine_hpa_usage.ipynb` | Mines candidate HPA files from GitHub and prepares the raw/intermediate mining outputs. |
-| `2_classify_hpa_minimal_version.ipynb` | Parses and classifies HPA manifests, extracts configuration fields, computes HFRS-related features, and generates classification figures. |
-| `3_msr_repository_analysis_minimal_version.ipynb` | Performs repository-level MSR analyses, including activity, version distribution, HFRS, sensitivity checks, risk indicators, and temporal co-evolution. |
-| `data/` | Curated CSV files required by the minimal notebooks. |
-| `feature-models/` | Feature model diagrams and DOT files used to document HPA API-version capabilities. |
-| `research/` | Supporting technical notes and documentation snapshots used during the study. |
-| `utils.py` | Small utility functions used by the mining/classification workflow. |
-| `requirements.txt` | Python dependencies required to run the notebooks. |
+| `1_mine_hpa_usage.ipynb` | Mines candidate HPA files from GitHub and builds the raw mining outputs. Requires a GitHub token and takes several hours. |
+| `2_classify_hpa_minimal_version.ipynb` | Parses and classifies HPA manifests, computes HFRS and the archetypes, and generates the classification figures. |
+| `3_msr_repository_analysis_minimal_version.ipynb` | Runs the repository-level analyses: maintenance status, HFRS comparisons, sensitivity checks, configuration smells, and co-evolution. |
+| `data/` | Curated CSV files that Notebooks 2 and 3 read. |
+| `data/figures/notebook-2/` | PDF figures written by Notebook 2. |
+| `data/figures/notebook-3/` | PDF figures written by Notebook 3. |
+| `utils.py` | Helper functions used by the mining stage. |
+| `requirements.txt` | Python dependencies. |
+| `LICENSE` | MIT License. |
 
-## Execution Modes
+### Dataset files
 
-The artifact supports two execution modes.
+| File | Rows | Content |
+|---|---|---|
+| `hpa_hfrs_full.csv` | 9,764 | One row per HPA manifest, with the parsed fields, the 13 HFRS components, the HFRS score and class, and the archetype label. |
+| `phase4_latest.csv` | 16,506 | One row per metric definition, with the metric type, target type, and target value. |
+| `hpa_repo_aggregated.csv` | 12,741 | One row per mined repository, with GitHub metadata, activity dates, and the toy-project and confidence indicators. |
+| `phase3_latest.csv` | 9,795 | Repository and path metadata for every parsed candidate file, including the Helm templates later excluded. |
+| `phase3_file_commits_latest.csv` | 9,770 | Most recent commit touching each candidate file, used to classify maintenance age. |
+| `phase6_commit_timeline_latest.csv` | 8,926 | Commit timeline for the 169 repositories of the stratified co-evolution sample. |
+| `phase6_coevolution.csv` | 241 | The 241 co-evolution events observed in the stratified sample of 169 repositories, which covers 70 active, 50 outdated, and 49 intermediate ones. |
+| `hpa_hfrs.csv` | 9,764 | Reduced HFRS view kept for convenience. |
 
-### Mode A: Reuse the curated data files
+The numbers above are the corpus numbers reported in the paper: 12,741 repositories, 7,013 of them with at least one retained HPA file, 9,764 HPA manifests, and 16,506 metric definitions.
 
-This is the recommended mode for artifact evaluation and paper review. The curated CSV files are already available in `data/`, so reviewers can execute Notebooks 2 and 3 without re-mining GitHub.
+## Requirements
 
-Recommended order:
+### Hardware
 
-```text
-2_classify_hpa_minimal_version.ipynb
-3_msr_repository_analysis_minimal_version.ipynb
-```
+- Disk: 16 MB for this package. Notebook 3 downloads an additional commit-history archive of about 29 MB, which expands to roughly 300 MB. Reserve 1 GB to be comfortable.
+- Memory: the curated CSV files occupy about 42 MB once loaded, so 4 GB of RAM is sufficient.
+- Network: needed only to install the dependencies, to download the commit-history archive on first run, and to run Notebook 1.
+- No GPU, cluster, or Kubernetes installation is required. The study analyzes manifests as files and never deploys them.
 
-### Mode B: Rebuild the dataset from mining
+### Software
 
-Notebook 1 can be used to reproduce the mining stage. This mode requires GitHub API access and may be affected by API limits, search result limits, network conditions, and repository changes over time.
+- Python 3.9 or later. The last successful run used Python 3.12.
+- The Python packages listed in `requirements.txt`.
+- Operating system: Linux, macOS, or Windows. The notebooks use `pathlib` for every path and were executed on Linux and in Google Colab.
+- No Docker or virtual machine is required.
+- A GitHub personal access token, required only by Notebook 1. Notebooks 2 and 3 reproduce the results of the paper without one. See [Notebook 1, the mining stage](#notebook-1-the-mining-stage) for how to create and configure it.
 
-Recommended order:
+### Tested versions
 
-```text
-1_mine_hpa_usage.ipynb
-2_classify_hpa_minimal_version.ipynb
-3_msr_repository_analysis_minimal_version.ipynb
-```
-
-## GitHub Authentication for Notebook 1
-
-Notebook 1 accesses the GitHub API to search and retrieve candidate HPA files from public repositories. Running it without authentication may quickly hit API rate limits. For this reason, create a local `.env` file in the repository root and define a GitHub personal access token in the `GITHUB_TOKEN` variable.
-
-The `.env` file must not be committed to the repository. It contains a private credential and should remain only in the local or Colab runtime environment.
-
-### 1. Create a GitHub personal access token
-
-GitHub supports fine-grained personal access tokens and classic personal access tokens. GitHub recommends fine-grained tokens whenever possible because they provide more controlled permissions and repository access.
-
-Recommended option for this artifact:
-
-1. Open GitHub.
-2. Go to **Settings**.
-3. Open **Developer settings**.
-4. Select **Personal access tokens**.
-5. Prefer **Fine-grained tokens** when available for your use case.
-6. Create a token with the shortest practical expiration date.
-7. Use read-only permissions. This artifact only needs to read public repository metadata and file contents.
-8. Copy the generated token immediately. GitHub only shows it once.
-
-If a fine-grained token does not work for the API endpoints used by your environment, use a **Personal access token (classic)** with the minimum permissions required. For public repository mining, avoid broad write permissions. Do not grant unnecessary scopes.
-
-### 2. Create the `.env` file
-
-In the repository root, create a file named `.env`:
+The last successful end-to-end run of Notebooks 2 and 3 used:
 
 ```text
-GITHUB_TOKEN=ghp_replace_this_with_your_token
+Python 3.12.3   pandas 3.0.3    numpy 2.5.1     scipy 1.18.0
+seaborn 0.13.2  matplotlib 3.11.0   pyyaml 6.0.3    requests 2.34.2
+python-dotenv 1.2.2   python-dateutil 2.9.0   urllib3 2.7.0
 ```
 
-The resulting local structure should be:
+`requirements.txt` declares lower bounds rather than exact pins, so the package also installs on older Python releases. If you need a byte-identical environment, pin the versions above.
 
-```text
-.
-├── .env
-├── 1_mine_hpa_usage.ipynb
-├── 2_classify_hpa_minimal_version.ipynb
-├── 3_msr_repository_analysis_minimal_version.ipynb
-├── data/
-├── requirements.txt
-└── utils.py
-```
+## Installation
 
-### 3. Check whether `.env` is ignored
+The steps below assume a terminal opened in the package root, which is the directory that contains `README.md`.
 
-Before committing or packaging the artifact, confirm that `.env` is ignored by Git:
+### 1. Create an isolated environment
+
+On Linux or macOS:
 
 ```bash
-git status --ignored
-```
-
-The repository should include a `.gitignore` rule such as:
-
-```text
-.env
-*.env
-```
-
-Never paste the token directly into a notebook cell, source file, markdown file, or committed configuration file.
-
-### 4. Optional `.env.example`
-
-For documentation, the repository may include a safe example file named `.env.example`:
-
-```text
-GITHUB_TOKEN=replace_with_your_github_token
-```
-
-This example file does not contain a real credential and can be committed.
-
-### 5. Using the token in Google Colab
-
-When running Notebook 1 in Google Colab, there are two safe options.
-
-Option A, create `.env` inside the runtime:
-
-```python
-from pathlib import Path
-
-Path(".env").write_text("GITHUB_TOKEN=ghp_replace_this_with_your_token\n")
-```
-
-Option B, define the environment variable directly for the current session:
-
-```python
-import os
-
-os.environ["GITHUB_TOKEN"] = "ghp_replace_this_with_your_token"
-```
-
-Option B is useful for quick experiments, but the variable disappears when the Colab runtime is reset. Option A works better when the notebook expects `python-dotenv` to load credentials from `.env`.
-
-## Environment Setup
-
-The notebooks were designed to run both locally and in Google Colab.
-
-### Local execution
-
-Create a Python virtual environment and install the dependencies:
-
-```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
+```
+
+On Windows, using PowerShell:
+
+```powershell
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+If PowerShell blocks the activation script, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` in the same session and try again.
+
+### 2. Install the dependencies
+
+```bash
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-Then open the notebooks with Jupyter or VSCode.
+This is the only installation step. There is nothing to compile and nothing to configure.
 
-### Google Colab execution
+### 3. Check the installation
 
-Each minimal notebook includes a bootstrap cell at the beginning. The bootstrap prepares the execution environment by:
+Run the command below. It loads the three datasets and prints the corpus numbers reported in the paper.
 
-1. detecting whether the notebook is running in Google Colab or locally;
-2. defining the project directory;
-3. installing dependencies from `requirements.txt`;
-4. validating the required files in `data/`;
-5. creating output directories for generated figures and intermediate outputs.
+```bash
+python -c "import pandas as pd; \
+print('HPA files      :', len(pd.read_csv('data/hpa_hfrs_full.csv'))); \
+print('metric defs    :', len(pd.read_csv('data/phase4_latest.csv'))); \
+print('repositories   :', len(pd.read_csv('data/hpa_repo_aggregated.csv')))"
+```
 
-By default, the Colab bootstrap uses:
+Expected output:
 
 ```text
-/content/hpa
+HPA files      : 9764
+metric defs    : 16506
+repositories   : 12741
 ```
 
-This path is temporary and is recreated when the Colab runtime is reset. To persist generated outputs in Google Drive, define `HPA_PROJECT_DIR` before running the bootstrap cell:
+If these three numbers appear, the environment is ready. A `ModuleNotFoundError` means the dependencies were installed outside the active environment; activate it again and repeat step 2.
 
-```python
-import os
-os.environ["HPA_PROJECT_DIR"] = "/content/drive/MyDrive/Colab Notebooks/hpa"
+### 4. Open the notebooks
+
+```bash
+python -m jupyter lab
 ```
 
-## Required Data Files
+Jupyter opens in the browser. Visual Studio Code also works: open the package folder and select `.venv` as the kernel.
 
-The minimal artifact expects the following files in `data/`.
+## Running the analysis
 
-### Required by Notebook 2
+The recommended path for reviewers is to run Notebooks 2 and 3 over the curated CSV files. Notebook 1 rebuilds the corpus from GitHub and is not needed to reproduce the results.
+
+### Notebooks 2 and 3, the reproducible path
+
+Open and run all cells, in this order:
 
 ```text
-phase4_latest.csv
-phase3_file_commits_latest.csv
-hpa_hfrs_full.csv
+2_classify_hpa_minimal_version.ipynb
+3_msr_repository_analysis_minimal_version.ipynb
 ```
 
-### Required by Notebook 3
+Both notebooks start with a bootstrap cell that detects whether the runtime is local or Google Colab, resolves the project directory, verifies the files under `data/`, and creates the output directories. In a local run with the dependencies already installed, the bootstrap changes nothing else.
+
+On the reference machine, Notebook 2 finishes in about 16 seconds and Notebook 3 in about 6 seconds, after the commit-history archive has been downloaded.
+
+Expected results:
+
+- 13 PDF figures, written to `data/figures/notebook-2/` by Notebook 2 and to `data/figures/notebook-3/` by Notebook 3. They include `fig03_temporal_commit_year.pdf`, `fig30_capability_adoption_over_time.pdf`, `fig_47a_configuration_profiles.pdf`, and `fig17a_hfrs_by_repository_status.pdf`, which appear in the paper.
+- Summary tables printed by the cells, covering the API-version distribution, the HFRS classes, the archetypes, the maintenance status, and the six configuration smells.
+- The statistics reported in the paper, including the median HFRS of 4 out of 13, the Mann-Whitney comparison between HPA-active and HPA-outdated repositories, and the smell counts.
+
+### Notebook 1, the mining stage
+
+Notebook 1 reruns the GitHub mining. It needs a personal access token, issues around 27,600 API calls, and runs for several hours. Its results also change over time, because repositories are created, edited, and deleted, and because GitHub Code Search caps each query at 1,000 results. Use it to inspect the mining procedure rather than to reproduce the exact corpus.
+
+Notebooks 2 and 3 do not need a token. The only exception is the optional cell of Notebook 2 that rebuilds the manifest history from the original repositories, which the packaged `repos_history.zip` already provides.
+
+#### Why a token is needed
+
+Without authentication the GitHub API allows 60 calls per hour, which is not enough for any phase of the mining. A token raises the limit to 5,000 calls per hour. Notebook 1 also uses the GraphQL API, which rejects unauthenticated requests outright.
+
+#### Which token to create
+
+The notebook only reads public data: search results, repository metadata, file contents, and commit dates. It never writes anything.
+
+- **Fine-grained token (recommended).** Go to *GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token*. Set a name and an expiration. Under *Repository access*, `Public Repositories (read-only)` is enough. No extra permission is required, because every fine-grained token already has read-only access to public repositories.
+- **Classic token.** Go to *GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic)*. Set a name and an expiration and **leave every scope unchecked**. A token with no scopes can already read public information and gets the 5,000 calls per hour limit.
+
+Do not select the `public_repo` scope. It also grants write access to public repositories, which this artifact never needs.
+
+Copy the token as soon as GitHub shows it, since the value is not displayed again.
+
+#### Where to put it
+
+Create a file named `.env` in the package root, which is the same directory as `README.md` and the notebooks. Notebook 1 reads `.env` from the current working directory, so it must sit next to the notebook you open, and not in a subfolder or in your home directory.
 
 ```text
-hpa_repo_aggregated.csv
-phase4_latest.csv
-phase3_file_commits_latest.csv
-hpa_hfrs_full.csv
-phase6_commit_timeline_latest.csv
-phase6_coevolution.csv
+GITHUB_TOKEN="github_pat_xxxxxxxxxxxxxxxxxxxxxxxx"
 ```
 
-Additional CSV files may be present in `data/` because they support intermediate analyses, validation checks, or reproducibility.
+Notes on the format:
 
-## Notebook 1: Mining HPA Usage
+- the variable name must be exactly `GITHUB_TOKEN`;
+- the quotes are optional, and surrounding spaces are stripped;
+- a classic token starts with `ghp_`, and a fine-grained one with `github_pat_`. Both work.
 
-`1_mine_hpa_usage.ipynb` performs the mining stage. It searches public GitHub repositories for YAML files that contain Kubernetes HPA manifests, retrieves candidate files, and prepares raw/intermediate data for subsequent parsing and classification.
+If `.env` does not exist, the token cell creates a skeleton file, prints its full path, and stops with an error asking you to fill in the value. Fill it in and run the cell again. On success the cell prints how many characters the token has, and never prints the token itself.
 
-Main responsibilities:
+`.env` is listed in `.gitignore`, so it is not committed. Do not redistribute it, and revoke the token on GitHub if it ever leaks.
 
-1. configure GitHub API access;
-2. search for candidate HPA YAML files;
-3. retrieve repository and file metadata;
-4. store intermediate mining outputs;
-5. prepare data consumed by the classification stage.
+#### Checking the token
 
-Expected inputs:
+The command below confirms that the token works and shows the remaining rate limit. Run it from the package root with the environment activated:
+
+```bash
+python -c "import os, requests; from dotenv import load_dotenv; load_dotenv('.env'); \
+t = os.getenv('GITHUB_TOKEN','').strip(); \
+r = requests.get('https://api.github.com/rate_limit', headers={'Authorization': f'token {t}'} if t else {}); \
+print('status:', r.status_code); \
+print('core limit:', r.json().get('resources',{}).get('core','(no data)'))"
+```
+
+A working token prints `status: 200` and a core limit of 5,000:
 
 ```text
-.env file with GITHUB_TOKEN
+status: 200
+core limit: {'limit': 5000, 'remaining': 5000, ...}
 ```
 
-Expected outputs include intermediate mining files used to build later CSVs in `data/`.
+A limit of 60 means the token was not read, so check the file name, the variable name, and the directory. A `status: 401` means the value is invalid, expired, or revoked.
 
-## Notebook 2: HPA Classification and Configuration Analysis
+## Storage, ethical and legal statements
 
-`2_classify_hpa_minimal_version.ipynb` parses HPA manifests and extracts configuration-level information.
+The dataset contains metadata and configuration fields extracted from public GitHub repositories. It records repository names, file paths, commit dates, and the parsed contents of HPA manifests. It contains no personal data, no author identity, no credentials, and no repository source code beyond the HPA manifests themselves. Commit metadata is limited to dates and no author information is stored.
 
-Main responsibilities:
+The mined repositories are public and each remains under its own license. This package redistributes derived data, that is, parsed configuration fields and computed metrics, together with the repository name and file path needed to trace each record back to its origin. Users who intend to redistribute manifest contents should check the license of the corresponding repository. The collection respected the GitHub REST API terms and its rate limits.
 
-1. load curated HPA file data;
-2. normalize `apiVersion` and HPA fields;
-3. classify HPA configuration choices;
-4. compute and inspect HFRS-related fields;
-5. analyze API-version adoption;
-6. analyze selected configuration indicators, such as CPU thresholds and `minReplicas = maxReplicas`;
-7. generate PDF figures used by the paper and artifact inspection.
+The `LICENSE` file applies to this package, which includes the notebooks, the helper code, the curated CSV files, and the figures.
 
-Key outputs:
+## Reproducibility notes
 
-```text
-figures and PDFs generated by the notebook
-updated or validated classification tables
-printed summary tables for the analyzed indicators
+The package supports two levels of reproducibility.
+
+1. Analysis reproducibility, which reruns Notebooks 2 and 3 over the curated CSV files. The results are deterministic and match the paper.
+2. Pipeline reproducibility, which reruns Notebook 1 and rebuilds the corpus. The mining stage depends on the state of GitHub at execution time, so the resulting corpus will differ from the one analyzed in the paper.
+
+Every intermediate artifact of the mining stage is persisted as CSV, so the pipeline can be inspected phase by phase without repeating the API calls.
+
+## Citation
+
+```bibtex
+@inproceedings{rodrigues2026hpa,
+  author    = {Rodrigues, Thiago Serafim and Ribeiro J{\'u}nior, Humberto F. and Mendon{\c{c}}a, Nabor das Chagas},
+  title     = {Characterizing Horizontal Pod Autoscaler Usage in Open-Source Kubernetes Projects: A Large-Scale Empirical Study},
+  booktitle = {Proceedings of the 40th Brazilian Symposium on Software Engineering (SBES)},
+  year      = {2026}
+}
 ```
-
-## Notebook 3: Repository-Level MSR Analysis
-
-`3_msr_repository_analysis_minimal_version.ipynb` performs repository-level analyses over the classified HPA files.
-
-Main responsibilities:
-
-1. load repository-level and HPA-level curated datasets;
-2. analyze repository activity and HPA stability;
-3. compare active and outdated repositories;
-4. analyze HFRS across repository activity groups;
-5. evaluate sensitivity scenarios for API-version distributions and HFRS;
-6. inspect risk indicators;
-7. analyze HPA-touch frequency and temporal co-evolution.
-
-Key outputs:
-
-```text
-PDF figures under the configured plots directory
-summary tables printed by the notebook cells
-risk-indicator and sensitivity-analysis summaries
-```
-
-## Generated Figures
-
-The notebooks save plots as PDF files to avoid quality loss in paper figures. The exact output directory depends on the notebook bootstrap configuration. In the Colab-ready versions, the plots directory is defined in the initial setup cell.
-
-## Reproducibility Notes
-
-The artifact supports reproducibility at two levels.
-
-1. **Analysis reproducibility:** run Notebooks 2 and 3 over the curated CSV files in `data/`.
-2. **Pipeline reproducibility:** run Notebook 1 to rebuild the mining outputs, then run Notebooks 2 and 3.
-
-The first level is recommended for review because GitHub mining is time-dependent and may be affected by repository deletions, updated files, API limits, search limits, and network behavior.
 
 ## License
 
-This artifact is released under the MIT License. During double-anonymous review, the copyright holder is written as `Anonymous Authors` to avoid revealing author identity. If the paper is accepted, the copyright holder can be restored in the camera-ready artifact.
+This package is released under the MIT License. See `LICENSE`.
