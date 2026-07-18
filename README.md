@@ -6,7 +6,7 @@ The package contains the mined dataset and the analysis notebooks used to study 
 
 **Paper:** `paper/sbes2026-hpa.pdf` in this package.
 
-**Archived version:** <https://doi.org/10.5281/zenodo.21415776>
+**Archived version:** <https://doi.org/10.5281/zenodo.21422468>
 
 ## What is included
 
