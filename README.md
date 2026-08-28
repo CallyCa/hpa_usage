@@ -4,9 +4,9 @@ Replication package for the SBES 2026 paper *Characterizing Horizontal Pod Autos
 
 The package contains the mined dataset and the analysis notebooks used to study how Kubernetes Horizontal Pod Autoscaler (HPA) manifests are configured, maintained, and underutilized in public GitHub repositories. It reproduces the tables, figures, and statistics reported in the paper, including the HPA Feature Richness Score (HFRS), the configuration archetypes, and the six configuration smells.
 
-**Paper:** `paper/sbes2026-hpa.pdf` in this package.
+**Accepted paper:** [paper/sbes2026-hpa.pdf](paper/sbes2026-hpa.pdf), included in the package, and available as an individual file in the version-specific Zenodo record at <https://zenodo.org/records/22134989/files/sbes2026-hpa.pdf>.
 
-**Archived version:** <https://doi.org/10.5281/zenodo.21422468>
+**Artifact DOI:** <https://doi.org/10.5281/zenodo.22134989>
 
 ## What is included
 
@@ -41,30 +41,51 @@ The numbers above are the corpus numbers reported in the paper: 12,741 repositor
 
 ### Hardware
 
-- Disk: 16 MB for this package. Notebook 3 downloads an additional commit-history archive of about 29 MB, which expands to roughly 300 MB. Reserve 1 GB to be comfortable.
+- Disk: the package occupies approximately 381 MiB after extraction, excluding Git metadata. Reserve at least 1 GB for the package, a virtual environment, and generated figures.
 - Memory: the curated CSV files occupy about 42 MB once loaded, so 4 GB of RAM is sufficient.
 - Network: needed only to install the dependencies, to download the commit-history archive on first run, and to run Notebook 1.
 - No GPU, cluster, or Kubernetes installation is required. The study analyzes manifests as files and never deploys them.
 
 ### Software
 
-- Python 3.9 or later. The last successful run used Python 3.12.
-- The Python packages listed in `requirements.txt`.
-- Operating system: Linux, macOS, or Windows. The notebooks use `pathlib` for every path and were executed on Linux and in Google Colab.
+- Python 3.12.13 is the primary and recommended environment for this artifact revision.
+- Python 3.9.25, 3.10.20, and 3.11.15 were also validated as compatibility environments.
+- The exact direct-dependency versions pinned in `requirements.txt` are shared by all four validated Python environments.
+- Validated operating system: Linux x86_64. The notebooks use `pathlib`, and equivalent environment setup commands are provided below for macOS and Windows, but those systems were not part of this validation run.
 - No Docker or virtual machine is required.
 - A GitHub personal access token, required only by Notebook 1. Notebooks 2 and 3 reproduce the results of the paper without one. See [Notebook 1, the mining stage](#notebook-1-the-mining-stage) for how to create and configure it.
 
 ### Tested versions
 
-The last successful end-to-end run of Notebooks 2 and 3 used:
+Notebooks were executed in full in each environment below:
+
+| Python | Notebook 2 | Notebook 3 | Generated figures | Result |
+|---|---:|---:|---:|---|
+| 3.9.25 | 25/25 code cells | 18/18 code cells | 11 + 2 PDFs | Passed |
+| 3.10.20 | 25/25 code cells | 18/18 code cells | 11 + 2 PDFs | Passed |
+| 3.11.15 | 25/25 code cells | 18/18 code cells | 11 + 2 PDFs | Passed |
+| 3.12.13 | 25/25 code cells | 18/18 code cells | 11 + 2 PDFs | Passed |
+
+All four environments used the same direct-dependency versions:
 
 ```text
-Python 3.12.3   pandas 3.0.3    numpy 2.5.1     scipy 1.18.0
-seaborn 0.13.2  matplotlib 3.11.0   pyyaml 6.0.3    requests 2.34.2
-python-dotenv 1.2.2   python-dateutil 2.9.0   urllib3 2.7.0
+jupyter 1.1.1        ipykernel 6.29.5        pandas 2.2.3
+numpy 2.0.2           scipy 1.13.1             seaborn 0.13.2
+matplotlib 3.9.4      pyyaml 6.0.2             requests 2.32.3
+urllib3 2.2.3         python-dateutil 2.9.0.post0
+python-dotenv 1.0.1
 ```
 
-`requirements.txt` declares lower bounds rather than exact pins, so the package also installs on older Python releases. If you need a byte-identical environment, pin the versions above.
+`requirements.txt` pins this validated direct-dependency set. Python or direct-dependency versions not listed above are outside the recorded validation scenarios.
+
+### Validation scope
+
+This artifact revision was validated on August 27, 2026, in the four Linux x86_64 environments above:
+
+- Notebook 2 completed all 25 code cells and generated all 11 Notebook 2 figures in every Python environment.
+- Notebook 3 completed all 18 code cells and generated both Notebook 3 figures and the expected result tables in every Python environment.
+- The textual contents of all 13 generated PDFs were identical across the four Python environments.
+- Notebook 1 was validated in the primary Python 3.12.13 environment up to its credential gate. Without `GITHUB_TOKEN`, it created the `.env` template and stopped with the documented message before making GitHub requests. Its complete mining stage was not rerun because it requires a token, approximately 27,600 API calls, and several hours.
 
 ## Installation
 
@@ -141,7 +162,7 @@ Open and run all cells, in this order:
 
 Both notebooks start with a bootstrap cell that detects whether the runtime is local or Google Colab, resolves the project directory, verifies the files under `data/`, and creates the output directories. In a local run with the dependencies already installed, the bootstrap changes nothing else.
 
-On the reference machine, Notebook 2 finishes in about 16 seconds and Notebook 3 in about 6 seconds, after the commit-history archive has been downloaded.
+With the data already expanded, both notebooks completed in under one minute in every validated environment. A clean bootstrap that also downloads and extracts the packaged data takes longer, and runtime varies with hardware and storage performance.
 
 Expected results:
 
